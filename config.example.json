@@ -1,0 +1,17 @@
+{
+  "django": {
+    "secret_key": "change-me",
+    "debug": true,
+    "allowed_hosts": ["*"] ,
+    "init_admin_username": "henry",
+    "init_admin_email": "ZHR626@OUTLOOK.COM",
+    "init_admin_password": ""
+  },
+  "rabbitmq": {
+    "host": "localhost",
+    "port": 5672,
+    "username": "guest",
+    "password": "",
+    "vhost": "/"
+  }
+}

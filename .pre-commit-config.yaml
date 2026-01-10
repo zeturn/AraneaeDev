@@ -1,0 +1,18 @@
+# Basic pre-commit configuration. Install with `pip install pre-commit` then `pre-commit install`.
+repos:
+  - repo: https://github.com/psf/black
+    rev: 23.9.1
+    hooks:
+      - id: black
+        language_version: python3
+  - repo: https://github.com/PyCQA/isort
+    rev: 5.12.0
+    hooks:
+      - id: isort
+  - repo: https://gitlab.com/pycqa/flake8
+    rev: 6.1.0
+    hooks:
+      - id: flake8
+        additional_dependencies: ["flake8==6.1.0"]
+
+# You can add frontend linters similarly if you want (eslint, prettier) and install node hooks.

@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package araneae.registration;
+
+// 空消息
+message Empty {}
+
+// 第一步：控制节点向工作节点发起握手
+message HandshakeRequest {
+  string control_hash = 1;  // 控制节点的唯一标识 hash
+  string greeting = 2;      // 握手问候
+}
+
+message HandshakeResponse {
+  string node_hash = 1;     // 工作节点生成的唯一标识 hash
+  string greeting = 2;      // 回应问候
+}
+
+// 第二步：控制节点确认工作节点身份
+message ConfirmRequest {
+  string node_hash = 1;     // 工作节点的 hash
+  string greeting = 2;      // 再次问候
+}
+
+message ConfirmResponse {
+  string greeting = 1;      // 最终问候
+}
+
+service NodeRegistration {
+  // 第一步握手
+  rpc Handshake(HandshakeRequest) returns (HandshakeResponse);
+  // 第二步确认
+  rpc Confirm(ConfirmRequest) returns (ConfirmResponse);
+}

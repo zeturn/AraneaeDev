@@ -1,0 +1,3 @@
+[submodule "src/components/BeansDesign"]
+	path = src/components/BeansDesign
+	url = https://github.com/BeansDesign/BeansDesign.git

@@ -1,0 +1,9 @@
+/celerybeat-schedule.dir
+/celerybeat-schedule.dat
+/celerybeat-schedule.bak
+/repo/
+/logs/
+/db.sqlite
+/source/logs/
+__pycache__/
+.idea/

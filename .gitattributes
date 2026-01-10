@@ -1,0 +1,21 @@
+# Set default behavior to automatically normalize line endings.
+* text=auto
+
+# Ensure Python files are treated as text
+*.py text
+
+# Vue / JS
+*.js text
+*.vue text
+*.jsx text
+*.ts text
+*.tsx text
+
+# Mark certain binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.pdf binary
+
+# End of .gitattributes
