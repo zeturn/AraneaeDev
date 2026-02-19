@@ -5,7 +5,7 @@
     "allowed_hosts": ["*"] ,
     "init_admin_username": "henry",
     "init_admin_email": "ZHR626@OUTLOOK.COM",
-    "init_admin_password": ""
+    "init_admin_password": "admin1234"
   },
   "rabbitmq": {
     "host": "localhost",

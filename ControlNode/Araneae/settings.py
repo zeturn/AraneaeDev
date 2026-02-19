@@ -94,7 +94,7 @@ WSGI_APPLICATION = 'Araneae.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': os.environ.get('DJANGO_DB_PATH') or (BASE_DIR / 'db.sqlite3'),
     }
 }
 
@@ -118,8 +118,16 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOWED_ORIGINS = ['http://localhost:4173','http://localhost:5173']  # 添加前端地址，csrf保护放行。
-CSRF_TRUSTED_ORIGINS = ['http://localhost:4173','http://localhost:5173']  # 添加前端地址，csrf保护放行。
+CORS_ALLOWED_ORIGINS = [
+    'http://localhost:4173',
+    'http://localhost:5173',
+    'http://localhost:8080',
+]  # 添加前端地址，csrf保护放行。
+CSRF_TRUSTED_ORIGINS = [
+    'http://localhost:4173',
+    'http://localhost:5173',
+    'http://localhost:8080',
+]  # 添加前端地址，csrf保护放行。
 
 # Internationalization
 # https://docs.djangoproject.com/en/5.0/topics/i18n/
@@ -225,6 +233,9 @@ SPECTACULAR_SETTINGS = {
 
 INIT_ADMIN_USERNAME = _DJANGO.get('init_admin_username', 'admin')
 INIT_ADMIN_EMAIL = _DJANGO.get('init_admin_email', 'admin@example.com')
-INIT_ADMIN_PASSWORD = os.environ.get('INIT_ADMIN_PASSWORD', _DJANGO.get('init_admin_password', ''))
+INIT_ADMIN_PASSWORD = os.environ.get(
+    'INIT_ADMIN_PASSWORD',
+    _DJANGO.get('init_admin_password', 'changeme123'),
+)
 
 MODE = 'dev'  # 'dev' or 'prod'

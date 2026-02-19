@@ -1,0 +1,19 @@
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+
+# runtime artifacts
+logs/
+instance/
+db.sqlite
+repo/
+source/logs/
+celerybeat-schedule.*
+
+# editor
+.vscode/
+.idea/

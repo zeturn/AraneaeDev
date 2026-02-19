@@ -1,0 +1,25 @@
+**/.venv/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/*.log
+
+# Python artifacts
+**/.pytest_cache/
+
+# Node artifacts
+Front/node_modules/
+Front/dist/
+
+# local DB / logs
+**/db.sqlite*
+**/instance/
+**/logs/
+
+# editor
+.vscode/
+.idea/
+
+# secrets
+config.json

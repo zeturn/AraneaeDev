@@ -26,7 +26,7 @@ def create_initial_superuser(
     User = get_user_model()
     username = username or getattr(settings, 'INIT_ADMIN_USERNAME', 'admin')
     email = email or getattr(settings, 'INIT_ADMIN_EMAIL', 'admin@example.com')
-    password = password or getattr(settings, 'INIT_ADMIN_PASSWORD', 'changeme123')
+    password = password or getattr(settings, 'INIT_ADMIN_PASSWORD', 'changeme123') or 'changeme123'
 
     if User.objects.filter(username=username).exists():
         if verbosity:

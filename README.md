@@ -55,6 +55,27 @@
      npm run dev
      ```
 
+  Docker 快速启动（推荐本地一键拉起）
+
+  1. 在仓库根目录准备配置文件：
+    - 复制 `config.example.json` 为 `config.json` 并填写真实值。
+    - 若你希望容器内通过固定路径读取配置，compose 已默认挂载到 `/config/config.json`，并设置了 `ARANEAE_CONFIG=/config/config.json`。
+
+  2. 启动（首次会 build 镜像）：
+    ```powershell
+    docker compose up --build
+    ```
+
+  3. 访问地址：
+    - Front: http://localhost:8080
+    - ControlNode API: http://localhost:8000
+    - ExecutionNode: http://localhost:5001
+    - RabbitMQ 管理台: http://localhost:15672 (账号/密码默认 araneae/araneae)
+
+  说明
+  - 前端代码当前默认请求 `http://localhost:8000` 的后端接口；因此 Docker 方式下保持后端端口映射为 `8000:8000` 即可直接工作。
+  - 需要持久化的数据（如 sqlite）已在 compose 中通过 volume 映射到容器内 `/data`。
+
 配置与环境变量
 - 敏感配置集中在仓库根的 `config.json`（请从 `config.example.json` 复制再填写）。此文件已加入 `.gitignore`，不会被提交。
 - 可选：`.env` 中的同名变量可覆盖部分配置（如 `DJANGO_SECRET_KEY`、`RABBITMQ_*`）。详见 `.env.example`。
