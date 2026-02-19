@@ -2,6 +2,10 @@
 # araneae_worknode - tasks.py.py
 # Created by zhr62 at 2025/2/20 - 下午3:40
 import os
+import json
+import hmac
+import hashlib
+import time
 from datetime import datetime
 from time import sleep
 import requests
@@ -12,6 +16,7 @@ from kombu import Queue
 
 from config import create_app
 from models import TaskRecord, Project, Version, db, Identity
+import setting
 from utils.identity import get_hash
 
 flask_app = create_app()
@@ -163,9 +168,22 @@ def send_callback(task_record):
         "task_chain_id": task_chain_id,
     }
 
+    body = json.dumps(request, separators=(",", ":"), ensure_ascii=False)
+    headers = {"Content-Type": "application/json"}
+    secret = setting.SECURITY.get("CALLBACK_SHARED_SECRET", "")
+    if secret:
+        timestamp = str(int(time.time()))
+        signature = hmac.new(
+            secret.encode("utf-8"),
+            f"{timestamp}.{body}".encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        headers["X-Araneae-Timestamp"] = timestamp
+        headers["X-Araneae-Signature"] = signature
+
+    callback_url = f"{setting.CONTROLNODE['BASE_URL']}/api/task/callback/"
     try:
-        headers = {"Content-Type": "application/json"}
-        response = requests.post("http://127.0.0.1:8000/api/task/callback/", json=request, headers=headers)
+        response = requests.post(callback_url, data=body.encode("utf-8"), headers=headers, timeout=10)
         response.raise_for_status()  # 如果响应状态码不是200，抛出HTTPError
     except requests.exceptions.HTTPError as http_err:
         print(f"HTTP error occurred: {http_err}")

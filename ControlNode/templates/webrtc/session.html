@@ -43,6 +43,14 @@
   const statusEl = document.getElementById('status');
   function log(...args) { logEl.value += args.join(' ') + '\n'; logEl.scrollTop = logEl.scrollHeight; }
   function setStatus(t) { statusEl.textContent = t; }
+  const NODE_API_TOKEN = "{{ node_api_token|default:''|escapejs }}";
+  function authHeaders(base = {}) {
+    const h = { ...base };
+    if (NODE_API_TOKEN) {
+      h['X-Araneae-Node-Token'] = NODE_API_TOKEN;
+    }
+    return h;
+  }
 
   let pc = null;
   let ctrl = null;
@@ -82,7 +90,7 @@
     await pc.setLocalDescription(offer);
 
     const res = await fetch(`${execHost}/webrtc/offer`, {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
+      method: 'POST', headers: authHeaders({'Content-Type': 'application/json'}),
       body: JSON.stringify({ session_id: sessionId, sdp: offer.sdp, type: offer.type })
     });
     if (!res.ok) {
@@ -143,7 +151,7 @@
     const sessionId = document.getElementById('sessionId').value.trim();
     sendCtrl({type:'resume'});
     try {
-      await fetch(`${execHost}/webrtc/resume/${sessionId}`, { method:'POST' });
+      await fetch(`${execHost}/webrtc/resume/${sessionId}`, { method:'POST', headers: authHeaders() });
       setStatus('已发送 Resume');
     } catch(err){ log('resume failed', err); }
   });

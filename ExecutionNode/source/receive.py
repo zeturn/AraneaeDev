@@ -26,6 +26,15 @@ QUEUE_NAME = 'file_transfer'
 LOCAL_REPO = setting.LOCAL_REPO
 
 
+def safe_extract_zip(zip_ref: zipfile.ZipFile, dest_dir: str):
+    target = os.path.abspath(dest_dir)
+    for member in zip_ref.infolist():
+        member_path = os.path.abspath(os.path.join(target, member.filename))
+        if not member_path.startswith(target + os.sep) and member_path != target:
+            raise ValueError("Unsafe ZIP entry path detected")
+    zip_ref.extractall(target)
+
+
 def ensure_directory_exists(directory):
     """确保目录存在"""
     if not os.path.exists(directory):
@@ -113,7 +122,7 @@ def process_notification(ch, method, properties, body):
         logging.info(f"[RECEIVE] Downloaded file: {compressed_file}")
 
         with zipfile.ZipFile(compressed_file, 'r') as zipf:
-            zipf.extractall(version_path)
+            safe_extract_zip(zipf, version_path)
         logging.info(f"[RECEIVE] Extracted files to: {version_path}")
 
 
@@ -170,9 +179,10 @@ def listen_for_notifications():
     logging.info("[RECEIVE] Initializing RabbitMQ listener...")
     """监听 RabbitMQ 队列"""
     connection = pika.BlockingConnection(pika.ConnectionParameters(
-        host='199.7.140.120',
-        port=5673,
-        credentials=pika.PlainCredentials('guest', '54321Ssdlh!!')
+        host=setting.RABBITMQ['HOST'],
+        port=setting.RABBITMQ['PORT'],
+        virtual_host=setting.RABBITMQ['VHOST'],
+        credentials=pika.PlainCredentials(setting.RABBITMQ['USERNAME'], setting.RABBITMQ['PASSWORD'])
     ))
     channel = connection.channel()
     channel.queue_declare(queue=QUEUE_NAME)

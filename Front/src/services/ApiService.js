@@ -12,8 +12,9 @@
 import axios from 'axios';
 
 
+const backendBase = import.meta.env.VITE_BACKEND_BASE_URL || 'http://localhost:8107';
 const apiClient = axios.create({
-    baseURL: 'http://localhost:8000/api',
+    baseURL: `${backendBase}/api`,
     withCredentials: true,  // 重要：允许跨域 cookie 传输
     headers: {
         Accept: 'application/json',
@@ -25,7 +26,7 @@ const apiClient = axios.create({
 const setCsrfToken = async () => {
     try {
         const token = localStorage.getItem('token');
-        const response = await axios.get('http://localhost:8000/api/csrf-token/', {
+        const response = await axios.get(`${backendBase}/api/csrf-token/`, {
             headers: {
                 'Authorization': `Bearer ${token}`
             }

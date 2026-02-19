@@ -10,6 +10,7 @@ import signal
 import sys
 import threading
 import time
+from functools import wraps
 
 import subprocess
 import multiprocessing
@@ -59,6 +60,18 @@ app.logger.addHandler(file_handler)
 app.logger.setLevel(logging.INFO)
 
 
+def require_node_token(view_func):
+    @wraps(view_func)
+    def _wrapped(*args, **kwargs):
+        expected = setting.SECURITY.get("NODE_API_TOKEN", "")
+        if expected:
+            provided = request.headers.get("X-Araneae-Node-Token", "")
+            if not provided or provided != expected:
+                return jsonify({"error": "Unauthorized"}), 401
+        return view_func(*args, **kwargs)
+    return _wrapped
+
+
 @app.before_request
 def log_request_info():
     """
@@ -66,7 +79,7 @@ def log_request_info():
     en: Log request information
     """
     app.logger.info(f"Incoming request: {request.method} {request.url}")
-    app.logger.info(f"Request body: {request.data}")
+    app.logger.info(f"Request body size: {len(request.data or b'')}")
 
 
 @app.after_request
@@ -117,6 +130,7 @@ def add_together(a, b):
 
 # 路由
 @app.route('/projects', methods=['POST'])
+@require_node_token
 def create_project():
     """
     [Araneae]创建项目
@@ -201,6 +215,7 @@ process_registry = {}
 
 
 @app.route('/run_task', methods=['POST'])
+@require_node_token
 def run_task():
     """
     [Araneae]运行任务
@@ -244,6 +259,7 @@ def check_status(pid):
 # WebRTC + Playwright Assisted Control                         #
 ################################################################
 @app.route('/webrtc/session', methods=['POST'])
+@require_node_token
 def webrtc_create_session():
     """
     Create a Playwright session and return session_id
@@ -263,6 +279,7 @@ def webrtc_create_session():
 
 
 @app.route('/webrtc/offer', methods=['POST'])
+@require_node_token
 def webrtc_offer():
     """
     Accept SDP offer and return SDP answer.
@@ -283,6 +300,7 @@ def webrtc_offer():
 
 
 @app.route('/webrtc/resume/<session_id>', methods=['POST'])
+@require_node_token
 def webrtc_resume(session_id: str):
     try:
         res = asyncio.run(api_resume(session_id=session_id))

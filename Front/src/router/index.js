@@ -16,6 +16,7 @@ const routes = [
     // Auth
     {path: '/', redirect: '/aprons/workplaces'},
     {path: '/login', component: () => import('../views/Auth/Login.vue')},
+    {path: '/oauth/callback', component: () => import('../views/Auth/OAuthCallback.vue')},
     {path: '/logout', component: () => import('../views/Auth/Logout.vue')},
     {path: '/register', component: () => import('../views/Auth/Register.vue')},
     {path: '/profile', component: () => import('../views/Profile/Index.vue')},

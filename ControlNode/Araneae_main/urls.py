@@ -9,6 +9,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
 from . import views
+from .oauth_views import basaltpass_oauth_login, basaltpass_oauth_callback
 
 router = DefaultRouter()
 
@@ -21,5 +22,7 @@ router.register(r'teams', views.TeamViewSet)
 
 urlpatterns = [
     path('api/', include(router.urls)),
+    path('api/auth/basaltpass/login/', basaltpass_oauth_login, name='basaltpass_oauth_login'),
+    path('api/auth/basaltpass/callback/', basaltpass_oauth_callback, name='basaltpass_oauth_callback'),
     path('webrtc/session/', views.webrtc_session, name='webrtc_session'),
 ]

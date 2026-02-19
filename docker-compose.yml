@@ -2,44 +2,28 @@ services:
   controlnode:
     build:
       context: ./ControlNode
+    env_file:
+      - ./.env
     ports:
-      - "8000:8000"
+      - "8107:8000"
     environment:
-      # 推荐用 env 指定 config.json 的绝对路径（两端通用）
-      ARANEAE_CONFIG: /config/config.json
-      # 把 SQLite 放到可挂载目录，避免容器重建丢数据
-      DJANGO_DB_PATH: /data/db.sqlite3
       DJANGO_MIGRATE: "1"
-      # 若你在 config.json 里没配 rabbitmq，也可以用下面 env 覆盖
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_PORT: "5672"
-      RABBITMQ_USERNAME: araneae
-      RABBITMQ_PASSWORD: araneae
-      RABBITMQ_VHOST: "/"
     volumes:
-      - ./config.json:/config/config.json:ro
       - controlnode-data:/data
       - controlnode-media:/app/media
       - controlnode-repo:/app/Araneae_repo/repo
     depends_on:
       - rabbitmq
 
-  # 可选：同一套镜像跑 Celery worker/beat（建议生产拆开）
   controlnode-worker:
     build:
       context: ./ControlNode
+    env_file:
+      - ./.env
     command: ["celery", "-A", "Araneae", "worker", "-l", "info"]
     environment:
-      ARANEAE_CONFIG: /config/config.json
-      DJANGO_DB_PATH: /data/db.sqlite3
       DJANGO_MIGRATE: "0"
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_PORT: "5672"
-      RABBITMQ_USERNAME: araneae
-      RABBITMQ_PASSWORD: araneae
-      RABBITMQ_VHOST: "/"
     volumes:
-      - ./config.json:/config/config.json:ro
       - controlnode-data:/data
     depends_on:
       - rabbitmq
@@ -48,6 +32,8 @@ services:
   controlnode-beat:
     build:
       context: ./ControlNode
+    env_file:
+      - ./.env
     command:
       [
         "celery",
@@ -60,16 +46,8 @@ services:
         "django_celery_beat.schedulers:DatabaseScheduler"
       ]
     environment:
-      ARANEAE_CONFIG: /config/config.json
-      DJANGO_DB_PATH: /data/db.sqlite3
       DJANGO_MIGRATE: "0"
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_PORT: "5672"
-      RABBITMQ_USERNAME: araneae
-      RABBITMQ_PASSWORD: araneae
-      RABBITMQ_VHOST: "/"
     volumes:
-      - ./config.json:/config/config.json:ro
       - controlnode-data:/data
     depends_on:
       - rabbitmq
@@ -78,18 +56,11 @@ services:
   executionnode:
     build:
       context: ./ExecutionNode
+    env_file:
+      - ./.env
     ports:
-      - "5001:5001"
-    environment:
-      ARANEAE_CONFIG: /config/config.json
-      EXECUTION_DB_PATH: /data/db.sqlite
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_PORT: "5672"
-      RABBITMQ_USERNAME: araneae
-      RABBITMQ_PASSWORD: araneae
-      RABBITMQ_VHOST: "/"
+      - "4107:5001"
     volumes:
-      - ./config.json:/config/config.json:ro
       - executionnode-data:/data
       - executionnode-logs:/app/logs
     depends_on:
@@ -98,8 +69,10 @@ services:
   front:
     build:
       context: ./Front
+    env_file:
+      - ./.env
     ports:
-      - "8080:80"
+      - "5109:80"
     depends_on:
       - controlnode
 

@@ -128,3 +128,17 @@ class WorkplaceUserPermission(models.Model):
         unique_together = ('workplace', 'user')
         verbose_name = 'Workplace–User permission'
         verbose_name_plural = 'Workplace–User permissions'
+
+class OAuthIdentity(models.Model):
+    provider = models.CharField(max_length=50)
+    subject = models.CharField(max_length=255)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='oauth_identities')
+    email = models.EmailField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('provider', 'subject')
+
+    def __str__(self):
+        return f"{self.provider}:{self.subject}"

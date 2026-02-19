@@ -13,5 +13,28 @@
     "username": "guest",
     "password": "",
     "vhost": "/"
+  },
+  "controlnode": {
+    "base_url": "http://localhost:8107"
+  },
+  "security": {
+    "callback_shared_secret": "replace-with-long-random-secret",
+    "node_api_token": "replace-with-node-api-token"
+  },
+  "frontend": {
+    "base_url": "http://localhost:5109"
+  },
+  "basaltpass": {
+    "base_url": "http://localhost:8101",
+    "oauth": {
+      "enabled": true,
+      "discovery_url": "http://localhost:8101/api/v1/.well-known/openid-configuration",
+      "client_id": "your-araneae-client-id",
+      "client_secret": "your-araneae-client-secret",
+      "redirect_uri": "http://localhost:8107/api/auth/basaltpass/callback/",
+      "scope": "openid profile email offline_access",
+      "frontend_callback_path": "/oauth/callback"
+    }
   }
 }
+

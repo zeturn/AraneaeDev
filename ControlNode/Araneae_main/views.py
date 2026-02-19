@@ -34,6 +34,15 @@ from Araneae_repo.serializers import ProjectSerializer
 from Araneae_manager.tasks import publish_to_rabbitmq, schedule_task_execution
 
 
+def _safe_extract_zip(zip_ref, dest_dir):
+    target = os.path.abspath(dest_dir)
+    for member in zip_ref.infolist():
+        member_path = os.path.abspath(os.path.join(target, member.filename))
+        if not member_path.startswith(target + os.sep) and member_path != target:
+            raise ValueError("Unsafe ZIP entry path detected")
+    zip_ref.extractall(target)
+
+
 @api_view(['GET'])
 def csrf_token_view(request):
     """
@@ -499,10 +508,13 @@ class FileUploadViewSet(View):
         # 解压缩文件到版本目录
         try:
             with zipfile.ZipFile(temp_zip_path, 'r') as zip_ref:
-                zip_ref.extractall(version_path)
+                _safe_extract_zip(zip_ref, version_path)
             os.remove(temp_zip_path)  # 删除压缩包
         except zipfile.BadZipFile:
             return JsonResponse({'error': 'Invalid ZIP file'}, status=400)
+        except ValueError as e:
+            os.remove(temp_zip_path)
+            return JsonResponse({'error': str(e)}, status=400)
 
         return JsonResponse({
             'message': 'File uploaded and extracted successfully',
@@ -534,7 +546,15 @@ def webrtc_session(request):
     error = None
     if target_url and not session_id:
         try:
-            resp = httpx.post(f"{exec_host}/webrtc/session", json={"url": target_url, "headless": headless}, timeout=10)
+            headers = {}
+            if getattr(settings, "NODE_API_TOKEN", ""):
+                headers["X-Araneae-Node-Token"] = settings.NODE_API_TOKEN
+            resp = httpx.post(
+                f"{exec_host}/webrtc/session",
+                json={"url": target_url, "headless": headless},
+                headers=headers,
+                timeout=10,
+            )
             if resp.status_code in (200, 201):
                 session_id = resp.json().get('session_id')
             else:
@@ -545,6 +565,7 @@ def webrtc_session(request):
         'exec_host': exec_host,
         'session_id': session_id or '',
         'error': error,
+        'node_api_token': getattr(settings, "NODE_API_TOKEN", ""),
     }
     return render(request, 'webrtc/session.html', ctx)
 

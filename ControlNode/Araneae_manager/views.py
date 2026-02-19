@@ -2,6 +2,9 @@
 Araneae_worknode/views.py
 """
 import traceback
+import hashlib
+import hmac
+import time
 #  Copyright (c) 2024 INIT  2025.4 UPDATE Henry Zhao. All rights reserved.
 #  From BJ.
 
@@ -247,6 +250,34 @@ class TaskCallbackViewSet(ModelViewSet):
     serializer_class = TaskRecordSerializer
     permission_classes = [AllowAny]  # 允许任何人访问
 
+    @staticmethod
+    def _verify_callback_signature(request):
+        secret = getattr(settings, "CALLBACK_SHARED_SECRET", "")
+        if not secret:
+            # Allow local development without shared secret.
+            return settings.MODE == "dev"
+
+        timestamp = request.headers.get("X-Araneae-Timestamp", "")
+        signature = request.headers.get("X-Araneae-Signature", "")
+        if not timestamp or not signature:
+            return False
+        try:
+            ts_int = int(timestamp)
+        except ValueError:
+            return False
+
+        # 5-minute replay window
+        if abs(int(time.time()) - ts_int) > 300:
+            return False
+
+        body = request.body.decode("utf-8")
+        expected = hmac.new(
+            secret.encode("utf-8"),
+            f"{timestamp}.{body}".encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        return hmac.compare_digest(expected, signature)
+
     @action(detail=False, methods=["post"], url_path="callback")
     @csrf_exempt
     def task_callback(self, request):
@@ -257,6 +288,9 @@ class TaskCallbackViewSet(ModelViewSet):
 
         :return: JsonResponse
         """
+        if not self._verify_callback_signature(request):
+            return JsonResponse({"error": "Invalid callback signature"}, status=403)
+
         print("[SUCCESS][TASK]Received task callback")
         data = request.data
 

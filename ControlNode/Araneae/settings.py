@@ -25,12 +25,19 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY WARNING: keep the secret key used in production secret!
 _CONFIG = load_config()
 _DJANGO = _CONFIG.get('django', {})
-SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY') or _DJANGO.get('secret_key', 'dev-secret-key')
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY') or os.environ.get('SECRET_KEY') or _DJANGO.get('secret_key', 'dev-secret-key')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = bool(_DJANGO.get('debug', True))
+_debug_raw = os.environ.get('DJANGO_DEBUG', os.environ.get('DEBUG', _DJANGO.get('debug', True)))
+DEBUG = str(_debug_raw).lower() in ('1', 'true', 'yes', 'on')
 
-ALLOWED_HOSTS = _DJANGO.get('allowed_hosts', ["*"])
+_allowed_hosts_env = os.environ.get('DJANGO_ALLOWED_HOSTS', os.environ.get('ALLOWED_HOSTS', ''))
+if _allowed_hosts_env:
+    ALLOWED_HOSTS = [h.strip() for h in _allowed_hosts_env.split(',') if h.strip()]
+else:
+    ALLOWED_HOSTS = _DJANGO.get('allowed_hosts', ["*"])
+_FRONTEND = _CONFIG.get('frontend', {})
+FRONTEND_BASE_URL = os.environ.get('FRONTEND_BASE_URL', _FRONTEND.get('base_url', 'http://localhost:5109'))
 
 
 # Application definition
@@ -122,11 +129,13 @@ CORS_ALLOWED_ORIGINS = [
     'http://localhost:4173',
     'http://localhost:5173',
     'http://localhost:8080',
+    'http://localhost:5109',
 ]  # 添加前端地址，csrf保护放行。
 CSRF_TRUSTED_ORIGINS = [
     'http://localhost:4173',
     'http://localhost:5173',
     'http://localhost:8080',
+    'http://localhost:5109',
 ]  # 添加前端地址，csrf保护放行。
 
 # Internationalization
@@ -233,9 +242,31 @@ SPECTACULAR_SETTINGS = {
 
 INIT_ADMIN_USERNAME = _DJANGO.get('init_admin_username', 'admin')
 INIT_ADMIN_EMAIL = _DJANGO.get('init_admin_email', 'admin@example.com')
+INIT_ADMIN_USERNAME = os.environ.get('INIT_ADMIN_USERNAME', INIT_ADMIN_USERNAME)
+INIT_ADMIN_EMAIL = os.environ.get('INIT_ADMIN_EMAIL', INIT_ADMIN_EMAIL)
 INIT_ADMIN_PASSWORD = os.environ.get(
     'INIT_ADMIN_PASSWORD',
     _DJANGO.get('init_admin_password', 'changeme123'),
 )
 
 MODE = 'dev'  # 'dev' or 'prod'
+
+_BASALTPASS = _CONFIG.get('basaltpass', {})
+_BASALTPASS_OAUTH = _BASALTPASS.get('oauth', {})
+_BASALTPASS_BASE_URL = os.environ.get('BASALTPASS_BASE_URL', _BASALTPASS.get('base_url', 'http://localhost:8101')).rstrip('/')
+_DEFAULT_DISCOVERY_URL = f"{_BASALTPASS_BASE_URL}/api/v1/.well-known/openid-configuration"
+
+BASALTPASS_OAUTH = {
+    'ENABLED': os.environ.get('BASALTPASS_OAUTH_ENABLED', str(_BASALTPASS_OAUTH.get('enabled', True))).lower() in ('1', 'true', 'yes'),
+    'DISCOVERY_URL': os.environ.get('BASALTPASS_OAUTH_DISCOVERY_URL', _BASALTPASS_OAUTH.get('discovery_url', _DEFAULT_DISCOVERY_URL)),
+    'CLIENT_ID': os.environ.get('BASALTPASS_OAUTH_CLIENT_ID', _BASALTPASS_OAUTH.get('client_id', '')),
+    'CLIENT_SECRET': os.environ.get('BASALTPASS_OAUTH_CLIENT_SECRET', _BASALTPASS_OAUTH.get('client_secret', '')),
+    'REDIRECT_URI': os.environ.get('BASALTPASS_OAUTH_REDIRECT_URI', _BASALTPASS_OAUTH.get('redirect_uri', 'http://localhost:8107/api/auth/basaltpass/callback/')),
+    'SCOPE': os.environ.get('BASALTPASS_OAUTH_SCOPE', _BASALTPASS_OAUTH.get('scope', 'openid profile email offline_access')),
+    'FRONTEND_CALLBACK_PATH': os.environ.get('BASALTPASS_FRONTEND_CALLBACK_PATH', _BASALTPASS_OAUTH.get('frontend_callback_path', '/oauth/callback')),
+}
+
+_SECURITY = _CONFIG.get('security', {})
+CALLBACK_SHARED_SECRET = os.environ.get('ARANEAE_CALLBACK_SHARED_SECRET', _SECURITY.get('callback_shared_secret', ''))
+NODE_API_TOKEN = os.environ.get('ARANEAE_NODE_API_TOKEN', _SECURITY.get('node_api_token', ''))
+
