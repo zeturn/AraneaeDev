@@ -157,6 +157,7 @@ def create_project():
 
 
 @app.route('/projects/<int:project_id>', methods=['GET'])
+@require_node_token
 def get_project(project_id):
     """
     [Araneae]获取项目
@@ -178,6 +179,7 @@ def get_project(project_id):
     })
 
 @app.route('/projects/versions/list', methods=['GET'])
+@require_node_token
 def list_projects():
     """
     [Araneae]列出所有项目
@@ -185,6 +187,7 @@ def list_projects():
     return jsonify(get_project_versions())
 
 @app.route('/projects/versions/<project_id>', methods=['GET'])
+@require_node_token
 def list_project_versions(project_id):
     """
     [Araneae] 列出指定项目的所有版本
@@ -200,7 +203,12 @@ def favicon():
     """
     return send_from_directory('static', 'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({"status": "ok"}), 200
+
 @app.route('/system_info', methods=['GET'])
+@require_node_token
 def system_info():
     """
     [Araneae]获取系统信息
@@ -237,6 +245,7 @@ def run_task():
 
 
 @app.route('/check_status/<int:pid>', methods=['GET'])
+@require_node_token
 def check_status(pid):
     """
     [Araneae]检查任务状态

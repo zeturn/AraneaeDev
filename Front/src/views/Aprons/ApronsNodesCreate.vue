@@ -10,16 +10,60 @@
   -->
 
 <script lang="ts" setup>
-import {ref} from "vue";
+import {onMounted, ref} from "vue";
 import {useRouter} from "vue-router";
 import Aprons from "@/views/Aprons/Aprons.vue";
 import ApiService from '@/services/ApiService';
 import EventBus from "@/utils/event-bus";
 
+interface DiscoveredNode {
+	ip: string;
+	name: string;
+	port: number;
+	grpc_port: number;
+	already_registered: boolean;
+	registered_node_id: number | null;
+	machine?: string | null;
+	os?: string | null;
+}
+
 // 定义输入框绑定的变量
 const nodeName = ref("");
 const nodeIp = ref("");
+const discoverLoading = ref(false);
+const discoverError = ref("");
+const discoveredNodes = ref<DiscoveredNode[]>([]);
+const customCidr = ref("");
 const router = useRouter(); // 获取 Vue Router 实例
+
+const applyCandidate = (candidate: DiscoveredNode) => {
+	nodeIp.value = candidate.ip;
+	if (!nodeName.value) {
+		nodeName.value = candidate.name || `node-${candidate.ip}`;
+	}
+};
+
+const discoverNodes = async (scope: 'local' | 'custom' = 'local') => {
+	discoverLoading.value = true;
+	discoverError.value = "";
+	try {
+		const params: Record<string, string> = {scope};
+		if (scope === 'custom') {
+			if (!customCidr.value.trim()) {
+				discoverError.value = "请输入 CIDR，例如 192.168.1.0/24";
+				discoverLoading.value = false;
+				return;
+			}
+			params.cidr = customCidr.value.trim();
+		}
+		const response = await ApiService.discoverNodes(params);
+		discoveredNodes.value = response?.data?.candidates || [];
+	} catch (error: any) {
+		discoveredNodes.value = [];
+		discoverError.value = error?.response?.data?.error || "扫描失败，请稍后重试";
+	}
+	discoverLoading.value = false;
+};
 
 // 处理节点创建
 const createNode = async () => {
@@ -48,6 +92,10 @@ const createNode = async () => {
 		});
 	}
 };
+
+onMounted(() => {
+	discoverNodes('local');
+});
 </script>
 
 <template>
@@ -64,6 +112,60 @@ const createNode = async () => {
 			</div>
 
 			<form class="p-6 bg-white rounded-2xl mx-auto my-4" @submit.prevent="createNode">
+				<div class="mb-5 rounded-xl border border-gray-200 bg-gray-50 p-4">
+					<div class="flex flex-wrap items-center gap-2">
+						<button
+							class="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-60"
+							type="button"
+							:disabled="discoverLoading"
+							@click="discoverNodes('local')"
+						>
+							扫描本地/内网
+						</button>
+						<input
+							v-model="customCidr"
+							class="min-w-[220px] flex-1 rounded border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+							type="text"
+							placeholder="自定义网段 CIDR，如 192.168.1.0/24"
+						/>
+						<button
+							class="rounded bg-gray-800 px-3 py-2 text-sm text-white hover:bg-black disabled:opacity-60"
+							type="button"
+							:disabled="discoverLoading"
+							@click="discoverNodes('custom')"
+						>
+							扫描自定义网段
+						</button>
+					</div>
+					<p v-if="discoverLoading" class="mt-3 text-sm text-gray-500">正在扫描可用 worknode...</p>
+					<p v-if="discoverError" class="mt-3 text-sm text-red-600">{{ discoverError }}</p>
+					<div v-if="discoveredNodes.length" class="mt-3 space-y-2">
+						<button
+							v-for="candidate in discoveredNodes"
+							:key="candidate.ip"
+							class="flex w-full items-center justify-between rounded border border-gray-200 bg-white px-3 py-2 text-left hover:border-blue-300 hover:bg-blue-50"
+							type="button"
+							@click="applyCandidate(candidate)"
+						>
+							<span class="text-sm text-gray-700">
+								{{ candidate.name }} · {{ candidate.ip }}:{{ candidate.port }}
+								<span v-if="candidate.os"> · {{ candidate.os }}</span>
+							</span>
+							<span
+								v-if="candidate.already_registered"
+								class="rounded bg-amber-100 px-2 py-1 text-xs text-amber-700"
+							>
+								已注册
+							</span>
+							<span
+								v-else
+								class="rounded bg-green-100 px-2 py-1 text-xs text-green-700"
+							>
+								匹配
+							</span>
+						</button>
+					</div>
+				</div>
 
 				<!-- 节点名称 -->
 				<div class="mb-5">

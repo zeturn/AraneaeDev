@@ -4,11 +4,13 @@
 """
 import platform
 import subprocess
+import socket
 
 #  Copyright (c)   2025.3  Henry Zhao. All rights reserved.
 #  From CA.
 
 import requests
+from django.conf import settings
 
 def get_system_info(ip, port=5001):
     """
@@ -19,9 +21,12 @@ def get_system_info(ip, port=5001):
     :return: 整理后的系统信息字典，如果失败返回错误信息
     """
     url = f"http://{ip}:{port}/system_info"
+    headers = {}
+    if getattr(settings, "NODE_API_TOKEN", ""):
+        headers["X-Araneae-Node-Token"] = settings.NODE_API_TOKEN
 
     try:
-        response = requests.get(url, timeout=5)
+        response = requests.get(url, headers=headers, timeout=5)
         response.raise_for_status()
         data = response.json()
     except requests.exceptions.RequestException as e:
@@ -88,5 +93,16 @@ def ping(ip, count=3, timeout=1):
         result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         success = result.returncode == 0
         return {"reachable": success, "details": result.stdout}
+    except FileNotFoundError:
+        # 部分容器/最小系统没有 ping 命令，降级为业务端口连通性检查
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            sock.settimeout(float(timeout))
+            ok = sock.connect_ex((ip, 5001)) == 0
+            if ok:
+                return {"reachable": True, "details": "ping unavailable; tcp connect to 5001 ok"}
+            return {"reachable": False, "details": "ping unavailable; tcp connect to 5001 failed"}
+        finally:
+            sock.close()
     except Exception as e:
         return {"error": f"Failed to execute ping: {e}"}

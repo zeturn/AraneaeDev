@@ -75,6 +75,21 @@ is_pid_running() {
   [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null
 }
 
+pid_listens_on_port() {
+  local pid="$1"
+  local port="$2"
+  [[ -z "$pid" ]] && return 1
+  if command -v ss >/dev/null 2>&1; then
+    ss -ltnpH "sport = :$port" 2>/dev/null | grep -Eq "pid=$pid(,|)"
+    return $?
+  fi
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null | head -n1 | grep -Eq "^$pid$"
+    return $?
+  fi
+  return 1
+}
+
 read_pid() {
   local file="$1"
   [[ -f "$file" ]] && cat "$file" || true
@@ -132,12 +147,17 @@ stop_port() {
   local port="$2"
   local pid_file="$3"
 
-  local pid
-  pid="$(read_pid "$pid_file")"
-  if [[ -z "$pid" ]]; then
-    pid="$(pid_from_port "$port")"
+  local pid port_pid file_pid
+  file_pid="$(read_pid "$pid_file")"
+  port_pid="$(pid_from_port "$port")"
+  pid="$port_pid"
+  if [[ -z "$pid" && -n "$file_pid" ]] && is_pid_running "$file_pid" && pid_listens_on_port "$file_pid" "$port"; then
+    pid="$file_pid"
   fi
   if [[ -z "$pid" ]]; then
+    if [[ -n "$file_pid" ]]; then
+      echo "Cleaning stale pid file for $name ($file_pid)"
+    fi
     rm -f "$pid_file"
     return 0
   fi
@@ -167,9 +187,12 @@ adopt_or_running() {
 
   local existing
   existing="$(read_pid "$pid_file")"
-  if [[ -n "$existing" ]] && is_pid_running "$existing"; then
+  if [[ -n "$existing" ]] && is_pid_running "$existing" && pid_listens_on_port "$existing" "$port"; then
     echo "$name already running (pid $existing)"
     return 0
+  elif [[ -n "$existing" ]]; then
+    echo "Ignoring stale pid in $pid_file: $existing"
+    rm -f "$pid_file"
   fi
 
   local port_pid
@@ -242,10 +265,10 @@ ensure_started() {
 
   local pid
   pid="$(read_pid "$pid_file")"
-  if [[ -n "$pid" ]] && is_pid_running "$pid"; then
+  if [[ -n "$pid" ]] && is_pid_running "$pid" && pid_listens_on_port "$pid" "$port"; then
     return 0
   fi
-  if pid_from_port "$port" >/dev/null 2>&1 && [[ -n "$(pid_from_port "$port")" ]]; then
+  if [[ -n "$(pid_from_port "$port")" ]]; then
     return 0
   fi
 
@@ -263,7 +286,7 @@ print_proc_status() {
   local pid_file="$3"
   local pid
   pid="$(read_pid "$pid_file")"
-  if [[ -z "$pid" ]] || ! is_pid_running "$pid"; then
+  if [[ -z "$pid" ]] || ! is_pid_running "$pid" || ! pid_listens_on_port "$pid" "$port"; then
     pid="$(pid_from_port "$port")"
   fi
   printf "%-14s %s\n" "$name" "${pid:-<none>}"

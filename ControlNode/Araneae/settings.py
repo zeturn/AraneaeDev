@@ -47,6 +47,13 @@ def _env_bool(name: str, default: bool) -> bool:
     return str(raw).lower() in ('1', 'true', 'yes', 'on')
 
 
+if not DEBUG:
+    if not SECRET_KEY or SECRET_KEY == 'dev-secret-key':
+        raise RuntimeError('DJANGO_SECRET_KEY must be set to a strong value when DEBUG is False')
+    if not ALLOWED_HOSTS or '*' in ALLOWED_HOSTS:
+        raise RuntimeError('DJANGO_ALLOWED_HOSTS must be explicitly set when DEBUG is False')
+
+
 # Application definition
 
 INSTALLED_APPS = [

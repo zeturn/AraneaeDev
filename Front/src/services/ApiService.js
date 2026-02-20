@@ -118,6 +118,9 @@ const ApiService = {
     registerNodes(ip, name) {
         return apiClient.post('/nodes/register/', {ip, name});
     },
+    discoverNodes(params = {}) {
+        return apiClient.get('/nodes/discover/', {params});
+    },
     getNodesList() {
         return apiClient.get('/nodes/');
     },

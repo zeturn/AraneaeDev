@@ -79,7 +79,7 @@ services:
       - executionnode-data:/data
       - executionnode-logs:/app/logs
     healthcheck:
-      test: ["CMD", "python", "-c", "import sys,urllib.request;urllib.request.urlopen('http://127.0.0.1:5001/system_info',timeout=5);sys.exit(0)"]
+      test: ["CMD", "python", "-c", "import sys,urllib.request;urllib.request.urlopen('http://127.0.0.1:5001/health',timeout=5);sys.exit(0)"]
       interval: 20s
       timeout: 8s
       retries: 8
@@ -113,8 +113,8 @@ services:
       - "5672:5672"
       - "15672:15672"
     environment:
-      RABBITMQ_DEFAULT_USER: araneae
-      RABBITMQ_DEFAULT_PASS: araneae
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:?RABBITMQ_USERNAME is required}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
       interval: 15s

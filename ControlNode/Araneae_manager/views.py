@@ -5,6 +5,9 @@ import traceback
 import hashlib
 import hmac
 import time
+import socket
+import ipaddress
+from concurrent.futures import ThreadPoolExecutor, as_completed
 #  Copyright (c) 2024 INIT  2025.4 UPDATE Henry Zhao. All rights reserved.
 #  From BJ.
 
@@ -49,6 +52,99 @@ class NodeViewSet(ModelViewSet):
     """工作节点相关视图集"""
     queryset = Node.objects.all()
     serializer_class = NodeSerializer
+
+    @staticmethod
+    def _discover_candidate_networks():
+        """构造默认扫描网段（基于当前机器的 IPv4 地址）。"""
+        networks = set()
+        extra_hosts = set()
+        ips = set()
+
+        try:
+            host_name = socket.gethostname()
+            for ip in socket.gethostbyname_ex(host_name)[2]:
+                ips.add(ip)
+        except Exception:
+            pass
+
+        try:
+            for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+                ip = info[4][0]
+                if ip:
+                    ips.add(ip)
+        except Exception:
+            pass
+
+        # 兼容本机测试场景：仅探测 127.0.0.1，避免 127.0.0.0/24 全命中同一服务
+        extra_hosts.add("127.0.0.1")
+
+        for ip in ips:
+            try:
+                addr = ipaddress.ip_address(ip)
+            except ValueError:
+                continue
+
+            if addr.version != 4:
+                continue
+            if not (addr.is_private or addr.is_loopback):
+                continue
+
+            if addr.is_loopback:
+                continue
+
+            networks.add(ipaddress.ip_network(f"{addr}/24", strict=False))
+
+        return sorted(networks, key=lambda n: str(n)), sorted(extra_hosts)
+
+    @staticmethod
+    def _probe_worknode(ip, http_port, grpc_port, timeout=1.2):
+        """探测单个地址是否为可注册的 worknode。"""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            sock.settimeout(0.35)
+            if sock.connect_ex((ip, http_port)) != 0:
+                return None
+        except Exception:
+            return None
+        finally:
+            sock.close()
+
+        headers = {}
+        if getattr(settings, "NODE_API_TOKEN", ""):
+            headers["X-Araneae-Node-Token"] = settings.NODE_API_TOKEN
+
+        try:
+            resp = requests.get(
+                f"http://{ip}:{http_port}/system_info",
+                headers=headers,
+                timeout=timeout,
+            )
+        except requests.RequestException:
+            return None
+
+        if resp.status_code != 200:
+            return None
+
+        try:
+            payload = resp.json()
+        except ValueError:
+            return None
+
+        sys_info = payload.get("system_info", {}) or {}
+        hostname = sys_info.get("hostname") or ip
+
+        existing = Node.objects.filter(ip_address=ip).first()
+        return {
+            "ip": ip,
+            "name": hostname,
+            "port": http_port,
+            "grpc_port": grpc_port,
+            "already_registered": bool(existing),
+            "registered_node_id": existing.id if existing else None,
+            "machine": sys_info.get("machine"),
+            "os": sys_info.get("system"),
+            "internal_ips": sys_info.get("internal_ips", []) or [],
+        }
 
     @staticmethod
     def fetch_system_info(ip_address, port):
@@ -172,6 +268,88 @@ class NodeViewSet(ModelViewSet):
 
         # 6) 返回成功
         return JsonResponse(node, status=201)
+
+    @action(detail=False, methods=["get"], url_path="discover")
+    def discover_worknodes(self, request):
+        """
+        扫描本地/内网可用 worknode。
+        GET /api/nodes/discover/?scope=local|custom&cidr=192.168.1.0/24
+        """
+        scope = request.query_params.get("scope", "local")
+        cidr_raw = (request.query_params.get("cidr") or "").strip()
+        try:
+            http_port = int(request.query_params.get("port", 5001))
+            grpc_port = int(request.query_params.get("grpc_port", 50051))
+        except ValueError:
+            return JsonResponse({"error": "invalid port"}, status=400)
+
+        networks = []
+        if scope == "custom":
+            if not cidr_raw:
+                return JsonResponse({"error": "cidr is required when scope=custom"}, status=400)
+            try:
+                custom_net = ipaddress.ip_network(cidr_raw, strict=False)
+            except ValueError:
+                return JsonResponse({"error": f"invalid cidr: {cidr_raw}"}, status=400)
+
+            if custom_net.num_addresses > 1024:
+                return JsonResponse(
+                    {"error": "cidr too large, please use <=1024 addresses"},
+                    status=400
+                )
+            networks = [custom_net]
+        else:
+            networks, extra_hosts = self._discover_candidate_networks()
+
+        candidates = []
+        for net in networks:
+            candidates.extend([str(ip) for ip in net.hosts()])
+        if scope != "custom":
+            candidates.extend(extra_hosts)
+
+        # 默认模式下控制扫描规模，避免请求阻塞过久
+        if scope != "custom":
+            candidates = candidates[:768]
+
+        discovered = []
+        with ThreadPoolExecutor(max_workers=36) as executor:
+            futures = [
+                executor.submit(self._probe_worknode, ip, http_port, grpc_port)
+                for ip in candidates
+            ]
+            for future in as_completed(futures):
+                try:
+                    result = future.result()
+                except Exception:
+                    continue
+                if result:
+                    discovered.append(result)
+
+        # 去重：同一台主机可能通过多个地址被探测到，优先保留非 loopback 地址
+        dedup_map = {}
+        for item in discovered:
+            key = (item.get("name"), item.get("machine"))
+            old = dedup_map.get(key)
+            if not old:
+                dedup_map[key] = item
+                continue
+            old_loop = str(old.get("ip", "")).startswith("127.")
+            new_loop = str(item.get("ip", "")).startswith("127.")
+            if old_loop and not new_loop:
+                dedup_map[key] = item
+
+        discovered = list(dedup_map.values())
+        discovered.sort(key=lambda item: (item["already_registered"], item["ip"]))
+        return JsonResponse(
+            {
+                "scope": scope,
+                "networks": [str(n) for n in networks],
+                "scanned": len(candidates),
+                "count": len(discovered),
+                "candidates": discovered,
+            },
+            status=200
+        )
 
     @action(detail=True, methods=['get'], url_path='status')
     def status(self, request, pk=None):
