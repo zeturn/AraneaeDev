@@ -7,9 +7,10 @@ import requests
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.http import HttpResponseRedirect, JsonResponse
-from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
+from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
+from drf_spectacular.utils import OpenApiResponse, extend_schema
 
 from Araneae_main.models import OAuthIdentity
 
@@ -89,9 +90,7 @@ def _validate_id_token(token: str, discovery: dict, client_id: str) -> dict | No
         return None
 
 
-@api_view(["GET"])
-@permission_classes([AllowAny])
-def basaltpass_oauth_login(request):
+def _basaltpass_oauth_login(request):
     if not settings.BASALTPASS_OAUTH.get("ENABLED", False):
         return JsonResponse({"error": "BasaltPass OAuth is disabled"}, status=400)
 
@@ -123,9 +122,7 @@ def basaltpass_oauth_login(request):
     return HttpResponseRedirect(authorize_url)
 
 
-@api_view(["GET"])
-@permission_classes([AllowAny])
-def basaltpass_oauth_callback(request):
+def _basaltpass_oauth_callback(request):
     error = request.GET.get("error")
     cfg = settings.BASALTPASS_OAUTH
     callback_path = cfg.get("FRONTEND_CALLBACK_PATH", "/oauth/callback")
@@ -220,3 +217,33 @@ def basaltpass_oauth_callback(request):
         refresh=araneae_refresh,
         next=next_path,
     )
+
+
+class BasaltPassOAuthLoginView(APIView):
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        responses={
+            302: OpenApiResponse(description="Redirect to BasaltPass authorize endpoint"),
+            400: OpenApiResponse(description="OAuth disabled"),
+            502: OpenApiResponse(description="Discovery fetch failed"),
+        }
+    )
+    def get(self, request):
+        return _basaltpass_oauth_login(request)
+
+
+class BasaltPassOAuthCallbackView(APIView):
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        responses={
+            302: OpenApiResponse(description="Redirect back to frontend callback with OAuth result"),
+        }
+    )
+    def get(self, request):
+        return _basaltpass_oauth_callback(request)
+
+
+basaltpass_oauth_login = BasaltPassOAuthLoginView.as_view()
+basaltpass_oauth_callback = BasaltPassOAuthCallbackView.as_view()

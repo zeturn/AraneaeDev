@@ -97,6 +97,7 @@ config.local.json
 # logs
 logs/
 *.log
+.araneae-dev/
 
 # python virtual envs in project
 .envs/

@@ -40,6 +40,13 @@ _FRONTEND = _CONFIG.get('frontend', {})
 FRONTEND_BASE_URL = os.environ.get('FRONTEND_BASE_URL', _FRONTEND.get('base_url', 'http://localhost:5109'))
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return str(raw).lower() in ('1', 'true', 'yes', 'on')
+
+
 # Application definition
 
 INSTALLED_APPS = [
@@ -137,6 +144,18 @@ CSRF_TRUSTED_ORIGINS = [
     'http://localhost:8080',
     'http://localhost:5109',
 ]  # 添加前端地址，csrf保护放行。
+
+SECURE_SSL_REDIRECT = _env_bool('DJANGO_SECURE_SSL_REDIRECT', not DEBUG)
+SESSION_COOKIE_SECURE = _env_bool('DJANGO_SESSION_COOKIE_SECURE', not DEBUG)
+CSRF_COOKIE_SECURE = _env_bool('DJANGO_CSRF_COOKIE_SECURE', not DEBUG)
+SECURE_HSTS_SECONDS = int(os.environ.get('DJANGO_SECURE_HSTS_SECONDS', 0 if DEBUG else 31536000))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = _env_bool('DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS', not DEBUG)
+SECURE_HSTS_PRELOAD = _env_bool('DJANGO_SECURE_HSTS_PRELOAD', not DEBUG)
+
+_proxy_ssl_header_name = os.environ.get('DJANGO_SECURE_PROXY_SSL_HEADER_NAME')
+_proxy_ssl_header_value = os.environ.get('DJANGO_SECURE_PROXY_SSL_HEADER_VALUE', 'https')
+if _proxy_ssl_header_name:
+    SECURE_PROXY_SSL_HEADER = (_proxy_ssl_header_name, _proxy_ssl_header_value)
 
 # Internationalization
 # https://docs.djangoproject.com/en/5.0/topics/i18n/
@@ -249,7 +268,8 @@ INIT_ADMIN_PASSWORD = os.environ.get(
     _DJANGO.get('init_admin_password', 'changeme123'),
 )
 
-MODE = 'dev'  # 'dev' or 'prod'
+MODE = os.environ.get('ARANEAE_MODE', 'dev' if DEBUG else 'prod').lower()
+ALLOW_INSECURE_CALLBACKS = _env_bool('ARANEAE_ALLOW_INSECURE_CALLBACKS', DEBUG)
 
 _BASALTPASS = _CONFIG.get('basaltpass', {})
 _BASALTPASS_OAUTH = _BASALTPASS.get('oauth', {})

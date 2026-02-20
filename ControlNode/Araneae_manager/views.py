@@ -254,8 +254,8 @@ class TaskCallbackViewSet(ModelViewSet):
     def _verify_callback_signature(request):
         secret = getattr(settings, "CALLBACK_SHARED_SECRET", "")
         if not secret:
-            # Allow local development without shared secret.
-            return settings.MODE == "dev"
+            # Allow insecure callbacks only when explicitly enabled.
+            return bool(getattr(settings, "ALLOW_INSECURE_CALLBACKS", False))
 
         timestamp = request.headers.get("X-Araneae-Timestamp", "")
         signature = request.headers.get("X-Araneae-Signature", "")

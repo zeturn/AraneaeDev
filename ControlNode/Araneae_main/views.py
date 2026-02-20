@@ -17,9 +17,10 @@ from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.views import APIView
-from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
+from drf_spectacular.utils import extend_schema, inline_serializer
+from rest_framework import serializers as drf_serializers
 
 from django.contrib.auth.models import User
 from Araneae_repo.views import check_project_code_files
@@ -43,14 +44,25 @@ def _safe_extract_zip(zip_ref, dest_dir):
     zip_ref.extractall(target)
 
 
-@api_view(['GET'])
-def csrf_token_view(request):
-    """
-    获取 CSRF Token
-    @param request: request
-    @return:JsonResponse
-    """
-    return JsonResponse({'csrfToken': get_token(request)})
+class CsrfTokenView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        responses=inline_serializer(
+            name='CsrfTokenResponse',
+            fields={'csrfToken': drf_serializers.CharField()},
+        )
+    )
+    def get(self, request):
+        """
+        获取 CSRF Token
+        @param request: request
+        @return:JsonResponse
+        """
+        return JsonResponse({'csrfToken': get_token(request)})
+
+
+csrf_token_view = CsrfTokenView.as_view()
 
 class UserViewSet(viewsets.ModelViewSet):
     """
@@ -683,6 +695,7 @@ class ScheduleViewSet(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
 
+@extend_schema(exclude=True)
 class LogoutView(APIView):
     """
     注销会话

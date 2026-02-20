@@ -5,6 +5,7 @@ Araneae_main/serializers.py
 #  From BJ.
 
 from rest_framework import serializers
+from drf_spectacular.utils import extend_schema_field
 
 from utils.uuid.generate6uuid import generate_6_uuid
 from .models import Workplace, Team, TeamMember
@@ -105,7 +106,8 @@ class TeamWithRoleSerializer(serializers.ModelSerializer):
             'id', 'name', 'description', 'created_at', 'updated_at', 'role'
         ]
 
-    def get_role(self, obj):
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_role(self, obj) -> str | None:
         """
         获取当前请求用户在此 Team 中的 role。
         如果用户不在 Team 中，则返回 None。
