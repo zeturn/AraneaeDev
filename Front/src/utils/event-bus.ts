@@ -28,5 +28,3 @@ type Events = {
 
 const EventBus = mitt<Events>()
 export default EventBus
-
-export type {NotifyEvent} // ⭐️ 关键导出

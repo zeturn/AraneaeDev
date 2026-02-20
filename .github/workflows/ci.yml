@@ -1,0 +1,170 @@
+name: Araneae CI
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  python-lint:
+    name: Python Lint (Ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Ruff
+        run: python -m pip install --upgrade ruff
+
+      - name: Ruff check
+        run: |
+          ruff check Araneae/ControlNode
+          ruff check Araneae/ExecutionNode
+
+  frontend-build:
+    name: Frontend Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Araneae/Front
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: Araneae/Front/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+  frontend-typecheck:
+    name: Frontend Type Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Araneae/Front
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: Araneae/Front/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+  controlnode-quality:
+    name: ControlNode Test And Deploy Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Araneae/ControlNode
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: Araneae/ControlNode/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Run tests
+        env:
+          DJANGO_DB_PATH: /tmp/araneae-ci-test.sqlite3
+          ARANEAE_MANAGE_BOOTSTRAP: "false"
+        run: python manage.py test
+
+      - name: Django deploy check
+        env:
+          DJANGO_DB_PATH: /tmp/araneae-ci-check.sqlite3
+          DJANGO_DEBUG: "false"
+          DJANGO_SECRET_KEY: ci-secret-key-abcdefghijklmnopqrstuvwxyz-0123456789
+          DJANGO_ALLOWED_HOSTS: example.com
+          DJANGO_SECURE_SSL_REDIRECT: "true"
+          DJANGO_SESSION_COOKIE_SECURE: "true"
+          DJANGO_CSRF_COOKIE_SECURE: "true"
+          DJANGO_SECURE_HSTS_SECONDS: "31536000"
+          DJANGO_SECURE_HSTS_INCLUDE_SUBDOMAINS: "true"
+          DJANGO_SECURE_HSTS_PRELOAD: "true"
+          ARANEAE_MODE: prod
+          ARANEAE_ALLOW_INSECURE_CALLBACKS: "false"
+          ARANEAE_MANAGE_BOOTSTRAP: "false"
+        run: python manage.py check --deploy
+
+  executionnode-smoke:
+    name: ExecutionNode Smoke Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Araneae/ExecutionNode
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: Araneae/ExecutionNode/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Syntax smoke check
+        run: |
+          python - <<'PY'
+          import os
+          import py_compile
+          import sys
+          from pathlib import Path
+
+          root = Path(".")
+          exclude_dirs = {".git", ".venv", "venv", "__pycache__", "repo", "logs", "instance"}
+          failed = []
+
+          for path in root.rglob("*.py"):
+            if any(part in exclude_dirs for part in path.parts):
+              continue
+            try:
+              py_compile.compile(str(path), doraise=True)
+            except Exception as exc:
+              failed.append((path, exc))
+
+          if failed:
+            for path, exc in failed:
+              print(f"[FAIL] {path}: {exc}", file=sys.stderr)
+            sys.exit(1)
+
+          print("ExecutionNode syntax check passed.")
+          PY

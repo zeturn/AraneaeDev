@@ -54,7 +54,7 @@ const fetchNodes = async () => {
 		console.log("Raw API Response:", response);
 
 		if (response.data?.results && Array.isArray(response.data.results)) {
-			nodes.value = response.data.results.map((node) => {
+			nodes.value = response.data.results.map((node: any) => {
 				// 解析 CPU 和内存信息
 				// Parse CPU and memory info
 				let cpu: CPUInfo | null = null;
@@ -169,12 +169,12 @@ onMounted(fetchNodes);
 							<p class="text-sm font-semibold text-gray-700">内存信息</p>
 							<p class="text-sm text-gray-600">
 								已用: {{
-									node.memory_info.used_memory !== '-' ? (node.memory_info.used_memory / (1024 * 1024 * 1024)).toFixed(2) + ' GB' : '-'
+									node.memory_info.used_memory !== '-' ? (Number(node.memory_info.used_memory) / (1024 * 1024 * 1024)).toFixed(2) + ' GB' : '-'
 								}}
 							</p>
 							<p class="text-sm text-gray-600">
 								总计: {{
-									node.memory_info.total_memory !== '-' ? (node.memory_info.total_memory / (1024 * 1024 * 1024)).toFixed(2) + ' GB' : '-'
+									node.memory_info.total_memory !== '-' ? (Number(node.memory_info.total_memory) / (1024 * 1024 * 1024)).toFixed(2) + ' GB' : '-'
 								}}
 							</p>
 							<p class="text-sm text-gray-600">使用率: {{ node.memory_info.memory_percentage }}%</p>

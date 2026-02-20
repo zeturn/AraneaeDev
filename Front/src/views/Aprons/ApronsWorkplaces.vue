@@ -14,7 +14,14 @@ import {ref, onMounted} from 'vue';
 import ApiService from '@/services/ApiService.js';
 import Aprons from "@/views/Aprons/Aprons.vue";
 
-const workplaces = ref([]);
+interface Workplace {
+  id: number;
+  name: string;
+  description: string;
+  status: string;
+}
+
+const workplaces = ref<Workplace[]>([]);
 
 const fetchWorkplaces = async () => {
   try {

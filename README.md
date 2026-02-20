@@ -67,3 +67,6 @@ Ensure these `.env` values are configured:
 ## Security Notes
 - Set `ARANEAE_CALLBACK_SHARED_SECRET` in both ControlNode and ExecutionNode
 - Set `ARANEAE_NODE_API_TOKEN` to protect ExecutionNode control endpoints
+
+## Release Process
+- Release gates and branch protection baseline: `docs/RELEASE_GATES.md`

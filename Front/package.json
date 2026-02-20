@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "typecheck": "vue-tsc --noEmit"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",
@@ -25,6 +26,9 @@
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.40",
     "tailwindcss": "^3.4.7",
-    "vite": "^5.3.4"
+    "typescript": "^5.9.3",
+    "unplugin-vue-define-options": "^3.1.2",
+    "vite": "^5.3.4",
+    "vue-tsc": "^3.2.4"
   }
 }

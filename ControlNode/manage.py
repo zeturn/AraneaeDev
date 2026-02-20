@@ -163,6 +163,17 @@ def start_node_status():
 
 if __name__ == "__main__":
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "Araneae.settings")
+    from django.core.management import execute_from_command_line
+
+    command = sys.argv[1] if len(sys.argv) > 1 else ""
+    bootstrap_enabled = os.environ.get("ARANEAE_MANAGE_BOOTSTRAP", "1").lower() in ("1", "true", "yes", "on")
+    should_bootstrap = bootstrap_enabled and command == "runserver"
+
+    # Keep non-runtime management commands side-effect free.
+    if not should_bootstrap:
+        execute_from_command_line(sys.argv)
+        sys.exit(0)
+
     print("HollowData Group")
     print("[INFO] Araneae Main Node is running...")
 
@@ -200,8 +211,6 @@ if __name__ == "__main__":
         # 启动 工作节点状态轮询
         start_node_status()
 
-
-    from django.core.management import execute_from_command_line
 
     try:
         execute_from_command_line(sys.argv)

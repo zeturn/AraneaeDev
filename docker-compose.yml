@@ -6,14 +6,22 @@ services:
       - ./.env
     ports:
       - "8107:8000"
+    restart: unless-stopped
     environment:
       DJANGO_MIGRATE: "1"
     volumes:
       - controlnode-data:/data
       - controlnode-media:/app/media
       - controlnode-repo:/app/Araneae_repo/repo
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys,urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/api/schema/',timeout=5);sys.exit(0)"]
+      interval: 15s
+      timeout: 6s
+      retries: 8
+      start_period: 20s
     depends_on:
-      - rabbitmq
+      rabbitmq:
+        condition: service_healthy
 
   controlnode-worker:
     build:
@@ -21,13 +29,16 @@ services:
     env_file:
       - ./.env
     command: ["celery", "-A", "Araneae", "worker", "-l", "info"]
+    restart: unless-stopped
     environment:
       DJANGO_MIGRATE: "0"
     volumes:
       - controlnode-data:/data
     depends_on:
-      - rabbitmq
-      - controlnode
+      rabbitmq:
+        condition: service_healthy
+      controlnode:
+        condition: service_healthy
 
   controlnode-beat:
     build:
@@ -45,13 +56,16 @@ services:
         "--scheduler",
         "django_celery_beat.schedulers:DatabaseScheduler"
       ]
+    restart: unless-stopped
     environment:
       DJANGO_MIGRATE: "0"
     volumes:
       - controlnode-data:/data
     depends_on:
-      - rabbitmq
-      - controlnode
+      rabbitmq:
+        condition: service_healthy
+      controlnode:
+        condition: service_healthy
 
   executionnode:
     build:
@@ -60,11 +74,19 @@ services:
       - ./.env
     ports:
       - "4107:5001"
+    restart: unless-stopped
     volumes:
       - executionnode-data:/data
       - executionnode-logs:/app/logs
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys,urllib.request;urllib.request.urlopen('http://127.0.0.1:5001/system_info',timeout=5);sys.exit(0)"]
+      interval: 20s
+      timeout: 8s
+      retries: 8
+      start_period: 35s
     depends_on:
-      - rabbitmq
+      rabbitmq:
+        condition: service_healthy
 
   front:
     build:
@@ -73,17 +95,32 @@ services:
       - ./.env
     ports:
       - "5109:80"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
     depends_on:
-      - controlnode
+      controlnode:
+        condition: service_healthy
 
   rabbitmq:
     image: rabbitmq:3-management-alpine
+    restart: unless-stopped
     ports:
       - "5672:5672"
       - "15672:15672"
     environment:
       RABBITMQ_DEFAULT_USER: araneae
       RABBITMQ_DEFAULT_PASS: araneae
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 15s
+      timeout: 10s
+      retries: 8
+      start_period: 20s
 
 volumes:
   controlnode-data:

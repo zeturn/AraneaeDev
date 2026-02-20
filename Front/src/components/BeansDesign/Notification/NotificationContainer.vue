@@ -26,7 +26,7 @@
 </template>
 
 <script lang="ts" setup>
-import {ref, defineExpose, onMounted, onUnmounted, computed} from 'vue';
+import {ref, onMounted, onUnmounted, computed} from 'vue';
 import Notification from './Notification.vue';
 import EventBus, {type NotifyEvent} from '@/utils/event-bus';
 
@@ -38,7 +38,8 @@ const props = defineProps({
 	}
 });
 
-const notifications = ref<{ id: number }[]>([]);
+type NotificationItem = NotifyEvent & { id: number };
+const notifications = ref<NotificationItem[]>([]);
 let id = 0;
 
 // 监听通知事件

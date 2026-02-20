@@ -1,0 +1,6 @@
+target-version = "py311"
+line-length = 120
+
+[lint]
+# Start with high-signal checks to avoid noisy legacy refactors.
+select = ["E9", "F63", "F7", "F82"]

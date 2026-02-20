@@ -14,7 +14,14 @@ import {ref, onMounted} from 'vue';
 import ApiService from '@/services/ApiService.js';
 import Aprons from "@/views/Aprons/Aprons.vue";
 
-const teams = ref([]);
+interface Team {
+  id: number;
+  name: string;
+  description: string;
+  role?: string | null;
+}
+
+const teams = ref<Team[]>([]);
 
 const fetchTeams = async () => {
   try {
