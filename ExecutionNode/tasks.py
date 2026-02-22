@@ -1,175 +1,191 @@
 # -*- coding: utf-8 -*-
-# araneae_worknode - tasks.py.py
-# Created by zhr62 at 2025/2/20 - 下午3:40
+# araneae_worknode - tasks.py
+# ExecutionNode 任务执行模块
+
 import os
 import json
 import hmac
 import hashlib
 import time
 from datetime import datetime
-from time import sleep
+
 import requests
 import subprocess
 
 from celery import shared_task
-from kombu import Queue
 
 from config import create_app
 from models import TaskRecord, Project, Version, db, Identity
 import setting
-from utils.identity import get_hash
 
 flask_app = create_app()
 celery_app = flask_app.extensions["celery"]
 
+# 脚本仓库根目录，优先从配置/环境变量读取
+_basedir = os.path.abspath(os.path.dirname(__file__))
+REPO_BASE_PATH = (
+    setting.REPO.get("BASE_PATH")
+    if hasattr(setting, "REPO") and setting.REPO
+    else os.path.join(_basedir, "repo")
+)
+
+
+################################################################
+# 测试任务                                                     #
+################################################################
+
 @shared_task(ignore_result=False)
 def long_running_task(iterations) -> int:
-    """
-    长时间运行的任务 [测试]
-    @param iterations:
-    @return:
-    """
+    """长时间运行的测试任务"""
+    from time import sleep
     result = 0
     for i in range(iterations):
         result += i
         sleep(2)
-    return result  # -Line 6
+    return result
 
+
+################################################################
+# 核心：接收并执行脚本                                         #
+################################################################
 
 @celery_app.task(name="execute_script")
 def execute_script(*args, **kwargs):
     """
-    执行 Python 脚本
-    :param args:
-    :param kwargs:
-    :return:
-    """
-    print("Received args:", args)
-    print("Received kwargs:", kwargs)
+    接收 ControlNode 下发的任务并执行脚本。
 
-    # Continue with the rest of your code...
-    task_id   = kwargs.get("task_id")
-    node_list = kwargs.get("nodes")
-    project_hash = kwargs.get("project_hash")
+    ControlNode 精准路由确保此消息只投递到目标节点，
+    因此无需再进行节点白名单过滤。
+
+    kwargs 格式：
+      task_id      (str|int|None)  任务 ID
+      chain_id     (int|None)      任务链 ID
+      project_hash (str)           项目 hash
+      version_hash (str)           版本 hash（支持 "LATEST"）
+    """
+    print("[execute_script] Received kwargs:", kwargs)
+
+    task_id      = kwargs.get("task_id")
+    chain_id     = kwargs.get("chain_id")
     project_hash = kwargs.get("project_hash")
     version_hash = kwargs.get("version_hash")
-    chain_id = kwargs.get("chain_id")
 
-    #current_node = get_hash()
-    current_node = Identity.query.first().identity_hash  # For testing, replace with actual node identity retrieval
-
-    if current_node not in node_list:
-        print("Current node is not in the node list, aborting task execution.")
-        return None
-    else:
-        print("Current node is in the node list, proceeding with task execution.")
-
+    # 1) 查找项目记录
+    with flask_app.app_context():
         project = Project.query.filter_by(project_hash=project_hash).first()
         if not project:
-            raise ValueError(f"Project with ID {project_hash} does not exist.")
+            print(f"[execute_script] ❌ 项目不存在: project_hash={project_hash}")
             return None
-        else:
-            project_hash = project.project_hash
 
-        project_id = project.id
-
+        # 2) 解析版本 hash
         if version_hash == "LATEST":
-            latest_version = Version.query.filter_by(project_id=project_id).first()
+            latest_version = Version.query.filter_by(
+                project_id=project.id
+            ).order_by(Version.id.desc()).first()
             if not latest_version:
-                raise ValueError(f"No latest version found for project ID {project_hash}.")
+                print(f"[execute_script] ❌ 项目 {project_hash} 无任何版本")
+                return None
             version_hash = latest_version.version_hash
 
-        # For testing, you force a specific path (this may be temporary)
-        script_path = fr"C:\Users\zhr62\PycharmProjects\djangoProject\Araneae_worknode\repo\{project_hash}\{version_hash}\helloworld.py"
-        print("Script path:", script_path)
+        # 3) 获取本节点 identity
+        identity = Identity.query.first()
+        node_hash = identity.identity_hash if identity else "unknown"
 
-        if not script_path:
-            raise ValueError("The script path must be provided in kwargs.")
+        # 4) 动态拼接脚本路径（从本节点 repo 目录读取）
+        script_path = os.path.join(REPO_BASE_PATH, project_hash, version_hash, "main.py")
+        print(f"[execute_script] 脚本路径: {script_path}")
 
-        command = ["python", script_path]
-        print(f"Command to run: {command}")
+        if not os.path.exists(script_path):
+            _send_callback(node_hash, project_hash, version_hash, task_id, chain_id,
+                           status="failed", result=f"Script not found: {script_path}")
+            return None
 
-        try:
-            result = subprocess.run(command, capture_output=True, text=True, check=True)
+        # 5) 执行前写 running 状态
+        _update_or_create_task_record(
+            node_hash=node_hash, project_hash=project_hash,
+            version_hash=version_hash, task_id=task_id,
+            task_chain_id=chain_id, task_status="running"
+        )
 
-            # Update task record and send callback within flask_app context...
-            with flask_app.app_context():
-                task_record_id = create_task_record(
-                    node_hash = node_list[0],
-                    project_hash = project.project_hash,
-                    version_hash = version_hash,
-                    task_id=task_id,
-                    task_chain_id=chain_id,
-                    task_status="running"
-                )
+    # 6) 在 flask 上下文外执行脚本（避免长阻塞持有 DB 连接）
+    try:
+        result = subprocess.run(
+            ["python", script_path],
+            capture_output=True, text=True, timeout=3600
+        )
+        stdout = result.stdout
+        stderr = result.stderr
+        exit_ok = (result.returncode == 0)
+        final_status = "finished" if exit_ok else "failed"
+        final_result = stdout if exit_ok else stderr
+        print(f"[execute_script] 执行完毕，returncode={result.returncode}")
+    except subprocess.TimeoutExpired:
+        final_status = "timeout"
+        final_result = "Script execution timed out."
+        print("[execute_script] ❌ 执行超时")
+    except Exception as e:
+        final_status = "error"
+        final_result = str(e)
+        print(f"[execute_script] ❌ 执行异常: {e}")
 
-                task_record = TaskRecord.query.get(task_record_id)
-                task_record.task_status = "finished"
-                print("Task record created:", task_record)
-
-                send_callback(task_record)
-
-            return result.stdout
-        except subprocess.CalledProcessError as e:
-            return f"Script execution failed: {e}"
-
-
-
-
-def create_task_record(node_hash, project_hash, version_hash, task_id, task_status, task_chain_id, task_result=None):
-    """
-    创建任务记录
-    :param node_hash:  节点哈希
-    :param project_hash: 项目哈希
-    :param version_hash: 版本哈希
-    :param task_id: 任务ID
-    :param task_status: 任务状态
-    :param task_result: 任务结果
-    :return: TaskRecord任务记录
-    """
-
-    task_record = TaskRecord(
-        node_hash = node_hash,
-        project_hash = project_hash,
-        version_hash = version_hash,
-        task_id = task_id,
-        task_status = task_status,
-        task_chain_id = task_chain_id,
-        task_result = task_result,
-        task_created_at = datetime.now(),
-        task_updated_at = datetime.now()
+    # 7) 回调 ControlNode 汇报结果（ExecutionNode 不负责任何链推进逻辑）
+    _send_callback(
+        node_hash=node_hash,
+        project_hash=project_hash,
+        version_hash=version_hash,
+        task_id=task_id,
+        chain_id=chain_id,
+        status=final_status,
+        result=final_result,
     )
-    db.session.add(task_record)
-    db.session.commit()
 
-    return task_record.id
+    return final_result
 
-def send_callback(task_record):
+
+################################################################
+# 内部辅助函数                                                 #
+################################################################
+
+def _update_or_create_task_record(node_hash, project_hash, version_hash,
+                                  task_id, task_chain_id, task_status, task_result=None):
+    """写入本地 TaskRecord（ExecutionNode 侧的执行流水）"""
+    with flask_app.app_context():
+        record = TaskRecord(
+            node_hash=node_hash,
+            project_hash=project_hash,
+            version_hash=version_hash,
+            task_id=task_id,
+            task_status=task_status,
+            task_chain_id=task_chain_id,
+            task_result=task_result,
+            task_created_at=datetime.now(),
+            task_updated_at=datetime.now(),
+        )
+        db.session.add(record)
+        db.session.commit()
+        return record.id
+
+
+def _send_callback(node_hash, project_hash, version_hash,
+                   task_id, chain_id, status, result=None):
     """
-    向http://127.0.0.1:8000/api/task/callback/ 发送回调request
-    :param task_record:
-    :return: response
+    向 ControlNode 发送 HMAC 签名回调，汇报执行结果。
+    ControlNode 负责：更新 TaskRecord + 任务链推进。
+    ExecutionNode 不携带任何链推进逻辑。
     """
-    node = task_record.node_hash
-    project = task_record.project_hash
-    version = task_record.version_hash
-    task_status = task_record.task_status
-    task_id = task_record.task_id
-    task_result = task_record.task_result
-    task_chain_id = task_record.task_chain_id
-
-    request = {
-        "node": node,
-        "project": project,
-        "version": version,
-        "task_status": task_status,
-        "task_id": task_id,
-        "task_result": task_result,
-        "task_chain_id": task_chain_id,
+    payload = {
+        "node":         node_hash,
+        "project":      project_hash,
+        "version":      version_hash,
+        "task_id":      task_id,
+        "task_chain_id": chain_id,
+        "task_status":  status,
+        "task_result":  result,
     }
 
-    body = json.dumps(request, separators=(",", ":"), ensure_ascii=False)
+    body = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
     headers = {"Content-Type": "application/json"}
+
     secret = setting.SECURITY.get("CALLBACK_SHARED_SECRET", "")
     if secret:
         timestamp = str(int(time.time()))
@@ -183,27 +199,16 @@ def send_callback(task_record):
 
     callback_url = f"{setting.CONTROLNODE['BASE_URL']}/api/task/callback/"
     try:
-        response = requests.post(callback_url, data=body.encode("utf-8"), headers=headers, timeout=10)
-        response.raise_for_status()  # 如果响应状态码不是200，抛出HTTPError
-    except requests.exceptions.HTTPError as http_err:
-        print(f"HTTP error occurred: {http_err}")
-    except Exception as err:
-        print(f"Other error occurred: {err}")
-    else:
-        print("Callback response:", response)
-        return response
-
-
-if __name__ == "__main__":
-    node_hash = identity_hash = get_hash()  # For testing, replace with actual node identity retrieval
-    args = []
-    kwargs = {
-        "task_id": "12345",
-        "nodes": [node_hash],
-        "project_hash": 1,
-        "project_hash": "wgewjD",
-        "version_hash": "LATEST",
-        "chain_id": "123"
-    }
-
-    print(execute_script(*args, **kwargs))
+        resp = requests.post(
+            callback_url,
+            data=body.encode("utf-8"),
+            headers=headers,
+            timeout=10,
+        )
+        resp.raise_for_status()
+        print(f"[callback] ✅ 回调成功: {resp.status_code}")
+        return resp
+    except requests.exceptions.HTTPError as e:
+        print(f"[callback] ❌ HTTP 错误: {e}")
+    except Exception as e:
+        print(f"[callback] ❌ 回调失败: {e}")

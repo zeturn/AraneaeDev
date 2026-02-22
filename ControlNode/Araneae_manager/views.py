@@ -29,7 +29,7 @@ from rest_framework.viewsets import ModelViewSet
 
 from Araneae import settings
 from Araneae_manager.source.send import send_file, zip_folder
-from Araneae_manager.tasks import schedule_task_execution
+from Araneae_manager.tasks import dispatch_task_to_nodes
 from Araneae_manager.task.record import create_task_record
 from Araneae_manager.management.commands.register_node import get_control_hash
 from Araneae_manager.models import Node, Schedule, TaskRecord, ChainedTask, TaskChain, Task, NodeCurrentStatus
@@ -369,6 +369,174 @@ class NodeViewSet(ModelViewSet):
             'memory_total': stat.memory_total,
         }
         return JsonResponse(data, status=200)
+
+    @action(detail=True, methods=['get'], url_path='ping')
+    def ping_node(self, request, pk=None):
+        """
+        实时探测单个执行节点是否存活（HTTP GET /health）。
+        GET /api/nodes/{pk}/ping/
+        Returns: {node_id, alive, status, latency_ms}
+        """
+        import time as _time
+        node = self.get_object()
+        url = f"http://{node.ip_address}:{node.port}/health"
+        t0 = _time.monotonic()
+        try:
+            resp = requests.get(url, timeout=3)
+            alive = resp.status_code == 200
+        except requests.RequestException:
+            alive = False
+        latency_ms = round((_time.monotonic() - t0) * 1000, 1)
+
+        new_status = 'active' if alive else 'unreachable'
+        update_fields = ['status']
+        node.status = new_status
+        if alive:
+            from django.utils import timezone
+            node.last_active_time = timezone.now()
+            update_fields.append('last_active_time')
+        node.save(update_fields=update_fields)
+
+        return JsonResponse({
+            'node_id': node.id,
+            'alive': alive,
+            'status': new_status,
+            'latency_ms': latency_ms if alive else None,
+        }, status=200)
+
+    @action(detail=True, methods=['get'], url_path='capabilities')
+    def capabilities(self, request, pk=None):
+        """
+        读取节点已存储的运行时能力列表（不会重新探测执行节点）
+        GET /api/nodes/{pk}/capabilities/
+        """
+        node = self.get_object()
+        caps = node.runtime_capabilities or []
+        return JsonResponse({'node_id': node.id, 'capabilities': caps}, status=200)
+
+    @action(detail=True, methods=['post'], url_path='refresh_capabilities')
+    def refresh_capabilities(self, request, pk=None):
+        """
+        主动拉取执行节点的运行时能力，更新数据库并返回结果
+        POST /api/nodes/{pk}/refresh_capabilities/
+
+        Flow:
+          ControlNode → ExecutionNode GET /capabilities → store in Node.runtime_capabilities
+        """
+        node = self.get_object()
+        url = f"http://{node.ip_address}:{node.port}/capabilities"
+
+        headers = {}
+        token = getattr(settings, 'NODE_API_TOKEN', '')
+        if token:
+            headers['X-Araneae-Node-Token'] = token
+
+        try:
+            resp = requests.get(url, headers=headers, timeout=10)
+            resp.raise_for_status()
+            capabilities_list = resp.json()
+        except requests.Timeout:
+            return JsonResponse(
+                {'error': f'Request to node {node.ip_address}:{node.port} timed out'},
+                status=504
+            )
+        except requests.ConnectionError:
+            return JsonResponse(
+                {'error': f'Cannot connect to node at {node.ip_address}:{node.port}'},
+                status=502
+            )
+        except Exception as exc:
+            return JsonResponse({'error': str(exc)}, status=500)
+
+        # 持久化到 Node 模型
+        node.runtime_capabilities = capabilities_list
+        node.save(update_fields=['runtime_capabilities', 'updated_at'])
+
+        return JsonResponse(
+            {
+                'node_id': node.id,
+                'capabilities': capabilities_list,
+                'count': len(capabilities_list),
+                'available_count': sum(1 for c in capabilities_list if c.get('available')),
+            },
+            status=200
+        )
+
+    @action(detail=True, methods=['get'], url_path='installers')
+    def installers(self, request, pk=None):
+        """
+        代理：获取执行节点支持安装的运行时列表
+        GET /api/nodes/{pk}/installers/
+        """
+        node = self.get_object()
+        url = f"http://{node.ip_address}:{node.port}/installers"
+        headers = {}
+        token = getattr(settings, 'NODE_API_TOKEN', '')
+        if token:
+            headers['X-Araneae-Node-Token'] = token
+        try:
+            resp = requests.get(url, headers=headers, timeout=10)
+            resp.raise_for_status()
+            return JsonResponse({'node_id': node.id, 'installers': resp.json()}, status=200)
+        except requests.Timeout:
+            return JsonResponse({'error': '节点请求超时'}, status=504)
+        except requests.ConnectionError:
+            return JsonResponse({'error': f'无法连接到节点 {node.ip_address}:{node.port}'}, status=502)
+        except Exception as exc:
+            return JsonResponse({'error': str(exc)}, status=500)
+
+    @action(detail=True, methods=['post'], url_path='install_runtime')
+    def install_runtime(self, request, pk=None):
+        """
+        代理：向执行节点发起后台安装任务
+        POST /api/nodes/{pk}/install_runtime/   body: {"key": "node"}
+        Returns: {"job_id": str}
+        """
+        node = self.get_object()
+        key = request.data.get('key', '').strip()
+        if not key:
+            return JsonResponse({'error': "缺少 'key' 参数"}, status=400)
+
+        url = f"http://{node.ip_address}:{node.port}/install"
+        headers = {'Content-Type': 'application/json'}
+        token = getattr(settings, 'NODE_API_TOKEN', '')
+        if token:
+            headers['X-Araneae-Node-Token'] = token
+        try:
+            resp = requests.post(url, json={'key': key}, headers=headers, timeout=15)
+            resp.raise_for_status()
+            return JsonResponse(resp.json(), status=resp.status_code)
+        except requests.Timeout:
+            return JsonResponse({'error': '节点请求超时'}, status=504)
+        except requests.ConnectionError:
+            return JsonResponse({'error': f'无法连接到节点 {node.ip_address}:{node.port}'}, status=502)
+        except Exception as exc:
+            return JsonResponse({'error': str(exc)}, status=500)
+
+    @action(detail=True, methods=['get'], url_path=r'install_status/(?P<job_id>[^/.]+)')
+    def install_status(self, request, pk=None, job_id=None):
+        """
+        代理：轮询执行节点的安装任务进度
+        GET /api/nodes/{pk}/install_status/{job_id}/
+        Returns: {job_id, key, name, status, log, exit_code, ...}
+        """
+        node = self.get_object()
+        url = f"http://{node.ip_address}:{node.port}/install/{job_id}"
+        headers = {}
+        token = getattr(settings, 'NODE_API_TOKEN', '')
+        if token:
+            headers['X-Araneae-Node-Token'] = token
+        try:
+            resp = requests.get(url, headers=headers, timeout=10)
+            resp.raise_for_status()
+            return JsonResponse(resp.json(), status=200)
+        except requests.Timeout:
+            return JsonResponse({'error': '节点请求超时'}, status=504)
+        except requests.ConnectionError:
+            return JsonResponse({'error': f'无法连接到节点 {node.ip_address}:{node.port}'}, status=502)
+        except Exception as exc:
+            return JsonResponse({'error': str(exc)}, status=500)
+
 ################################################################
 # Araneae_worknode SourceDistribute                            #
 ################################################################
@@ -460,129 +628,128 @@ class TaskCallbackViewSet(ModelViewSet):
     @csrf_exempt
     def task_callback(self, request):
         """
-        任务回调
-        api: /task/callback
-        :param request:
-
-        :return: JsonResponse
+        任务回调 — ExecutionNode 执行完毕后调用此接口汇报结果。
+        ControlNode 负责更新 TaskRecord 并（如有任务链）触发下一步任务。
+        api: POST /api/task/callback/
         """
         if not self._verify_callback_signature(request):
             return JsonResponse({"error": "Invalid callback signature"}, status=403)
 
-        print("[SUCCESS][TASK]Received task callback")
+        print("[SUCCESS][TASK] Received task callback")
         data = request.data
+        print("[DEBUG] Callback payload:", data)
 
-        print(data)
-
-        node_hash = data.get('node')
+        node_hash    = data.get('node')
         project_hash = data.get('project')
         version_hash = data.get('version')
-        task_status = data.get('task_status', 'pending')
-        task_result = data.get('task_result', None)
+        task_status  = data.get('task_status', 'finished')
+        task_result  = data.get('task_result', None)
+        current_task_id  = data.get('task_id')
+        task_chain_id    = data.get('task_chain_id')
 
-        print(f'[DEBUG] Node: {node_hash}, Project: {project_hash}, Version: {version_hash}, Status: {task_status}, Result: {task_result}')
+        print(f'[DEBUG] node={node_hash} project={project_hash} version={version_hash} '
+              f'status={task_status} chain={task_chain_id}')
 
+        # --- 解析关联对象（容错：找不到则置 None）---
         try:
             node = Node.objects.get(node_hash=node_hash) if node_hash else None
         except Node.DoesNotExist:
-            # === 以下功能：记录 Node 未找到情况 ===
-            print(f"[WARNING] Node with hash {node_hash} not found.")
+            print(f"[WARNING] Node not found: {node_hash}")
             node = None
 
         try:
             project = Project.objects.get(project_hash=project_hash) if project_hash else None
         except Project.DoesNotExist:
-            print(f"[WARNING] Project with hash {project_hash} not found.")
+            print(f"[WARNING] Project not found: {project_hash}")
             project = None
 
         try:
             version = Version.objects.get(version_hash=version_hash) if version_hash else None
         except Version.DoesNotExist:
-            print(f"[WARNING] Version with hash {version_hash} not found.")
+            print(f"[WARNING] Version not found: {version_hash}")
             version = None
 
+        # --- 写入执行记录 ---
         create_task_record(node, project, version, task_status, task_result)
-        # 检查任务元参数
-        current_task_id = data.get('task_id')
-        task_chain_id = data.get('task_chain_id')
 
-        if task_chain_id:
-            # 任务链回调
+        # --- 任务链推进（完全由 ControlNode 负责）---
+        if task_chain_id and task_status in ('finished', 'completed'):
             try:
                 task_chain = TaskChain.objects.get(id=task_chain_id)
+                self.continue_task_chain(current_task_id, task_chain_id)
+                print(f"🔗 任务链 [{task_chain.name}] 推进完毕")
             except TaskChain.DoesNotExist:
-                print(f"[Task][CallBack]⚠️ 任务链不存在: id={task_chain_id}")
-                task_chain = None
-            if task_chain:
-
-                self.continue_task_chain(current_task_id,task_chain_id)  # 调用检查任务链的方法
-                print(f"🔗 任务链 {task_chain.name} 回调完毕")
+                print(f"[WARNING] TaskChain not found: id={task_chain_id}")
+        elif task_chain_id and task_status in ('failed', 'error'):
+            print(f"⚠️ 任务 {current_task_id} 执行失败，任务链 {task_chain_id} 停止推进")
         else:
-            print("⚠️ 任务链不存在, 执行结束")
+            print("ℹ️ 无任务链，执行结束")
 
-        return JsonResponse({"message": "Callback received, task record created.", "status": 200})
+        return JsonResponse({"message": "Callback received.", "status": 200})
 
 
     def continue_task_chain(self, current_task_id, task_chain_id):
         """
-        检查任务链是否存在
-        :return:
+        任务链推进（完全由 ControlNode 驱动）。
+
+        查询当前任务在 ChainedTask 中的所有后续任务，
+        逐一通过 dispatch_task_to_nodes 精准路由派发。
         """
         try:
-            # 获取 Task 实例
+            # 1) 获取当前 Task 实例
             try:
                 current_task = Task.objects.get(id=current_task_id)
             except Task.DoesNotExist:
-                print(f"⚠️ 未找到 Task 对象: id={current_task_id}")
-                return JsonResponse({"error": "Task not found"}, status=404)
+                print(f"⚠️ 未找到 Task: id={current_task_id}")
+                return
 
-            print(f"🔍 检索到当前任务id: {current_task.id}")
+            print(f"🔍 当前任务: id={current_task.id} name={current_task.name}")
 
-            # 获取 PeriodicTask 实例
-            try:
-                # Adjust this query as needed. If current_task. is an ID, use:
-                current_pt = PeriodicTask.objects.get(id=current_task.periodic_task.id)
-            except PeriodicTask.DoesNotExist:
-                print(f"⚠️ 未找到 PeriodicTask: id={current_task.periodic_task}")
-                return JsonResponse({"error": "PeriodicTask not found"}, status=404)
-
-            print(f"🔗 当前任务对应的 PeriodicTask id: {current_pt.id}")
-
-            # 获取 ChainedTask 实例
-            try:
-                current_chain_task = ChainedTask.objects.get(id=current_task.id)
-            except ChainedTask.DoesNotExist:
-                print(f"⚠️ 未找到 ChainedTask 与 PeriodicTask id={current_pt.id} 对应的任务")
-                return JsonResponse({"error": "ChainedTask not found"}, status=404)
-
-            print(f"🔗 当前任务对应的 ChainedTask: {current_chain_task.id}")
-
-            # 查找所有后续任务
-            next_chained_tasks = ChainedTask.objects.filter(
-                chain=current_chain_task.chain,
+            # 2) 在 ChainedTask 中查找「当前任务 → 下一任务」的关联记录
+            #    ChainedTask.task = 当前任务，ChainedTask.next_task = 后续任务
+            next_entries = ChainedTask.objects.filter(
+                chain_id=task_chain_id,
                 task=current_task
-            )
-            print(f"🔗 共找到 {next_chained_tasks.count()} 个次级后续任务")
+            ).select_related('next_task')
 
-            for next_chained_task in next_chained_tasks:
-                try:
-                    next_task = Task.objects.get(id=next_chained_task.next_task_id)
-                    next_period_task = PeriodicTask.objects.get(id=next_task.periodic_task.id)
-                except Task.DoesNotExist:
-                    print(f"⚠️ 未找到后续任务对象: {next_chained_task}")
+            print(f"🔗 找到 {next_entries.count()} 个后续任务")
+
+            for entry in next_entries:
+                next_task = entry.next_task
+                if not next_task:
+                    print("⚠️ ChainedTask.next_task 为空，跳过")
                     continue
 
-                args = json.loads(next_period_task.args or "[]")
-                if isinstance(args, dict):
-                    args = [args]
-                kwargs = json.loads(next_period_task.kwargs or "{}")
-                print(f"➡️ 触发后续任务: {next_period_task.name} | args={args} kwargs={kwargs}")
-                schedule_task_execution.apply_async(args=args, kwargs=kwargs)
+                # 3) 从关联的 PeriodicTask 读取 kwargs（含 nodes、project_hash 等）
+                try:
+                    pt = next_task.periodic_task
+                    if not pt:
+                        print(f"⚠️ 任务 {next_task.id} 没有关联 PeriodicTask，跳过")
+                        continue
+                    task_kwargs = json.loads(pt.kwargs or "{}")
+                except Exception as e:
+                    print(f"⚠️ 读取后续任务 kwargs 失败: {e}，跳过")
+                    continue
+
+                node_list = task_kwargs.get("nodes", [])
+                if not node_list:
+                    print(f"⚠️ 后续任务 {next_task.name} nodes 为空，跳过")
+                    continue
+
+                print(f"➡️ 触发后续任务: [{next_task.name}] → 节点: {node_list}")
+                try:
+                    task_ids = dispatch_task_to_nodes(
+                        task_kwargs=task_kwargs,
+                        node_list=node_list,
+                    )
+                    print(f"✅ 后续任务已派发，celery task_ids={task_ids}")
+                except Exception as e:
+                    print(f"❌ 派发后续任务失败: {e}")
 
         except Exception as e:
-            print(f"❌ 执行失败: {e}")
+            print(f"❌ continue_task_chain 执行异常: {e}")
 
-        return "Task dispatched and chain checked."
+        return "Chain check completed."
 
 
 def download_file(request, file_name, project_id, version):
@@ -836,23 +1003,77 @@ class TaskViewSet(viewsets.ModelViewSet):
     @csrf_exempt
     def execute_task(self, request):
         """
-        执行任务
-        api: /task/execute
-        :param request:
-        :return:
+        手动触发任务执行，向指定节点列表精准派发。
+        api: POST /api/tasks/execute/
+
+        Body:
+          project_id   (int)       项目 ID
+          version_hash (str)       版本 hash，传 "LATEST" 自动解析
+          node_list    (list[str]) 目标节点 hash 列表
+          task_id      (int|null)  可选，关联已有 Task 记录
+          chain_id     (int|null)  可选，关联任务链
         """
         data = request.data
-        project_id = data.get("project_id")
-        version_hash = data.get("version_hash")
-        node_list = data.get("node_list")
-        task_id = data.get("task_id")
+        project_id   = data.get("project_id")
+        version_hash = data.get("version_hash", "LATEST")
+        node_list    = data.get("node_list", [])
+        task_id      = data.get("task_id")
+        chain_id     = data.get("chain_id")
 
-        # 1) 获取项目和版本信息
+        # 1) 参数校验
+        if not project_id:
+            return JsonResponse({"error": "project_id is required"}, status=400)
+        if not node_list:
+            return JsonResponse({"error": "node_list must not be empty"}, status=400)
+
+        # 2) 获取项目和版本信息
         try:
             project = Project.objects.get(id=project_id)
-            version = Version.objects.get(version_hash=version_hash)
-            print(f"Project: {project}, Version: {version}")
         except Project.DoesNotExist:
-            return JsonResponse({"error": "Project not found"}, status=status.HTTP_404_NOT_FOUND)
+            return JsonResponse({"error": "Project not found"}, status=404)
 
+        try:
+            if version_hash == "LATEST":
+                version = Version.objects.filter(project=project).order_by('-created_at').first()
+                if not version:
+                    return JsonResponse({"error": "No version found for project"}, status=404)
+                version_hash = version.version_hash
+            else:
+                version = Version.objects.get(version_hash=version_hash)
+        except Version.DoesNotExist:
+            return JsonResponse({"error": f"Version '{version_hash}' not found"}, status=404)
 
+        print(f"[execute_task] project={project.project_hash} version={version_hash} nodes={node_list}")
+
+        # 3) 构造任务 kwargs 并精准派发
+        task_kwargs = {
+            "task_id":      task_id,
+            "chain_id":     chain_id,
+            "project_hash": project.project_hash,
+            "version_hash": version_hash,
+        }
+
+        try:
+            celery_task_ids = dispatch_task_to_nodes(
+                task_kwargs=task_kwargs,
+                node_list=node_list,
+            )
+        except Exception as e:
+            return JsonResponse({"error": f"Dispatch failed: {str(e)}"}, status=500)
+
+        # 4) 为每个目标节点创建 pending TaskRecord
+        records_created = []
+        for node_hash in node_list:
+            try:
+                node = Node.objects.get(node_hash=node_hash)
+                record = create_task_record(node, project, version, "pending")
+                records_created.append(node_hash)
+            except Node.DoesNotExist:
+                print(f"[WARNING] Node not found for record: {node_hash}")
+
+        return JsonResponse({
+            "message": "Task dispatched.",
+            "nodes":   node_list,
+            "celery_task_ids": celery_task_ids,
+            "records_created": records_created,
+        }, status=202)

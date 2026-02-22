@@ -9,8 +9,6 @@ import json
 from datetime import timedelta
 
 import grpc
-import pika
-import requests
 from celery import shared_task, Celery
 from django.utils import timezone
 
@@ -19,82 +17,91 @@ from Araneae_manager.models import ChainedTask, Node, NodeCurrentStatus, NodeMet
 from araneae_proto import resource_pb2_grpc, resource_pb2
 
 ################################################################
-# Araneae_worknode new                                         #
+# Celery 实例（用于向 ExecutionNode 投递任务）                 #
 ################################################################
 
-celery = Celery("tasks",
-                broker=f"amqp://{settings.RABBITMQ['USERNAME']}:{settings.RABBITMQ['PASSWORD']}@{settings.RABBITMQ['HOST']}:{settings.RABBITMQ['PORT']}/{settings.RABBITMQ['VHOST']}", )
+celery = Celery(
+    "tasks",
+    broker=f"amqp://{settings.RABBITMQ['USERNAME']}:{settings.RABBITMQ['PASSWORD']}"
+           f"@{settings.RABBITMQ['HOST']}:{settings.RABBITMQ['PORT']}/{settings.RABBITMQ['VHOST']}",
+)
 
 
-def dispatch_to_flask(*args, **kwargs):
+################################################################
+# 核心：精准路由分发                                           #
+################################################################
+
+def dispatch_task_to_nodes(task_kwargs: dict, node_list: list) -> list:
     """
-    发送任务给 Flask 端（Flask 的 Celery worker 会监听这个任务名），并同步等待 Flask 返回结果
+    向 node_list 中每个节点的专属队列精准投递 execute_script 任务。
+
+    - 每个 ExecutionNode 监听自己的独立队列 node_{node_hash}
+    - ControlNode 逐一投递，不再广播
+    - 多节点并行：node_list 中每个节点均收到独立消息
+
+    :param task_kwargs: 传递给 execute_script 的完整 kwargs（无需包含 nodes 字段）
+    :param node_list:   目标节点 hash 列表
+    :return:            返回各节点的 Celery task_id 列表
     """
-    task = celery.send_task( # 指定路由键和队列，确保任务路由到公共频道
-        "execute_script",
-        args=args,
-        kwargs=kwargs,
-        routing_key="public.task",
-        queue="public_channel"
-    )
-    print(f"👋任务已派发:", task)
-    return task.id
+    task_ids = []
+    for node_hash in node_list:
+        queue_name = f"node_{node_hash}"
+        task = celery.send_task(
+            "execute_script",
+            kwargs=task_kwargs,
+            queue=queue_name,
+            routing_key=f"node.{node_hash}",
+        )
+        print(f"✅ 已派发任务到节点 [{node_hash}]，queue={queue_name}，celery_id={task.id}")
+        task_ids.append(task.id)
+    return task_ids
 
 
+################################################################
+# 定时入口任务（Celery Beat 驱动）                             #
+################################################################
 
 @shared_task(name="schedule_task_execution")
 def schedule_task_execution(*args, **kwargs):
     """
-    Celery Beat 调用的定时任务入口
+    Celery Beat 调用的定时任务入口。
+    kwargs 需由 PeriodicTask 配置注入，包含：
+      - project_hash  (str)
+      - version_hash  (str)  可为 "LATEST"
+      - nodes         (list) 目标节点 hash 列表
+      - task_id       (int|str|None)
+      - chain_id      (int|None)
     """
+    print("📦 [schedule_task_execution] Triggered with kwargs:", kwargs)
 
-    print("📦 [schedule_task_execution] Triggered with args:", args)
+    node_list = kwargs.get("nodes", [])
+    if not node_list:
+        print("⚠️ [schedule_task_execution] nodes 为空，跳过派发")
+        return "No nodes specified."
 
     try:
-        print("Executing script...")
-        args = [{
-            "script_path": r"C:\Users\zhr62\PycharmProjects\djangoProject\Araneae_worknode\repo\5\Wn5hV0\helloworld.py",
-            "task_id": "",
-        }]
-
-        task_result = dispatch_to_flask( *args, **kwargs) # 发送任务给 Flask
-        print(f"✅ 已派发给 Flask 端 Celery，开始执行，返回结果: {task_result}")
-
+        task_ids = dispatch_task_to_nodes(task_kwargs=kwargs, node_list=node_list)
+        print(f"✅ 已成功派发到 {len(task_ids)} 个节点: {task_ids}")
     except Exception as e:
-        print(f"❌ 执行失败: {e}")
+        print(f"❌ 派发失败: {e}")
+        raise
 
-    return f"Task dispatched and checked."
+    return f"Dispatched to {len(task_ids)} node(s)."
 
 
-@shared_task(name="print_task")
-def print_task(*args, **kwargs):
-    """
-    测试任务
-    """
-    print("📦 [print_task] Triggered with args:", args)
-    print("📦 [print_task] Triggered with kwargs:", kwargs)
-    return "Task executed successfully."
-
-@shared_task(name="call_hello_world")
-def call_hello_world():
-    """
-    测试任务
-    """
-    print("📦 [call_hello_world] Triggered")
-    return "Hello, world!"
+################################################################
+# 节点资源轮询（ControlNode 内部定时任务）                     #
+################################################################
 
 @shared_task(name='poll_all_nodes_status')
 def poll_all_nodes_status(*args, **kwargs):
     """
-    中文：轮询所有启用节点的资源状态
-    English: Poll all enabled nodes for resource status
+    轮询所有启用节点的资源状态（通过 gRPC）。
     """
     print("📦 [poll_all_nodes_status] Triggered")
     nodes = Node.objects.filter(is_enabled=True)
     for node in nodes:
         try:
-            # 建立 gRPC 通道并获取一个状态快照
-            # Establish gRPC channel and fetch one snapshot
             channel = grpc.insecure_channel(f"{node.ip_address}:50051")
             stub = resource_pb2_grpc.ResourceMonitorStub(channel)
             call = stub.Subscribe(
@@ -102,10 +109,8 @@ def poll_all_nodes_status(*args, **kwargs):
                 timeout=5
             )
             usage = next(call)
-            call.cancel()  # 取消流以释放资源
+            call.cancel()
 
-            # 更新或创建“当前状态”记录
-            # Update or create the NodeCurrentStatus record
             NodeCurrentStatus.objects.update_or_create(
                 node=node,
                 defaults={
@@ -123,8 +128,6 @@ def poll_all_nodes_status(*args, **kwargs):
                 }
             )
 
-            # 每分钟归档一次历史数据
-            # Archive one data point per minute
             now = timezone.now()
             last = NodeMetricArchive.objects.filter(node=node).order_by('-timestamp').first()
             if not last or now - last.timestamp >= timedelta(seconds=60):
@@ -133,13 +136,13 @@ def poll_all_nodes_status(*args, **kwargs):
                     cpu_percent=usage.cpu_percent,
                     memory_used=usage.memory_used,
                     memory_total=usage.memory_total,
-                    gpu_info=json.dumps([
+                    gpu_info=[  # JSONField 自动序列化，无需 json.dumps()
                         {
                             'index': g.index,
                             'mem_used': g.gpu_mem_used,
                             'util': g.gpu_util
                         } for g in usage.gpus
-                    ]),
+                    ],
                     timestamp=now
                 )
 
@@ -147,88 +150,65 @@ def poll_all_nodes_status(*args, **kwargs):
             print(f"❌ 轮询节点 {node.ip_address} 失败: {e}")
             continue
 
+
 ################################################################
-# Araneae_main old ver                                         #
+# 测试任务                                                     #
 ################################################################
-@shared_task
-def publish_to_rabbitmq(task_name, payload):
+
+@shared_task(name="print_task")
+def print_task(*args, **kwargs):
+    """测试：打印收到的参数"""
+    print("📦 [print_task] args:", args)
+    print("📦 [print_task] kwargs:", kwargs)
+    return "Task executed successfully."
+
+
+@shared_task(name="call_hello_world")
+def call_hello_world():
+    """测试：Hello World"""
+    print("📦 [call_hello_world] Triggered")
+    return "Hello, world!"
+
+
+################################################################
+# 节点心跳检测（ControlNode 内部定时任务，每 60 秒执行）       #
+################################################################
+
+@shared_task(name='heartbeat_all_nodes')
+def heartbeat_all_nodes(*args, **kwargs):
     """
-    将任务发布到 RabbitMQ 队列。[abandoned]
-    :param task_name: 任务名称
-    :param payload: 任务数据
+    轮询所有启用节点的存活状态（通过 HTTP GET /health）。
+    - 响应 200 → Node.status = 'active'，更新 last_active_time
+    - 超时 / 连接失败 → Node.status = 'unreachable'
+    每 60 秒由 Celery Beat 触发一次。
     """
-    import pika
-    try:
-        # RabbitMQ 连接配置
-        connection = pika.BlockingConnection(pika.ConnectionParameters(
-            host='199.7.140.120',
-            port=15673,
-            credentials=pika.PlainCredentials('guest', '54321Ssdlh!!')
-        ))
-        channel = connection.channel()
+    import requests
+    from django.utils import timezone
 
-        # 声明队列
-        channel.queue_declare(queue='task_queue', durable=True)
+    print("💓 [heartbeat_all_nodes] Triggered")
+    nodes = Node.objects.filter(is_enabled=True)
 
-        # 发布消息
-        message = {
-            "task_name": task_name,
-            "payload": payload
-        }
-        channel.basic_publish(
-            exchange='',
-            routing_key='task_queue',
-            body=json.dumps(message),
-            properties=pika.BasicProperties(delivery_mode=2)  # 消息持久化
-        )
-        connection.close()
-        return f"Task {task_name} published to RabbitMQ"
-    except Exception as e:
-        return f"Failed to publish task {task_name}: {str(e)}"
+    for node in nodes:
+        url = f"http://{node.ip_address}:{node.port}/health"
+        try:
+            resp = requests.get(url, timeout=3)
+            alive = resp.status_code == 200
+        except requests.RequestException:
+            alive = False
 
+        new_status = 'active' if alive else 'unreachable'
+        update_fields = ['status']
 
-@shared_task
-def send_crawl_message(project_id, task_details):
-    """
-    Send a crawl message to RabbitMQ for the specified project.[abandoned]
-    """
-    connection = pika.BlockingConnection(pika.ConnectionParameters(
-        host='199.7.140.120',
-        port=15673,
-        credentials=pika.PlainCredentials('guest', '54321Ssdlh!!')
-    ))
-    channel = connection.channel()
-    channel.queue_declare(queue='crawl_tasks')
+        if node.status != new_status:
+            node.status = new_status
 
-    # Message to send
-    message = {
-        'project_id': project_id,
-        'task_details': task_details
-    }
+        if alive:
+            node.last_active_time = timezone.now()
+            update_fields.append('last_active_time')
 
-    channel.basic_publish(exchange='',
-                          routing_key='crawl_tasks',
-                          body=str(message))
-    connection.close()
+        node.save(update_fields=update_fields)
 
+        icon = "✅" if alive else "❌"
+        print(f"  {icon} Node [{node.name}] {node.ip_address} → {new_status}")
 
-@shared_task(bind=True)
-def start_crawler(project_path, script_name):
-    """
-    Start a crawler process.[abandoned]
-    :param project_path:
-    :param script_name:
-    :return:
-    """
-    response = requests.post(
-        'http://localhost:5000/run_task',
-        json={'project_path': project_path, 'script_name': script_name}
-    )
-    return response.json()
-
-if __name__ == '__main__':
-    recipe = {
-        "script_path": r"C:\Users\zhr62\PycharmProjects\djangoProject\Araneae_worknode\repo\5\6RzZR6\helloworld.py",
-        "args": "args",
-    }
-    dispatch_to_flask(recipe)
+    print(f"💓 [heartbeat_all_nodes] Done, checked {nodes.count()} node(s)")

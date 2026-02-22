@@ -27,6 +27,113 @@
 					<div ref="memChartRef" style="width:100%;height:250px;"></div>
 				</div>
 			</div>
+
+			<!-- 运行时环境能力 -->
+			<div class="mt-8">
+				<div class="flex items-center justify-between mb-3">
+					<h2 class="text-xl font-semibold text-gray-800">运行时环境</h2>
+					<button
+						:disabled="capLoading"
+						class="px-4 py-1.5 text-sm font-medium bg-gray-800 text-white rounded-lg hover:bg-gray-900 transition-colors disabled:opacity-50"
+						@click="doRefreshCapabilities"
+					>
+						<span v-if="capLoading">检测中...</span>
+						<span v-else>🔍 刷新检测</span>
+					</button>
+				</div>
+
+				<div v-if="capError" class="text-sm text-red-500 mb-2">{{ capError }}</div>
+
+				<div v-if="capabilities.length === 0 && !capLoading" class="text-sm text-gray-400">
+					暂无数据，点击"刷新检测"从执行节点获取运行时列表。
+				</div>
+
+				<!-- Badge grid -->
+				<div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+					<div
+						v-for="cap in capabilities"
+						:key="cap.key"
+						:class="[
+							'rounded-xl px-4 py-3 border transition-colors',
+							installJobs[cap.key]?.status === 'running' || installJobs[cap.key]?.status === 'pending'
+								? 'bg-yellow-50 border-yellow-300'
+								: cap.available
+									? 'bg-green-50 border-green-200'
+									: 'bg-gray-50 border-gray-200'
+						]"
+					>
+						<!-- Name + status dot -->
+						<div class="flex items-center gap-2 mb-1">
+							<span
+								:class="{
+									'bg-green-500': cap.available && !isInstalling(cap.key),
+									'bg-gray-300': !cap.available && !isInstalling(cap.key),
+									'bg-yellow-400 animate-pulse': isInstalling(cap.key),
+								}"
+								class="inline-block w-2 h-2 rounded-full flex-shrink-0"
+							></span>
+							<span class="font-semibold text-sm text-gray-800 truncate">{{ cap.name }}</span>
+						</div>
+
+						<!-- Status text / version -->
+						<p v-if="isInstalling(cap.key)" class="text-xs text-yellow-600">安装中...</p>
+						<p v-else-if="installJobs[cap.key]?.status === 'success'" class="text-xs text-green-600">安装成功 ✓</p>
+						<p v-else-if="installJobs[cap.key]?.status === 'failed'" class="text-xs text-red-500">安装失败</p>
+						<p v-else-if="cap.available" class="text-xs text-gray-500 truncate" :title="cap.version">{{ cap.version || '已安装' }}</p>
+						<p v-else class="text-xs text-gray-400">未安装</p>
+
+						<!-- Install button (show only when not installed and not currently installing) -->
+						<button
+							v-if="!cap.available && !isInstalling(cap.key) && installJobs[cap.key]?.status !== 'success'"
+							class="mt-2 w-full text-xs py-1 px-2 rounded-md bg-gray-700 text-white hover:bg-gray-900 transition-colors"
+							@click="doInstall(cap.key)"
+						>
+							📦 安装
+						</button>
+
+						<!-- View log button (show when a job exists) -->
+						<button
+							v-if="installJobs[cap.key]"
+							class="mt-1 w-full text-xs py-1 px-2 rounded-md border border-gray-300 text-gray-600 hover:bg-gray-100 transition-colors"
+							@click="openLog(cap.key)"
+						>
+							📋 查看日志
+						</button>
+					</div>
+				</div>
+
+				<!-- 安装日志面板 -->
+				<div v-if="logPanelKey" class="mt-6 rounded-xl border border-gray-200 overflow-hidden">
+					<div class="flex items-center justify-between bg-gray-800 px-4 py-2">
+						<span class="text-sm font-medium text-white">📋 安装日志 — {{ logPanelKey }}</span>
+						<button class="text-gray-400 hover:text-white text-xs" @click="logPanelKey = null">✕ 关闭</button>
+					</div>
+					<pre
+						ref="logPanelRef"
+						class="bg-gray-900 text-green-300 text-xs p-4 max-h-72 overflow-y-auto whitespace-pre-wrap font-mono"
+					>{{ installJobs[logPanelKey]?.log || '（暂无日志）' }}</pre>
+					<div class="bg-gray-800 px-4 py-1.5 flex gap-3 items-center">
+						<span
+							:class="{
+								'text-yellow-400': isInstalling(logPanelKey),
+								'text-green-400': installJobs[logPanelKey]?.status === 'success',
+								'text-red-400': installJobs[logPanelKey]?.status === 'failed',
+								'text-gray-400': installJobs[logPanelKey]?.status === 'pending',
+							}"
+							class="text-xs"
+						>
+							状态：{{ installJobs[logPanelKey]?.status }}
+						</span>
+						<button
+							v-if="!isInstalling(logPanelKey)"
+							class="ml-auto text-xs bg-gray-700 text-white px-3 py-1 rounded hover:bg-gray-600"
+							@click="doInstall(logPanelKey)"
+						>
+							重试安装
+						</button>
+					</div>
+				</div>
+			</div>
 		</div>
 		<div v-else class="flex justify-center items-center h-64 text-gray-500">
 			<p>Loading node details...</p>
@@ -50,6 +157,11 @@ const memChartRef = ref<HTMLElement | null>(null)
 let cpuChart: echarts.ECharts | null = null
 let memChart: echarts.ECharts | null = null
 let poller: number | null = null
+
+// 运行时能力
+const capabilities = ref<any[]>([])
+const capLoading = ref(false)
+const capError = ref<string | null>(null)
 
 // 获取节点基本信息
 const fetchNode = async () => {
@@ -175,12 +287,126 @@ const fetchResourceStatus = async () => {
 	}
 }
 
+/**
+ * 从控制节点读取已存储的运行时能力（不主动探测节点）
+ */
+const fetchCapabilities = async () => {
+	try {
+		const res = await ApiService.getNodeCapabilities(nodeId)
+		capabilities.value = res.data.capabilities || []
+	} catch (err) {
+		console.error('Error fetching stored capabilities:', err)
+	}
+}
+
+/**
+ * 主动触发执行节点探测，更新运行时能力列表
+ */
+const doRefreshCapabilities = async () => {
+	capLoading.value = true
+	capError.value = null
+	try {
+		const res = await ApiService.refreshNodeCapabilities(nodeId)
+		capabilities.value = res.data.capabilities || []
+	} catch (err: any) {
+		console.error('Error refreshing capabilities:', err)
+		capError.value = err?.response?.data?.error || '刷新失败，请检查节点是否在线'
+	} finally {
+		capLoading.value = false
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 软件安装器状态
+// ---------------------------------------------------------------------------
+// job 字典：key → {job_id, status, log, ...}  （运行时 key 作为索引）
+const installJobs = ref<Record<string, any>>({})
+const logPanelKey = ref<string | null>(null)
+const logPanelRef = ref<HTMLElement | null>(null)
+let installPoller: number | null = null
+
+/** 判断某个运行时是否正在安装中 */
+const isInstalling = (key: string | null) => {
+	if (!key) return false
+	const st = installJobs.value[key]?.status
+	return st === 'pending' || st === 'running'
+}
+
+/** 轮询所有活跃安装任务的进度 */
+const pollInstallJobs = async () => {
+	const activeKeys = Object.keys(installJobs.value).filter(k => isInstalling(k))
+	if (activeKeys.length === 0) return
+	for (const key of activeKeys) {
+		const jobId = installJobs.value[key]?.job_id
+		if (!jobId) continue
+		try {
+			const res = await ApiService.getInstallStatus(nodeId, jobId)
+			installJobs.value[key] = {...res.data, job_id: jobId}
+			// 自动滚动日志面板到底部
+			if (logPanelRef.value && logPanelKey.value === key) {
+				await nextTick()
+				logPanelRef.value.scrollTop = logPanelRef.value.scrollHeight
+			}
+			// 安装完成后自动刷新能力列表
+			const finalStatus = res.data.status
+			if (finalStatus === 'success' || finalStatus === 'failed') {
+				if (finalStatus === 'success') {
+					await fetchCapabilities()
+				}
+			}
+		} catch (err) {
+			console.error('Error polling install status:', err)
+		}
+	}
+}
+
+/**
+ * 发起安装任务
+ * @param key 运行时 key (e.g. 'node', 'python')
+ */
+const doInstall = async (key: string) => {
+	if (isInstalling(key)) return
+	// 乐观更新：立即显示「安装中」状态
+	installJobs.value[key] = {status: 'pending', log: '', job_id: null}
+	logPanelKey.value = key
+	try {
+		const res = await ApiService.installRuntime(nodeId, key)
+		const jobId = res.data.job_id
+		installJobs.value[key] = {status: 'pending', log: '', job_id: jobId}
+		// 启动轮询（如果还没启动）
+		if (installPoller === null) {
+			installPoller = window.setInterval(pollInstallJobs, 2000)
+		}
+	} catch (err: any) {
+		console.error('Error starting install:', err)
+		installJobs.value[key] = {
+			status: 'failed',
+			log: err?.response?.data?.error || '发起安装失败',
+			job_id: null,
+		}
+	}
+}
+
+/**
+ * 打开日志面板
+ */
+const openLog = (key: string) => {
+	logPanelKey.value = key
+	nextTick(() => {
+		if (logPanelRef.value) {
+			logPanelRef.value.scrollTop = logPanelRef.value.scrollHeight
+		}
+	})
+}
+
 // 组件生命周期
 onMounted(async () => {
 	await nextTick()
 	await fetchNode()
 	initCharts()
 	await fetchResourceStatus()
+	// 加载已存储的运行时列表（不会主动探测节点）
+	await fetchCapabilities()
 	poller = window.setInterval(fetchResourceStatus, 5000)
 	window.addEventListener('resize', () => {
 		cpuChart?.resize()
@@ -190,6 +416,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
 	if (poller !== null) clearInterval(poller)
+	if (installPoller !== null) clearInterval(installPoller)
 	cpuChart?.dispose()
 	memChart?.dispose()
 })

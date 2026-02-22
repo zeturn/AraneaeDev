@@ -62,6 +62,10 @@ class Node(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     is_enabled = models.BooleanField(default=True)
 
+    # Runtime capabilities (populated by refresh_capabilities action)
+    # 存储从执行节点拉取的运行时环境列表 [{key, name, available, version, path}, ...]
+    runtime_capabilities = models.JSONField(null=True, blank=True, default=list)
+
     def __str__(self):
         return self.name
 
@@ -204,7 +208,7 @@ class NodeCurrentStatus(models.Model):
     cpu_percent   = models.FloatField()
     memory_used   = models.BigIntegerField()
     memory_total  = models.BigIntegerField()
-    gpu_info      = models.JSONField()         # 存 [{"index":0,"mem_used":…,"util":…},…]
+    gpu_info      = models.JSONField(null=True, blank=True, default=list)  # 存 [{"index":0,"mem_used":…,"util":…},…]，无 GPU 时为 []
     updated_at    = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -250,7 +254,7 @@ class NodeMetricArchive(models.Model):
 
     # 中文：GPU 使用情况列表，每项格式 {"index": int, "mem_used": int, "util": float}
     # 英文：List of GPU usage info, each item format {"index": int, "mem_used": int, "util": float}
-    gpu_info = models.JSONField()
+    gpu_info = models.JSONField(null=True, blank=True, default=list)
 
     class Meta:
         verbose_name = '节点指标归档'

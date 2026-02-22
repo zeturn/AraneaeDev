@@ -65,7 +65,7 @@
 						<button
 							type="submit"
 							:disabled="loading"
-							class="w-full py-3 ring-green-400 text-green-600 rounded-lg hover:bg-green-200 transition-colors font-medium disabled:opacity-50"
+							class="w-full py-3 bg-gray-800 text-white rounded-lg hover:bg-gray-900 transition-colors font-medium font-medium disabled:opacity-50"
 						>
 							{{ loading ? '提交中...' : '创建' }}
 						</button>

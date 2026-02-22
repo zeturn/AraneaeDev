@@ -130,19 +130,32 @@ const ApiService = {
     updateNode(nodeId, node) {
         return apiClient.put(`/nodes/${nodeId}/`, node);
     },
-    orderSourceDistribution(data) {
-        return apiClient.post(`/distribute_source/`, data);
-    },
-    SourceDistributionList(projectId) {
-        return apiClient.get(`/distribute_source/project/${projectId}/`);
-    },
     deleteNode(nodeId) {
         return apiClient.delete(`/nodes/${nodeId}`);
     },
     getNodeStatus(nodeId) {
         return apiClient.get(`/nodes/${nodeId}/status/`);
     },
-    // Workplace
+    getNodeCapabilities(nodeId) {
+        // GET /api/nodes/{id}/capabilities/ — 读取已存储的运行时能力列表
+        return apiClient.get(`/nodes/${nodeId}/capabilities/`);
+    },
+    refreshNodeCapabilities(nodeId) {
+        // POST /api/nodes/{id}/refresh_capabilities/ — 主动拉取执行节点并刷新
+        return apiClient.post(`/nodes/${nodeId}/refresh_capabilities/`);
+    },
+    getNodeInstallers(nodeId) {
+        // GET /api/nodes/{id}/installers/ — 获取可安装运行时列表
+        return apiClient.get(`/nodes/${nodeId}/installers/`);
+    },
+    installRuntime(nodeId, key) {
+        // POST /api/nodes/{id}/install_runtime/ — 发起安装任务，body: {key}
+        return apiClient.post(`/nodes/${nodeId}/install_runtime/`, { key });
+    },
+    getInstallStatus(nodeId, jobId) {
+        // GET /api/nodes/{id}/install_status/{jobId}/ — 轮询安装进度
+        return apiClient.get(`/nodes/${nodeId}/install_status/${jobId}/`);
+    },
     getWorkplaces() {
         return apiClient.get('/workplaces/');
     },

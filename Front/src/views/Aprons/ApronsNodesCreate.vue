@@ -115,7 +115,7 @@ onMounted(() => {
 				<div class="mb-5 rounded-xl border border-gray-200 bg-gray-50 p-4">
 					<div class="flex flex-wrap items-center gap-2">
 						<button
-							class="rounded bg-blue-600 px-3 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-60"
+							class="rounded bg-gray-700 px-3 py-2 text-sm text-white hover:bg-gray-900 disabled:opacity-60"
 							type="button"
 							:disabled="discoverLoading"
 							@click="discoverNodes('local')"
@@ -124,12 +124,12 @@ onMounted(() => {
 						</button>
 						<input
 							v-model="customCidr"
-							class="min-w-[220px] flex-1 rounded border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+							class="min-w-[220px] flex-1 rounded border border-gray-300 bg-white px-3 py-2 text-sm focus:border-gray-500 focus:outline-none"
 							type="text"
 							placeholder="自定义网段 CIDR，如 192.168.1.0/24"
 						/>
 						<button
-							class="rounded bg-gray-800 px-3 py-2 text-sm text-white hover:bg-black disabled:opacity-60"
+							class="rounded bg-gray-700 px-3 py-2 text-sm text-white hover:bg-gray-900 disabled:opacity-60"
 							type="button"
 							:disabled="discoverLoading"
 							@click="discoverNodes('custom')"
@@ -192,7 +192,7 @@ onMounted(() => {
 				</div>
 
 				<button
-					class="w-full py-3 ring-green-400 text-green-600 rounded-lg hover:bg-green-200 transition-colors"
+					class="w-full py-3 bg-gray-800 text-white rounded-lg hover:bg-gray-900 transition-colors font-medium"
 					type="submit"
 				>
 					创建节点

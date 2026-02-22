@@ -13,7 +13,6 @@ import threading
 from concurrent import futures
 
 import psutil
-import gpustat
 import grpc
 
 from araneae_proto import resource_pb2, resource_pb2_grpc, node_registration_pb2_grpc, node_registration_pb2
@@ -29,13 +28,15 @@ class ResourceMonitorServicer(resource_pb2_grpc.ResourceMonitorServicer):
     英文：On Subscribe, continuously collect and send ResourceUsage
     """
     def Subscribe(self, request, context):
-        node_id = request.node_hash
+        # Fix: use correct proto field name (node_id, not node_hash)
+        node_id = request.node_id
         while True:
             # 内存
             vm = psutil.virtual_memory()
-            # GPU
+            # GPU — 延迟导入，避免在无 GPU 的 Docker 容器中顶层 import 崩溃
             gpus = []
             try:
+                import gpustat
                 for gpu in gpustat.new_query().gpus:
                     gpus.append(resource_pb2.GpuUsage(
                         index=gpu.index,
@@ -44,7 +45,7 @@ class ResourceMonitorServicer(resource_pb2_grpc.ResourceMonitorServicer):
                         gpu_util=gpu.utilization
                     ))
             except Exception as e:
-                print(f"Error querying GPU stats: {e}")  # GPUs 可能不存在或驱动异常
+                print(f"[INFO] GPU stats not available: {e}")  # 无 GPU 或驱动异常，正常跳过
 
             usage = resource_pb2.ResourceUsage(
                 node_id=node_id,

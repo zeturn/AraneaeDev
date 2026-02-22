@@ -148,7 +148,7 @@ onMounted(async () => {
 				</div>
 
 				<button
-					class="w-full py-3 ring-green-400 text-green-600 rounded-lg hover:bg-green-200 transition-colors"
+					class="w-full py-3 bg-gray-800 text-white rounded-lg hover:bg-gray-900 transition-colors font-medium"
 					type="submit"
 				>
 					创建工作区

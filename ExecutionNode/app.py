@@ -219,6 +219,71 @@ def system_info():
     return jsonify(info)
 
 
+@app.route('/capabilities', methods=['GET'])
+@require_node_token
+def capabilities():
+    """
+    [Araneae]获取当前节点的运行时能力列表
+    zh-CN: 检测并返回系统中可用的编程语言/运行时环境
+    en-US: Detect and return available programming language runtimes
+    @return: JSON list of runtime capability objects
+    """
+    from machine.capabilities import detect_runtime_capabilities
+    result = detect_runtime_capabilities()
+    app.logger.info("Runtime capabilities fetched: %d runtimes checked", len(result))
+    return jsonify(result)
+
+
+@app.route('/installers', methods=['GET'])
+@require_node_token
+def installers():
+    """
+    [Araneae]返回当前 OS 下支持自动安装的运行时列表
+    GET /installers
+    @return: JSON list of installable runtime meta objects
+    """
+    from machine.installer import get_installable_runtimes
+    result = get_installable_runtimes()
+    return jsonify(result)
+
+
+@app.route('/install', methods=['POST'])
+@require_node_token
+def install():
+    """
+    [Araneae]发起后台安装任务
+    POST /install  body: {"key": "node"}
+    @return: {"job_id": str}  or {"error": str}
+    """
+    from machine.installer import start_install
+    data = request.get_json(silent=True) or {}
+    key = data.get("key", "").strip()
+    if not key:
+        return jsonify({"error": "缺少 'key' 参数（运行时名称）"}), 400
+
+    result = start_install(key)
+    if result.get("error"):
+        return jsonify({"error": result["error"]}), 400
+
+    app.logger.info("Install job started: key=%s job_id=%s", key, result["job_id"])
+    return jsonify({"job_id": result["job_id"]}), 202
+
+
+@app.route('/install/<job_id>', methods=['GET'])
+@require_node_token
+def install_status(job_id):
+    """
+    [Araneae]轮询安装任务状态
+    GET /install/<job_id>
+    @return: {job_id, key, name, status, log, exit_code, started_at, finished_at}
+    """
+    from machine.installer import get_job_status
+    job = get_job_status(job_id)
+    if job is None:
+        return jsonify({"error": f"Job '{job_id}' 不存在"}), 404
+    return jsonify(job)
+
+
 process_registry = {}
 
 
@@ -359,16 +424,22 @@ celery_beat_process = None
 
 def start_celery_worker():
     """
-    启动 Celery Worker
-
+    启动 Celery Worker，监听本节点的专属队列 node_{identity_hash}。
+    ControlNode 使用精准路由向此队列投递任务，不再广播。
     """
     global celery_worker_process
     if celery_worker_process is None or celery_worker_process.poll() is not None:
-        print("[INFO] 启动 Celery Worker...")
+        # 读取本节点 identity hash 以构建专属队列名
+        with app.app_context():
+            identity = Identity.query.first()
+            node_hash = identity.identity_hash if identity else "default"
+
+        queue_name = f"node_{node_hash}"
+        print(f"[INFO] 启动 Celery Worker，监听队列: {queue_name}")
         multiprocessing.set_start_method('spawn', force=True)
         celery_worker_process = subprocess.Popen(
             ["celery", "-A", "tasks", "worker",
-             "-Q", "public_channel",
+             "-Q", queue_name,
              "--loglevel=info",
              "--pool=solo"
              ])  # --pool=solo 解决了 Windows 下的权限问题
@@ -379,7 +450,6 @@ def start_celery_worker():
 def start_celery_beat():
     """
     启动 Celery Beat
-
     """
     global celery_beat_process
     if celery_beat_process is None or celery_beat_process.poll() is not None:
@@ -389,6 +459,7 @@ def start_celery_beat():
             ["celery", "-A", "tasks", "beat", "--loglevel=info", "--pool=solo"])
     else:
         print("[INFO]Celery Beat 已在运行")
+
 
 
 def stop_celery():
