@@ -1,0 +1,22 @@
+{
+  "schema_version": "0.1.0",
+  "type": "basalt_rbac_bundle",
+  "permissions": [
+    { "permission_key": "araneae.admin", "display_name": "Araneae Admin", "resource": "araneae", "action": "admin", "scope": "app", "description": "Full administrative access to Araneae.", "status": "active" },
+    { "permission_key": "araneae.read", "display_name": "Araneae Read", "resource": "araneae", "action": "read", "scope": "app", "description": "Read access to Araneae resources.", "status": "active" },
+    { "permission_key": "araneae.write", "display_name": "Araneae Write", "resource": "araneae", "action": "write", "scope": "app", "description": "Create or update Araneae resources.", "status": "active" }
+  ],
+  "roles": [
+    { "role_key": "araneae_admin", "display_name": "Araneae Admin", "description": "Full access role for Araneae operators.", "assignable": true, "priority": 100, "status": "active" },
+    { "role_key": "araneae_editor", "display_name": "Araneae Editor", "description": "Write-capable role for Araneae operators.", "assignable": true, "priority": 60, "status": "active" },
+    { "role_key": "araneae_viewer", "display_name": "Araneae Viewer", "description": "Read-only role for Araneae operators.", "assignable": true, "priority": 20, "status": "active" }
+  ],
+  "role_permissions": [
+    { "role_key": "araneae_admin", "permission_key": "araneae.admin", "effect": "allow" },
+    { "role_key": "araneae_admin", "permission_key": "araneae.read", "effect": "allow" },
+    { "role_key": "araneae_admin", "permission_key": "araneae.write", "effect": "allow" },
+    { "role_key": "araneae_editor", "permission_key": "araneae.read", "effect": "allow" },
+    { "role_key": "araneae_editor", "permission_key": "araneae.write", "effect": "allow" },
+    { "role_key": "araneae_viewer", "permission_key": "araneae.read", "effect": "allow" }
+  ]
+}

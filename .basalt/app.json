@@ -1,0 +1,30 @@
+{
+  "schema_version": "0.1.0",
+  "type": "basalt_app_definition",
+  "app": {
+    "app_id": "araneae",
+    "app_key": "araneae",
+    "display_name": "Araneae",
+    "description": "BasaltPass import metadata for Araneae.",
+    "homepage_url": "http://localhost:5109",
+    "api_base_url": "http://localhost:8107",
+    "callback_urls": [
+      "http://localhost:8107/api/auth/basaltpass/callback/"
+    ],
+    "default_role_key": "araneae_viewer",
+    "status": "active",
+    "tags": [
+      "workplace",
+      "basalt"
+    ],
+    "service_ports": [
+      { "service": "controlnode_api", "port": 8107, "protocol": "http" },
+      { "service": "frontend_dev", "port": 5109, "protocol": "http" },
+      { "service": "execution_node", "port": 4107, "protocol": "http" }
+    ],
+    "metadata": {
+      "project_root": "C:/Users/Administrator/Desktop/WorkPlace/Araneae",
+      "oauth_record_name": "Araneae OAuth Client"
+    }
+  }
+}

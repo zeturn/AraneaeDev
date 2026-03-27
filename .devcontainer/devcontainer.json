@@ -1,0 +1,49 @@
+{
+  "name": "Araneae",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "runArgs": [
+    "--init",
+    "-p",
+    "8107:8107",
+    "-p",
+    "5109:5109",
+    "-p",
+    "4107:4107"
+  ],
+  "forwardPorts": [8107, 5109, 4107],
+  "portsAttributes": {
+    "8107": {
+      "label": "Araneae ControlNode API",
+      "onAutoForward": "notify"
+    },
+    "5109": {
+      "label": "Araneae Frontend",
+      "onAutoForward": "openBrowserOnce"
+    },
+    "4107": {
+      "label": "Araneae ExecutionNode",
+      "onAutoForward": "silent"
+    }
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "20"
+    },
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.11"
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "postCreateCommand": "bash -lc 'cd ControlNode && pip install --no-cache-dir -r requirements.txt && cd ../ExecutionNode && pip install --no-cache-dir -r requirements.txt && cd ../Front && npm install'",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode"
+      ]
+    }
+  }
+}

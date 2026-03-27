@@ -1,0 +1,25 @@
+{
+  "schema_version": "0.1.0",
+  "type": "basalt_app_resources",
+  "navigation": [
+    { "key": "home", "label": "Araneae", "path": "/", "url": "http://localhost:5109" },
+    { "key": "projects", "label": "Projects", "path": "/projects", "permission_key": "araneae.read" },
+    { "key": "nodes", "label": "Nodes", "path": "/nodes", "permission_key": "araneae.admin" }
+  ],
+  "oauth_clients": [
+    {
+      "client_name": "Araneae OAuth Client",
+      "redirect_uris": [
+        "http://localhost:8107/api/auth/basaltpass/callback/"
+      ]
+    }
+  ],
+  "webhooks": [],
+  "claims": [
+    { "claim": "app_id", "value": "araneae" }
+  ],
+  "extra": {
+    "feature_flags": [],
+    "settings": {}
+  }
+}
