@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 from datetime import timedelta
 from pathlib import Path
 import os
+from urllib.parse import urlparse, unquote
 from config_loader import load_config
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -112,11 +113,48 @@ WSGI_APPLICATION = 'Araneae.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases
 
+def _build_django_database_config():
+    database_url = os.environ.get('DJANGO_DATABASE_URL', '').strip()
+    if not database_url:
+        return {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': os.environ.get('DJANGO_DB_PATH') or (BASE_DIR / 'db.sqlite3'),
+        }
+
+    parsed = urlparse(database_url)
+    scheme = (parsed.scheme or '').lower()
+
+    if scheme in ('postgres', 'postgresql'):
+        return {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': parsed.path.lstrip('/'),
+            'USER': unquote(parsed.username or ''),
+            'PASSWORD': unquote(parsed.password or ''),
+            'HOST': parsed.hostname or '',
+            'PORT': str(parsed.port or 5432),
+        }
+
+    if scheme == 'mysql':
+        return {
+            'ENGINE': 'django.db.backends.mysql',
+            'NAME': parsed.path.lstrip('/'),
+            'USER': unquote(parsed.username or ''),
+            'PASSWORD': unquote(parsed.password or ''),
+            'HOST': parsed.hostname or '',
+            'PORT': str(parsed.port or 3306),
+        }
+
+    if scheme in ('sqlite', 'sqlite3'):
+        return {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': parsed.path or os.environ.get('DJANGO_DB_PATH') or (BASE_DIR / 'db.sqlite3'),
+        }
+
+    raise RuntimeError(f'Unsupported DJANGO_DATABASE_URL scheme: {scheme}')
+
+
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.environ.get('DJANGO_DB_PATH') or (BASE_DIR / 'db.sqlite3'),
-    }
+    'default': _build_django_database_config()
 }
 
 

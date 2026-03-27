@@ -11,10 +11,12 @@ RUN apt-get update \
         gcc \
         libjpeg62-turbo-dev \
         zlib1g-dev \
+        libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir psycopg2-binary==2.9.10 \
     && pip install --no-cache-dir gunicorn==22.0.0
 
 COPY . .
