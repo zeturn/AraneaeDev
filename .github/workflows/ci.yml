@@ -74,6 +74,29 @@ jobs:
       - name: Type check
         run: npm run typecheck
 
+  gorefactor-quality:
+    name: GoRefactor Test And Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: GoRefactor
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: GoRefactor/go.mod
+          cache: true
+          cache-dependency-path: GoRefactor/go.sum
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Build
+        run: go build ./...
+
   controlnode-quality:
     name: ControlNode Test And Deploy Check
     runs-on: ubuntu-latest

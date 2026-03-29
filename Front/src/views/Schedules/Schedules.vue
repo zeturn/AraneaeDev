@@ -45,7 +45,7 @@ defineComponent({
 });
 
 const route = useRoute();
-const scheduleId = Number(route.params.id);
+const scheduleId = String(route.params.id || '');
 
 const schedule = ref<Record<string, any>>({});
 // === 以下功能：响应式工作区ID定义 ===

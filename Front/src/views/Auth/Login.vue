@@ -71,6 +71,10 @@ export default {
   },
   methods: {
     loginWithBasaltPass() {
+      if ((import.meta.env.VITE_API_FLAVOR || 'django').toLowerCase() === 'go') {
+        this.loginError = 'Go API 模式暂不支持 BasaltPass 登录，请使用本地账号登录。';
+        return;
+      }
       const backendBase = import.meta.env.VITE_BACKEND_BASE_URL || 'http://localhost:8107';
       const next = encodeURIComponent('/aprons/workplaces');
       window.location.href = `${backendBase}/api/auth/basaltpass/login/?next=${next}`;
@@ -98,7 +102,15 @@ export default {
 
       ApiService.login({ username: this.username, password: this.password })
         .then(response => {
-          localStorage.setItem('token', response.data.access);
+          const token = response.data.access || response.data.token;
+          if (!token) {
+            this.loginError = '登录响应缺少 token。';
+            return;
+          }
+          localStorage.setItem('token', token);
+          if (response.data.refresh) {
+            localStorage.setItem('refresh_token', response.data.refresh);
+          }
           localStorage.setItem('csrf_token', response.data.csrf || '');
           this.$router.push('/aprons/workplaces');
         })

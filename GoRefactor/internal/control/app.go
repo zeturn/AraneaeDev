@@ -1,0 +1,329 @@
+package control
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"sync"
+	"time"
+
+	"araneae-go/gen/pb"
+	"araneae-go/internal/common"
+
+	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
+	amqp "github.com/rabbitmq/amqp091-go"
+	"github.com/robfig/cron/v3"
+	"go.uber.org/zap"
+	"google.golang.org/grpc"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+)
+
+type App struct {
+	pb.UnimplementedArtifactServiceServer
+
+	cfg             common.ControlConfig
+	log             *zap.Logger
+	db              *gorm.DB
+	http            *fiber.App
+	cron            *cron.Cron
+	cronEntries     map[string]cron.EntryID
+	scheduleEntries map[string]cron.EntryID
+	cronMu          sync.Mutex
+	rabbitConn      *amqp.Connection
+	rabbitCh        *amqp.Channel
+	grpcSrv         *grpc.Server
+}
+
+type chainRunMeta struct {
+	ChainID    string
+	ChainIndex int
+	ChainTotal int
+}
+
+var errQueueUnavailable = errors.New("task queue publisher unavailable")
+
+func NewApp(cfg common.ControlConfig) (*App, error) {
+	log, err := zap.NewProduction()
+	if err != nil {
+		return nil, err
+	}
+
+	if err := os.MkdirAll(filepath.Dir(cfg.DBPath), 0o755); err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(cfg.ArtifactRoot, 0o755); err != nil {
+		return nil, err
+	}
+
+	db, err := gorm.Open(sqlite.Open(cfg.DBPath), &gorm.Config{})
+	if err != nil {
+		return nil, err
+	}
+	if err := db.AutoMigrate(common.AutoMigrateModels()...); err != nil {
+		return nil, err
+	}
+
+	app := &App{
+		cfg:             cfg,
+		log:             log,
+		db:              db,
+		http:            fiber.New(),
+		cron:            cron.New(cron.WithSeconds()),
+		cronEntries:     make(map[string]cron.EntryID),
+		scheduleEntries: make(map[string]cron.EntryID),
+	}
+
+	if err := app.seedAdmin(); err != nil {
+		return nil, err
+	}
+	if err := app.initRabbit(); err != nil {
+		return nil, err
+	}
+	app.setupRoutes()
+	if err := app.loadCronTasks(); err != nil {
+		return nil, err
+	}
+	if err := app.loadCronSchedules(); err != nil {
+		return nil, err
+	}
+	return app, nil
+}
+
+func (a *App) Run(ctx context.Context) error {
+	a.cron.Start()
+
+	grpcLis, err := netListen("tcp", a.cfg.GRPCAddr)
+	if err != nil {
+		return err
+	}
+	a.grpcSrv = grpc.NewServer()
+	pb.RegisterArtifactServiceServer(a.grpcSrv, a)
+	go func() {
+		a.log.Info("control grpc started", zap.String("addr", a.cfg.GRPCAddr))
+		if err := a.grpcSrv.Serve(grpcLis); err != nil {
+			a.log.Error("grpc serve failed", zap.Error(err))
+		}
+	}()
+
+	errCh := make(chan error, 1)
+	go func() {
+		a.log.Info("control http started", zap.String("addr", a.cfg.HTTPAddr))
+		errCh <- a.http.Listen(a.cfg.HTTPAddr)
+	}()
+
+	select {
+	case err := <-errCh:
+		return err
+	case <-ctx.Done():
+		return a.Shutdown(context.Background())
+	}
+}
+
+func (a *App) Shutdown(ctx context.Context) error {
+	a.cron.Stop()
+	if a.grpcSrv != nil {
+		a.grpcSrv.GracefulStop()
+	}
+	if a.rabbitCh != nil {
+		_ = a.rabbitCh.Close()
+	}
+	if a.rabbitConn != nil {
+		_ = a.rabbitConn.Close()
+	}
+	return a.http.ShutdownWithContext(ctx)
+}
+
+func (a *App) seedAdmin() error {
+	var count int64
+	if err := a.db.Model(&common.User{}).Where("username = ?", "admin").Count(&count).Error; err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+	hash, err := hashPassword("admin123")
+	if err != nil {
+		return err
+	}
+	return a.db.Create(&common.User{
+		ID:           uuid.NewString(),
+		Username:     "admin",
+		PasswordHash: hash,
+		Role:         "admin",
+		CreatedAt:    time.Now(),
+	}).Error
+}
+
+func (a *App) initRabbit() error {
+	conn, err := amqp.Dial(a.cfg.RabbitURL)
+	if err != nil {
+		return err
+	}
+	ch, err := conn.Channel()
+	if err != nil {
+		_ = conn.Close()
+		return err
+	}
+	if err := ch.ExchangeDeclare(a.cfg.RabbitExchange, "direct", true, false, false, false, nil); err != nil {
+		_ = ch.Close()
+		_ = conn.Close()
+		return err
+	}
+	a.rabbitConn = conn
+	a.rabbitCh = ch
+	return nil
+}
+
+func (a *App) publishTaskRun(task common.Task, source string, scheduleID string) (*common.TaskRun, error) {
+	return a.publishRun(task.ID, scheduleID, source, task.ProjectID, task.VersionID, task.EntryCommand, task.NodeQueue, nil)
+}
+
+func (a *App) publishScheduleRun(schedule common.Schedule, source string) (*common.TaskRun, error) {
+	steps, err := a.resolveScheduleExecutionSteps(schedule)
+	if err != nil {
+		return nil, err
+	}
+	if len(steps) == 0 {
+		steps = []scheduleExecutionStep{{
+			TaskID:       schedule.ID,
+			ProjectID:    schedule.ProjectID,
+			VersionID:    schedule.VersionID,
+			EntryCommand: schedule.EntryCommand,
+			NodeQueue:    schedule.NodeQueue,
+		}}
+	}
+
+	var chainMeta *chainRunMeta
+	if len(steps) > 1 {
+		chainMeta = &chainRunMeta{
+			ChainID:    uuid.NewString(),
+			ChainIndex: 0,
+			ChainTotal: len(steps),
+		}
+	}
+
+	first := steps[0]
+	run, err := a.publishRun(first.TaskID, schedule.ID, source, first.ProjectID, first.VersionID, first.EntryCommand, first.NodeQueue, chainMeta)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now()
+	if err := a.db.Model(&common.Schedule{}).Where("id = ?", schedule.ID).Update("last_triggered_at", &now).Error; err != nil {
+		a.log.Warn("failed to update schedule last_triggered_at", zap.Error(err), zap.String("schedule_id", schedule.ID))
+	}
+	return run, nil
+}
+
+func (a *App) publishRun(taskID, scheduleID, source, projectID, versionID, entryCommand, nodeQueue string, chainMeta *chainRunMeta) (*common.TaskRun, error) {
+	if taskID == "" {
+		taskID = scheduleID
+	}
+	if nodeQueue == "" {
+		nodeQueue = "default"
+	}
+	run := &common.TaskRun{
+		ID:            uuid.NewString(),
+		TaskID:        taskID,
+		ScheduleID:    scheduleID,
+		TriggerSource: source,
+		Status:        "queued",
+		CreatedAt:     time.Now(),
+		CorrelationID: uuid.NewString(),
+	}
+	if chainMeta != nil {
+		run.ChainID = chainMeta.ChainID
+		run.ChainIndex = chainMeta.ChainIndex
+		run.ChainTotal = chainMeta.ChainTotal
+	}
+	if err := a.db.Create(run).Error; err != nil {
+		return nil, err
+	}
+
+	if a.rabbitCh == nil {
+		_ = a.db.Model(&common.TaskRun{}).Where("id = ?", run.ID).Updates(map[string]interface{}{
+			"status":      "failed",
+			"output":      errQueueUnavailable.Error(),
+			"finished_at": time.Now(),
+		}).Error
+		return nil, errQueueUnavailable
+	}
+
+	payload := queueTaskMessage{
+		RunID:        run.ID,
+		TaskID:       taskID,
+		ProjectID:    projectID,
+		VersionID:    versionID,
+		EntryCommand: entryCommand,
+		NodeQueue:    nodeQueue,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	routingKey := "tasks." + nodeQueue
+	if err := a.rabbitCh.PublishWithContext(context.Background(), a.cfg.RabbitExchange, routingKey, false, false, amqp.Publishing{
+		ContentType:  "application/json",
+		DeliveryMode: amqp.Persistent,
+		Body:         body,
+		MessageId:    run.CorrelationID,
+		Timestamp:    time.Now(),
+	}); err != nil {
+		_ = a.db.Model(&common.TaskRun{}).Where("id = ?", run.ID).Updates(map[string]interface{}{
+			"status":      "failed",
+			"output":      err.Error(),
+			"finished_at": time.Now(),
+		}).Error
+		return nil, err
+	}
+	return run, nil
+}
+
+func computeSHA256(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+func writeArtifactFile(baseDir, projectID, versionID, fileName string, data []byte) (string, string, error) {
+	safeName := filepath.Base(fileName)
+	if safeName == "." || safeName == string(filepath.Separator) || safeName == "" {
+		safeName = "artifact.zip"
+	}
+	projectDir := filepath.Join(baseDir, projectID)
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		return "", "", err
+	}
+	path := filepath.Join(projectDir, fmt.Sprintf("%s_%s", versionID, safeName))
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return "", "", err
+	}
+	return path, computeSHA256(data), nil
+}
+
+func loadUploadedFile(c *fiber.Ctx, fieldName string) ([]byte, string, error) {
+	h, err := c.FormFile(fieldName)
+	if err != nil {
+		return nil, "", err
+	}
+	f, err := h.Open()
+	if err != nil {
+		return nil, "", err
+	}
+	defer f.Close()
+	b, err := io.ReadAll(f)
+	if err != nil {
+		return nil, "", err
+	}
+	if len(b) == 0 {
+		return nil, "", errors.New("uploaded file is empty")
+	}
+	return b, h.Filename, nil
+}

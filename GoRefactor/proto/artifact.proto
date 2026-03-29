@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package araneae.artifact;
+
+option go_package = "araneae-go/gen/pb;pb";
+
+service ArtifactService {
+  rpc GetArtifact(GetArtifactRequest) returns (GetArtifactResponse);
+}
+
+message GetArtifactRequest {
+  string project_id = 1;
+  string version_id = 2;
+}
+
+message GetArtifactResponse {
+  string file_name = 1;
+  bytes content = 2;
+  string sha256 = 3;
+}

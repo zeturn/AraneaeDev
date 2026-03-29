@@ -22,7 +22,7 @@
 </template>
 
 <script>
-import axios from "axios";
+import ApiService from "@/services/ApiService";
 
 export default {
   name: "Logout",
@@ -34,10 +34,7 @@ export default {
   methods: {
     async performLogout() {
       try {
-        const refreshToken = localStorage.getItem("refresh_token");
-        if (refreshToken) {
-          await axios.post("http://127.0.0.1:8000/api/logout/", {refresh: refreshToken});
-        }
+        await ApiService.logout();
       } catch (error) {
         console.error("Logout failed:", error.response ? error.response.data : error.message);
       } finally {

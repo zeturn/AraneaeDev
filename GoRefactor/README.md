@@ -1,0 +1,136 @@
+# Go Fiber Refactor (Control + Executor)
+
+这是 Araneae 的 Go Fiber 重构版本，包含：
+
+- Control 服务：用户认证、项目仓库上传、任务定义、定时触发、手动/API 触发
+- Executor 服务：RabbitMQ 消费任务、gRPC 拉取制品、执行任务并回调结果
+- Service to Service 通信：
+  - RabbitMQ：Control -> Executor 任务下发
+  - gRPC：Executor -> Control 拉取上传的项目制品
+
+## 目录
+
+- cmd/control: 控制端入口
+- cmd/executor: 执行端入口
+- internal/control: 控制端核心逻辑
+- internal/executor: 执行端核心逻辑
+- proto: gRPC 协议
+- gen/pb: 生成代码
+- examples/simple-job: 可上传的示例项目
+- scripts/e2e.sh: 上传 -> 定时任务 -> 自动执行闭环脚本
+
+## 默认端口
+
+- Control HTTP: 8180
+- Control gRPC: 9190
+- Executor HTTP: 4280
+- RabbitMQ: 5672
+
+## 启动依赖
+
+在 GoRefactor 目录执行：
+
+- docker compose up -d rabbitmq
+
+## 启动服务
+
+终端 1：
+
+- go run ./cmd/control
+
+终端 2：
+
+- go run ./cmd/executor
+
+## 跨服务器部署（1 控制节点 + N 工作节点）
+
+如果你要将控制节点与工作节点部署在不同服务器，请使用以下模板与指南：
+
+- 部署指南：deploy/MULTI_NODE_DEPLOYMENT.md
+- 控制节点环境变量模板：deploy/control.env.example
+- 工作节点环境变量模板：deploy/executor.env.example
+- systemd 模板：
+  - deploy/systemd/araneae-control.service
+  - deploy/systemd/araneae-executor.service
+
+核心要点：
+
+- 控制节点对工作节点开放 gRPC 端口（默认 9190）。
+- 控制节点 HTTP（默认 8180）需可被工作节点回调访问。
+- 所有节点共享同一个 RabbitMQ。
+- 通过任务里的 node_queue 字段，把任务路由到对应 EXECUTOR_QUEUE。
+
+## 前端接入（Front）
+
+在 Front 的环境变量中配置：
+
+- VITE_API_FLAVOR=go
+- VITE_BACKEND_BASE_URL=http://localhost:8180
+
+这样 Front 会使用 Go 控制端 API（/api/v1）。
+
+## 核心 API
+
+1. 登录
+- POST /api/v1/auth/login
+- body: {"username":"admin","password":"admin123"}
+
+2. 创建项目
+- POST /api/v1/projects
+- header: Authorization: Bearer <token>
+
+3. 上传项目代码包
+- POST /api/v1/projects/:id/upload
+- multipart: file=<zip>
+
+4. 创建任务（支持定时）
+- POST /api/v1/tasks
+- body 示例：
+  {
+    "name": "demo",
+    "project_id": "...",
+    "version_id": "...",
+    "entry_command": "bash run.sh",
+    "cron_expr": "*/30 * * * * *",
+    "node_queue": "default"
+  }
+
+5. 手动/API 触发任务
+- POST /api/v1/tasks/:id/trigger
+
+6. 查询运行记录
+- GET /api/v1/tasks/:id/runs
+
+## 权限与安全
+
+- 内置 JWT 鉴权
+- 角色控制：admin/operator/viewer
+- 默认管理员：admin / admin123（建议首次登录后修改）
+- 执行端回调 Control 使用 X-Execution-Key
+
+## 一键闭环验证
+
+- chmod +x scripts/e2e.sh
+- ./scripts/e2e.sh
+
+脚本会完成：
+
+1. 启动 RabbitMQ
+2. 启动 Control 与 Executor
+3. 登录并创建项目
+4. 上传示例 zip
+5. 创建定时任务
+6. 等待自动触发并打印运行结果
+
+## 可选：RabbitMQ 实链路集成测试
+
+该测试覆盖 Control 端 `trigger -> RabbitMQ publish -> callback -> run 状态更新`。
+
+本地运行：
+
+- docker compose up -d rabbitmq
+- RABBITMQ_URL=amqp://guest:guest@localhost:5672/ go test -tags=integration ./internal/control -run TestControlIntegration_TriggerQueueCallbackFlow -v
+
+GitHub Actions：
+
+- 使用独立工作流 `GoRefactor Integration`（手动触发，不影响主 CI）。

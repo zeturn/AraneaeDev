@@ -12,18 +12,23 @@
 import axios from 'axios';
 
 
-const backendBase = import.meta.env.VITE_BACKEND_BASE_URL || 'http://localhost:8107';
+const apiFlavor = (import.meta.env.VITE_API_FLAVOR || 'django').toLowerCase();
+const isGoApi = apiFlavor === 'go';
+const backendBase = import.meta.env.VITE_BACKEND_BASE_URL || (isGoApi ? 'http://localhost:8180' : 'http://localhost:8107');
 const apiClient = axios.create({
-    baseURL: `${backendBase}/api`,
+    baseURL: isGoApi ? `${backendBase}/api/v1` : `${backendBase}/api`,
     withCredentials: true,  // 重要：允许跨域 cookie 传输
     headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
-        'X-CSRFToken': localStorage.getItem('csrf_token'), // 添加CSRF令牌
+        'X-CSRFToken': localStorage.getItem('csrf_token') || '', // 添加CSRF令牌
     },
 });
 
 const setCsrfToken = async () => {
+    if (isGoApi) {
+        return '';
+    }
     try {
         const token = localStorage.getItem('token');
         const response = await axios.get(`${backendBase}/api/csrf-token/`, {
@@ -43,12 +48,14 @@ const setCsrfToken = async () => {
 };
 
 apiClient.interceptors.request.use(async config => {
-    try {
-        // 在每个请求之前确保获取到最新的 CSRF 令牌
-        const csrfToken = await setCsrfToken();
-        config.headers['X-CSRFToken'] = csrfToken; // 设置最新的 CSRF 令牌
-    } catch (error) {
-        console.error('Error setting CSRF token:', error);
+    if (!isGoApi) {
+        try {
+            // 在每个请求之前确保获取到最新的 CSRF 令牌
+            const csrfToken = await setCsrfToken();
+            config.headers['X-CSRFToken'] = csrfToken; // 设置最新的 CSRF 令牌
+        } catch (error) {
+            console.error('Error setting CSRF token:', error);
+        }
     }
 
     const token = localStorage.getItem('token');
@@ -67,6 +74,66 @@ apiClient.interceptors.request.use(config => {
     }
     return config;
 });
+
+const parseOrderPayload = order => {
+    if (!order) {
+        return null;
+    }
+    if (typeof order === 'string') {
+        try {
+            return JSON.parse(order);
+        } catch (_) {
+            return null;
+        }
+    }
+    if (typeof order === 'object') {
+        return order;
+    }
+    return null;
+};
+
+const normalizeGoSchedule = (schedule, workplaceId = 'go-workspace') => {
+    const parsedOrder = parseOrderPayload(schedule?.order);
+    const fallbackOrder = {
+        name: schedule?.name || '',
+        schedule: [
+            {
+                task_id: schedule?.task_id || '',
+                name: schedule?.name || '',
+                project_id: schedule?.project_id || '',
+                node: [schedule?.node_queue || 'default'],
+                crons: schedule?.cron_expr || '',
+            },
+        ],
+    };
+
+    return {
+        ...schedule,
+        mode: schedule?.mode || 'recurring',
+        workplace: schedule?.workplace || workplaceId,
+        updated_at: schedule?.updated_at || schedule?.created_at,
+        order: parsedOrder || fallbackOrder,
+    };
+};
+
+const buildGoSchedulePayload = schedule => {
+    const parsedOrder = parseOrderPayload(schedule?.order);
+    const firstStep = parsedOrder?.schedule?.[0] || {};
+
+    return {
+        name: schedule?.name || firstStep?.name || 'schedule',
+        description: schedule?.description || '',
+        mode: schedule?.mode || 'recurring',
+        enabled: schedule?.enabled !== false,
+        task_id: schedule?.task_id || firstStep?.task_id || undefined,
+        project_id: schedule?.project_id || firstStep?.project_id || undefined,
+        version_id: schedule?.version_id || undefined,
+        entry_command: schedule?.entry_command || undefined,
+        cron_expr: schedule?.cron_expr || firstStep?.crons || undefined,
+        node_queue: schedule?.node_queue || firstStep?.node?.[0] || 'default',
+        order: schedule?.order || parsedOrder || undefined,
+    };
+};
 
 const ApiService = {
     getUsers() {
@@ -172,15 +239,43 @@ const ApiService = {
         );
     },
     getWorkplaceProjects(workplaceId) {
+        if (isGoApi) {
+            return apiClient.get('/projects');
+        }
         return apiClient.get(`/workplaces/${workplaceId}/workplaces_projects/`);
     },
     getWorkplaceTaskRecords(workplaceId) {
+        if (isGoApi) {
+            return apiClient.get('/runs').then(resp => ({
+                ...resp,
+                data: {
+                    records: resp.data.records || [],
+                    count: resp.data.count || 0,
+                },
+            }));
+        }
         return apiClient.get(`/workplaces/${workplaceId}/workplace_taskrecords/`);
     },
     getWorkplaceSchedules(workplaceId) {
+        if (isGoApi) {
+            return apiClient.get('/schedules').then(resp => ({
+                ...resp,
+                data: Array.isArray(resp.data)
+                    ? resp.data.map(item => normalizeGoSchedule(item, workplaceId))
+                    : [],
+            }));
+        }
         return apiClient.get(`/workplaces/${workplaceId}/workplaces_schedules/`);
     },
     getWorkplaceTasks(workplaceId) {
+        if (isGoApi) {
+            return apiClient.get('/tasks').then(resp => ({
+                ...resp,
+                data: {
+                    tasks: Array.isArray(resp.data) ? resp.data : [],
+                },
+            }));
+        }
         return apiClient.get(`/workplaces/${workplaceId}/workplaces_tasks/`);
     },
     createWorkplace(workplace) {
@@ -200,12 +295,23 @@ const ApiService = {
     },
     // Project
     getMyProjects() {
+        if (isGoApi) {
+            return apiClient.get('/projects');
+        }
         return apiClient.get(`/projects/my_projects/`);
     },
     getProject(projectId) {
+        if (isGoApi) {
+            return apiClient.get(`/projects/${projectId}`);
+        }
         return apiClient.get(`/projects/${projectId}/`);
     },
     createProject(project) { // 创建项目
+        if (isGoApi) {
+            return apiClient.post('/projects', {
+                name: project?.name || project?.title || 'untitled-project',
+            });
+        }
         return apiClient.post(`/projects/`, project);
     },
     updateProject(projectId, project) {
@@ -215,12 +321,27 @@ const ApiService = {
         return apiClient.delete(`/projects/${projectId}/`);
     },
     getVersionsFromProject(projectId) {
+        if (isGoApi) {
+            return apiClient.get(`/projects/${projectId}/versions`);
+        }
         return apiClient.get(`/projects/${projectId}/versions/`);
     },
     getReposFromProject(projectId) {
         return apiClient.get(`/projects/${projectId}/get_repo/`);
     },
     uploadCode(formData) {
+        if (isGoApi) {
+            const projectId = formData.get('project_id');
+            if (!projectId) {
+                throw new Error('project_id is required for Go API upload');
+            }
+            return apiClient.post(`/projects/${projectId}/upload`, formData, {
+                withCredentials: false,
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                },
+            });
+        }
         return apiClient.post(`/upload-script/`, formData, {
             withCredentials: true,
             headers: {
@@ -231,21 +352,72 @@ const ApiService = {
     },
     //  Schedule
     getSchedules() {
+        if (isGoApi) {
+            return apiClient.get('/schedules').then(resp => ({
+                ...resp,
+                data: Array.isArray(resp.data)
+                    ? resp.data.map(item => normalizeGoSchedule(item))
+                    : [],
+            }));
+        }
         return apiClient.get('/schedules/');
     },
     getSchedule(scheduleId) {
+        if (isGoApi) {
+            return apiClient.get(`/schedules/${scheduleId}`).then(resp => ({
+                ...resp,
+                data: normalizeGoSchedule(resp.data),
+            }));
+        }
         return apiClient.get(`/schedules/${scheduleId}/`);
     },
     createSchedule(schedule) { // 创建日程
+        if (isGoApi) {
+            return apiClient.post('/schedules', buildGoSchedulePayload(schedule)).then(resp => ({
+                ...resp,
+                data: normalizeGoSchedule(resp.data, schedule?.workplace || 'go-workspace'),
+            }));
+        }
         return apiClient.post('/create-task-chain/', schedule);
     },
     updateSchedule(scheduleId, schedule) {
+        if (isGoApi) {
+            return apiClient.put(`/schedules/${scheduleId}`, buildGoSchedulePayload(schedule)).then(resp => ({
+                ...resp,
+                data: normalizeGoSchedule(resp.data, schedule?.workplace || 'go-workspace'),
+            }));
+        }
         return apiClient.put(`/schedules/${scheduleId}/`, schedule);
     },
     deleteSchedule(scheduleId) {
+        if (isGoApi) {
+            return apiClient.delete(`/schedules/${scheduleId}`);
+        }
         return apiClient.delete(`/schedules/${scheduleId}/`);
     },
+    enableSchedule(scheduleId) {
+        if (isGoApi) {
+            return apiClient.post(`/schedules/${scheduleId}/enable`);
+        }
+        return apiClient.post(`/schedules/${scheduleId}/enable/`);
+    },
+    disableSchedule(scheduleId) {
+        if (isGoApi) {
+            return apiClient.post(`/schedules/${scheduleId}/disable`);
+        }
+        return apiClient.post(`/schedules/${scheduleId}/disable/`);
+    },
     createTask(task) {
+        if (isGoApi) {
+            return apiClient.post('/tasks', {
+                name: task.name,
+                project_id: task.project_id,
+                version_id: task.version_id,
+                entry_command: task.entry_command || 'bash run.sh',
+                cron_expr: task.cron_expr || '',
+                node_queue: task.node_queue || 'default',
+            });
+        }
         return apiClient.post('/tasks/', task);
     },
     updateTask(taskId, task) {
@@ -256,13 +428,25 @@ const ApiService = {
     },
     //  Task
     getTasks() {
+        if (isGoApi) {
+            return apiClient.get('/tasks');
+        }
         return apiClient.get('/tasks/');
     },
     //  Account
     login(credentials) {
+        if (isGoApi) {
+            return apiClient.post('/auth/login', credentials);
+        }
         return apiClient.post('/token/', credentials);
     },
     logout() {
+        if (isGoApi) {
+            localStorage.removeItem('token');
+            localStorage.removeItem('refresh_token');
+            localStorage.removeItem('csrf_token');
+            return Promise.resolve({ data: { ok: true } });
+        }
         return apiClient.post('/logout/');
     }
 };

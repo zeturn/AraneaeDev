@@ -1,0 +1,18 @@
+[Unit]
+Description=Araneae GoRefactor Executor Node
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=araneae
+Group=araneae
+WorkingDirectory=/opt/araneae/GoRefactor
+EnvironmentFile=/etc/araneae/executor.env
+ExecStart=/opt/araneae/GoRefactor/bin/araneae-executor
+Restart=always
+RestartSec=2
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

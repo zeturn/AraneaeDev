@@ -38,7 +38,7 @@
 						></textarea>
 					</div>
 					<!-- 模式 -->
-					<div>
+					<div v-if="!isGoApi">
 						<label for="mode" class="block mb-2 text-gray-700 text-sm font-medium">模式</label>
 						<select
 							v-model="form.mode"
@@ -50,8 +50,61 @@
 							<option value="recurring">循环</option>
 						</select>
 					</div>
+					<div v-if="isGoApi">
+						<label for="project_id" class="block mb-2 text-gray-700 text-sm font-medium">项目 ID</label>
+						<input
+							v-model="goForm.project_id"
+							id="project_id"
+							type="text"
+							required
+							class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400"
+							placeholder="请输入项目 ID"
+						/>
+					</div>
+					<div v-if="isGoApi">
+						<label for="version_id" class="block mb-2 text-gray-700 text-sm font-medium">版本 ID</label>
+						<input
+							v-model="goForm.version_id"
+							id="version_id"
+							type="text"
+							required
+							class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400"
+							placeholder="请输入版本 ID"
+						/>
+					</div>
+					<div v-if="isGoApi">
+						<label for="entry_command" class="block mb-2 text-gray-700 text-sm font-medium">执行命令</label>
+						<input
+							v-model="goForm.entry_command"
+							id="entry_command"
+							type="text"
+							required
+							class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400"
+							placeholder="例如: bash run.sh"
+						/>
+					</div>
+					<div v-if="isGoApi">
+						<label for="cron_expr" class="block mb-2 text-gray-700 text-sm font-medium">Cron 表达式</label>
+						<input
+							v-model="goForm.cron_expr"
+							id="cron_expr"
+							type="text"
+							class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400"
+							placeholder="例如: */30 * * * * *（留空表示只支持手动/API触发）"
+						/>
+					</div>
+					<div v-if="isGoApi">
+						<label for="node_queue" class="block mb-2 text-gray-700 text-sm font-medium">节点队列</label>
+						<input
+							v-model="goForm.node_queue"
+							id="node_queue"
+							type="text"
+							class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400"
+							placeholder="默认 default"
+						/>
+					</div>
 					<!-- 启用 -->
-					<div class="flex items-center mb-2">
+					<div v-if="!isGoApi" class="flex items-center mb-2">
 						<input
 							v-model="form.enabled"
 							id="enabled"
@@ -107,6 +160,14 @@ const form = reactive({
 
 const loading = ref(false);
 const error = ref<string | null>(null);
+const isGoApi = ((import.meta.env.VITE_API_FLAVOR || 'django').toLowerCase() === 'go');
+const goForm = reactive({
+	project_id: '',
+	version_id: '',
+	entry_command: 'bash run.sh',
+	cron_expr: '*/30 * * * * *',
+	node_queue: 'default',
+});
 
 /**
  * 中文: 提交任务创建表单
@@ -116,16 +177,23 @@ async function submitForm() {
 	loading.value = true;
 	error.value = null;
 	try {
-		// 中文: 调用 ApiService 创建任务, 包裹 Task 对象
-		// English: Call ApiService to create a task, wrapping in Task object
-		const taskPayload = {
-			workplace: workplaceId,
-			celery_label: 'schedule_task_execution',
-			name: form.name,
-			description: form.description,
-			mode: form.mode,
-			enabled: form.enabled
-		};
+		const taskPayload = isGoApi
+			? {
+				name: form.name,
+				project_id: goForm.project_id,
+				version_id: goForm.version_id,
+				entry_command: goForm.entry_command,
+				cron_expr: goForm.cron_expr,
+				node_queue: goForm.node_queue || 'default',
+			}
+			: {
+				workplace: workplaceId,
+				celery_label: 'schedule_task_execution',
+				name: form.name,
+				description: form.description,
+				mode: form.mode,
+				enabled: form.enabled
+			};
 		await ApiService.createTask(taskPayload);
 		// 中文: 创建成功后跳转到任务列表
 		// English: Redirect to task list on success

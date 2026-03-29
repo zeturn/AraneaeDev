@@ -1,0 +1,37 @@
+name: GoRefactor Integration
+
+on:
+  workflow_dispatch:
+
+jobs:
+  rabbit-flow-integration:
+    name: Rabbit Flow Integration Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: GoRefactor
+    services:
+      rabbitmq:
+        image: rabbitmq:3.13
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: GoRefactor/go.mod
+          cache: true
+          cache-dependency-path: GoRefactor/go.sum
+
+      - name: Run RabbitMQ integration test
+        env:
+          RABBITMQ_URL: amqp://guest:guest@localhost:5672/
+        run: go test -tags=integration ./internal/control -run TestControlIntegration_TriggerQueueCallbackFlow -v
