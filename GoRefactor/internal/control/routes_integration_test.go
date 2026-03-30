@@ -15,9 +15,9 @@ import (
 	"araneae-go/internal/common"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
 	"github.com/robfig/cron/v3"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
@@ -36,6 +36,13 @@ func newTestControlApp(t *testing.T) *App {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("open sql db handle: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = sqlDB.Close()
+	})
 	if err := db.AutoMigrate(common.AutoMigrateModels()...); err != nil {
 		t.Fatalf("auto migrate: %v", err)
 	}
@@ -548,5 +555,66 @@ func TestScheduleChainTriggerNextStepWithoutQueue(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatalf("expected queue unavailable error when triggering next chain step")
+	}
+}
+
+func TestControlRoutes_CreateScheduleWithAPIFirstTrigger(t *testing.T) {
+	app := newTestControlApp(t)
+	token := loginAndGetToken(t, app)
+	_, _, task := createProjectVersionTask(t, app, token, "")
+
+	scheduleRec := doJSONRequest(t, app, http.MethodPost, "/api/v1/schedules", token, map[string]any{
+		"name":    "api-first-schedule",
+		"enabled": true,
+		"order": map[string]any{
+			"name": "api-chain",
+			"schedule": []map[string]any{
+				{"task_id": task.ID, "trigger": "api", "node": []string{"default"}},
+				{"task_id": task.ID, "trigger": "previous", "node": []string{"default"}},
+			},
+		},
+	})
+	if scheduleRec.Code != http.StatusOK {
+		t.Fatalf("create api-trigger schedule failed: status=%d body=%s", scheduleRec.Code, scheduleRec.Body.String())
+	}
+
+	var schedule common.Schedule
+	if err := json.Unmarshal(scheduleRec.Body.Bytes(), &schedule); err != nil {
+		t.Fatalf("decode schedule: %v", err)
+	}
+	if schedule.CronExpr != "" {
+		t.Fatalf("expected empty cron_expr for api-triggered schedule, got %q", schedule.CronExpr)
+	}
+	if len(app.scheduleEntries) != 0 {
+		t.Fatalf("expected no cron registration for api-triggered schedule, got %d", len(app.scheduleEntries))
+	}
+
+	steps, err := app.resolveScheduleExecutionSteps(schedule)
+	if err != nil {
+		t.Fatalf("resolve schedule steps failed: %v", err)
+	}
+	if len(steps) != 2 {
+		t.Fatalf("expected 2 chain steps, got %d", len(steps))
+	}
+}
+
+func TestControlRoutes_RejectScheduleWhenNonFirstStepUsesCronOrAPI(t *testing.T) {
+	app := newTestControlApp(t)
+	token := loginAndGetToken(t, app)
+	_, _, task := createProjectVersionTask(t, app, token, "")
+
+	scheduleRec := doJSONRequest(t, app, http.MethodPost, "/api/v1/schedules", token, map[string]any{
+		"name":    "invalid-chain-trigger",
+		"enabled": false,
+		"order": map[string]any{
+			"name": "invalid-chain",
+			"schedule": []map[string]any{
+				{"task_id": task.ID, "trigger": "crons", "crons": "*/30 * * * * *", "node": []string{"default"}},
+				{"task_id": task.ID, "trigger": "crons", "crons": "*/45 * * * * *", "node": []string{"default"}},
+			},
+		},
+	})
+	if scheduleRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 when non-first step uses cron/api trigger, got %d body=%s", scheduleRec.Code, scheduleRec.Body.String())
 	}
 }

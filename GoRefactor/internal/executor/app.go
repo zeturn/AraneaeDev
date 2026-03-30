@@ -14,11 +14,11 @@ import (
 	"araneae-go/internal/common"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/glebarez/sqlite"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 

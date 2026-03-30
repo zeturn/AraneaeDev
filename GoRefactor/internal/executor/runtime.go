@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -61,7 +62,12 @@ func extractZipEntry(f *zip.File, dest string) error {
 }
 
 func runCommand(ctx context.Context, workDir, command string) (string, int, error) {
-	cmd := exec.CommandContext(ctx, "bash", "-lc", command)
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.CommandContext(ctx, "cmd", "/C", command)
+	} else {
+		cmd = exec.CommandContext(ctx, "bash", "-lc", command)
+	}
 	cmd.Dir = workDir
 	out, err := cmd.CombinedOutput()
 	exitCode := 0

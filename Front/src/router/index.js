@@ -141,6 +141,12 @@ const routes = [
         component: () => import('../views/Workplaces/Tasks/Create.vue'),
         meta: {requiresAuth: true}
     },
+    {
+        name: 'workplaceTaskSetting',
+        path: '/aprons/workplaces/:id/tasks/:taskId/settings',
+        component: () => import('../views/Workplaces/Tasks/Setting.vue'),
+        meta: {requiresAuth: true}
+    },
     // Aprons.Projects
     {
         path: '/aprons/projects',
@@ -167,6 +173,12 @@ const routes = [
     {
         path: "/aprons/projects/:id/settings",
         component: () => import('../views/Projects/Setting/Index.vue'),
+        meta: {requiresAuth: true}
+    },
+    {
+        name: 'projectVersionSetting',
+        path: '/aprons/projects/:id/versions/:versionId/settings',
+        component: () => import('../views/Projects/Versions/Setting.vue'),
         meta: {requiresAuth: true}
     },
     {

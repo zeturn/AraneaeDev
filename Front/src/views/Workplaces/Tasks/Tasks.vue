@@ -10,10 +10,14 @@ import Tabs from '@/components/Tabs.vue';
 const tabsList = computed(() => {
 	const route = useRoute();
 	const id = route.params.id || 'default-id';  // 如果没有ID，使用默认值
-	return [
+	const tabs = [
 		{name: '程序任务', url: `/aprons/workplaces/${id}/tasks`},
 		{name: '创建任务', url: `/aprons/workplaces/${id}/tasks/create`},
 	];
+	if (route.params.taskId) {
+		tabs.push({name: '任务设置', url: `/aprons/workplaces/${id}/tasks/${route.params.taskId}/settings`});
+	}
+	return tabs;
 });
 </script>
 

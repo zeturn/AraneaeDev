@@ -16,13 +16,14 @@ import (
 	"araneae-go/gen/pb"
 	"araneae-go/internal/common"
 
+	"github.com/glebarez/sqlite"
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/google/uuid"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/robfig/cron/v3"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
@@ -80,6 +81,12 @@ func NewApp(cfg common.ControlConfig) (*App, error) {
 		cronEntries:     make(map[string]cron.EntryID),
 		scheduleEntries: make(map[string]cron.EntryID),
 	}
+
+	app.http.Use(cors.New(cors.Config{
+		AllowOrigins: cfg.CORSAllowOrigins,
+		AllowMethods: "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+		AllowHeaders: "Origin,Content-Type,Accept,Authorization,X-CSRFToken",
+	}))
 
 	if err := app.seedAdmin(); err != nil {
 		return nil, err

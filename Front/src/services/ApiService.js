@@ -17,7 +17,7 @@ const isGoApi = apiFlavor === 'go';
 const backendBase = import.meta.env.VITE_BACKEND_BASE_URL || (isGoApi ? 'http://localhost:8180' : 'http://localhost:8107');
 const apiClient = axios.create({
     baseURL: isGoApi ? `${backendBase}/api/v1` : `${backendBase}/api`,
-    withCredentials: true,  // 重要：允许跨域 cookie 传输
+    withCredentials: !isGoApi,
     headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
@@ -90,6 +90,22 @@ const parseOrderPayload = order => {
         return order;
     }
     return null;
+};
+
+const normalizeGoVersionList = payload => {
+    const list = Array.isArray(payload)
+        ? payload
+        : (Array.isArray(payload?.versions) ? payload.versions : []);
+
+    return list.map(item => ({
+        id: item?.id || item?.version_id || '',
+        project_id: item?.project_id || '',
+        version_hash: item?.version_hash || item?.id || item?.sha256 || '',
+        release_date: item?.release_date || item?.created_at || '',
+        file_name: item?.file_name || '',
+        storage_path: item?.storage_path || '',
+        sha256: item?.sha256 || '',
+    }));
 };
 
 const normalizeGoSchedule = (schedule, workplaceId = 'go-workspace') => {
@@ -315,19 +331,153 @@ const ApiService = {
         return apiClient.post(`/projects/`, project);
     },
     updateProject(projectId, project) {
+        if (isGoApi) {
+            return apiClient.put(`/projects/${projectId}`, {
+                name: project?.name,
+            });
+        }
         return apiClient.put(`/projects/${projectId}/`, project);
     },
     deleteProject(projectId) {
+        if (isGoApi) {
+            return apiClient.delete(`/projects/${projectId}`);
+        }
         return apiClient.delete(`/projects/${projectId}/`);
     },
     getVersionsFromProject(projectId) {
         if (isGoApi) {
-            return apiClient.get(`/projects/${projectId}/versions`);
+            return apiClient.get(`/projects/${projectId}/versions`).then(resp => ({
+                ...resp,
+                data: {
+                    versions: normalizeGoVersionList(resp.data),
+                },
+            }));
         }
         return apiClient.get(`/projects/${projectId}/versions/`);
     },
     getReposFromProject(projectId) {
+        if (isGoApi) {
+            return apiClient.get(`/projects/${projectId}/versions`).then(resp => ({
+                ...resp,
+                data: {
+                    versions: normalizeGoVersionList(resp.data),
+                },
+            }));
+        }
         return apiClient.get(`/projects/${projectId}/get_repo/`);
+    },
+    getProjectVersion(projectId, versionId) {
+        if (isGoApi) {
+            return apiClient.get(`/projects/${projectId}/versions/${versionId}`);
+        }
+        return apiClient.get(`/versions/${versionId}/`);
+    },
+    updateProjectVersion(projectId, versionId, payload) {
+        if (isGoApi) {
+            return apiClient.put(`/projects/${projectId}/versions/${versionId}`, {
+                file_name: payload?.file_name,
+            });
+        }
+        return apiClient.put(`/versions/${versionId}/`, payload);
+    },
+    deleteProjectVersion(projectId, versionId) {
+        if (isGoApi) {
+            return apiClient.delete(`/projects/${projectId}/versions/${versionId}`);
+        }
+        return apiClient.delete(`/versions/${versionId}/`);
+    },
+    orderSourceDistribution(payload) {
+        if (!isGoApi) {
+            return apiClient.post('/source-distribution/', payload);
+        }
+
+        const projectId = payload?.project_id;
+        const versionId = payload?.version;
+        const targets = Array.isArray(payload?.targets) ? payload.targets : [];
+
+        if (!projectId || !versionId) {
+            return Promise.reject(new Error('project_id and version are required'));
+        }
+        if (targets.length === 0) {
+            return Promise.reject(new Error('at least one target node is required'));
+        }
+
+        return Promise.resolve().then(async () => {
+            const results = [];
+            for (let i = 0; i < targets.length; i += 1) {
+                const t = targets[i] || {};
+                const nodeId = t.node_id || t.id || t;
+                let nodeQueue = 'default';
+
+                if (nodeId) {
+                    try {
+                        const nodeResp = await apiClient.get(`/nodes/${nodeId}/`);
+                        nodeQueue = nodeResp?.data?.celery_queue || nodeQueue;
+                    } catch (_) {
+                        nodeQueue = 'default';
+                    }
+                }
+
+                const createResp = await apiClient.post('/tasks', {
+                    name: `distribute-${String(projectId).slice(0, 8)}-${String(nodeId || i)}`,
+                    project_id: projectId,
+                    version_id: versionId,
+                    entry_command: 'bash run.sh',
+                    cron_expr: '',
+                    node_queue: nodeQueue,
+                });
+
+                const taskId = createResp?.data?.id;
+                if (!taskId) {
+                    throw new Error('failed to create distribution task');
+                }
+
+                const triggerResp = await apiClient.post(`/tasks/${taskId}/trigger`);
+                results.push({
+                    node_id: nodeId,
+                    node_queue: nodeQueue,
+                    task_id: taskId,
+                    run_id: triggerResp?.data?.id || '',
+                });
+            }
+
+            return {
+                data: {
+                    message: `Distribution triggered on ${results.length} node(s)`,
+                    results,
+                },
+            };
+        });
+    },
+    SourceDistributionList(projectId) {
+        if (!isGoApi) {
+            return apiClient.get(`/source-distribution/?project_id=${projectId}`);
+        }
+
+        return Promise.all([apiClient.get('/runs'), apiClient.get('/tasks')]).then(([runsResp, tasksResp]) => {
+            const records = Array.isArray(runsResp?.data?.records) ? runsResp.data.records : [];
+            const tasks = Array.isArray(tasksResp?.data) ? tasksResp.data : [];
+            const taskMap = new Map(tasks.map(t => [t.id, t]));
+
+            const data = records
+                .map(r => ({ run: r, task: taskMap.get(r.task_id) }))
+                .filter(item => item.task && String(item.task.project_id) === String(projectId))
+                .map(item => ({
+                    id: item.run.id,
+                    version_hash: item.task.version_id,
+                    project_name: `project-${String(projectId).slice(0, 8)}`,
+                    deployed_at: item.run.finished_at || item.run.started_at || item.run.created_at,
+                    is_active: item.run.status === 'queued' || item.run.status === 'running',
+                    node: item.task.node_queue || 'default',
+                    project: item.task.project_id,
+                    version: item.task.version_id,
+                }));
+
+            return {
+                ...runsResp,
+                data,
+            };
+        });
     },
     uploadCode(formData) {
         if (isGoApi) {
@@ -421,9 +571,15 @@ const ApiService = {
         return apiClient.post('/tasks/', task);
     },
     updateTask(taskId, task) {
+        if (isGoApi) {
+            return apiClient.put(`/tasks/${taskId}`, task);
+        }
         return apiClient.put(`/tasks/${taskId}/`, task);
     },
     deleteTask(taskId) {
+        if (isGoApi) {
+            return apiClient.delete(`/tasks/${taskId}`);
+        }
         return apiClient.delete(`/tasks/${taskId}/`);
     },
     //  Task
@@ -432,6 +588,12 @@ const ApiService = {
             return apiClient.get('/tasks');
         }
         return apiClient.get('/tasks/');
+    },
+    getTask(taskId) {
+        if (isGoApi) {
+            return apiClient.get(`/tasks/${taskId}`);
+        }
+        return apiClient.get(`/tasks/${taskId}/`);
     },
     //  Account
     login(credentials) {

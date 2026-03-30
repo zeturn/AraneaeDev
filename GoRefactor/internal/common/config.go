@@ -6,26 +6,27 @@ import (
 )
 
 type ControlConfig struct {
-	HTTPAddr        string
-	GRPCAddr        string
-	DBPath          string
-	RabbitURL       string
-	RabbitExchange  string
-	JWTSecret       string
-	ArtifactRoot    string
-	ExecutionAPIKey string
+	HTTPAddr         string
+	GRPCAddr         string
+	DBPath           string
+	RabbitURL        string
+	RabbitExchange   string
+	JWTSecret        string
+	ArtifactRoot     string
+	ExecutionAPIKey  string
+	CORSAllowOrigins string
 }
 
 type ExecutorConfig struct {
-	HTTPAddr          string
-	DBPath            string
-	RabbitURL         string
-	RabbitExchange    string
-	RabbitQueue       string
-	ControlGRPCAddr   string
-	ControlHTTPBase   string
+	HTTPAddr           string
+	DBPath             string
+	RabbitURL          string
+	RabbitExchange     string
+	RabbitQueue        string
+	ControlGRPCAddr    string
+	ControlHTTPBase    string
 	ControlCallbackKey string
-	WorkDir           string
+	WorkDir            string
 }
 
 func GetEnv(key, fallback string) string {
@@ -50,14 +51,15 @@ func GetEnvInt(key string, fallback int) int {
 
 func LoadControlConfig() ControlConfig {
 	return ControlConfig{
-		HTTPAddr:        GetEnv("CONTROL_HTTP_ADDR", ":8180"),
-		GRPCAddr:        GetEnv("CONTROL_GRPC_ADDR", ":9190"),
-		DBPath:          GetEnv("CONTROL_DB_PATH", "./data/control.db"),
-		RabbitURL:       GetEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
-		RabbitExchange:  GetEnv("RABBITMQ_EXCHANGE", "tasks.direct"),
-		JWTSecret:       GetEnv("CONTROL_JWT_SECRET", "change-me"),
-		ArtifactRoot:    GetEnv("ARTIFACT_ROOT", "./data/artifacts"),
-		ExecutionAPIKey: GetEnv("EXECUTION_CALLBACK_KEY", "change-me-callback"),
+		HTTPAddr:         GetEnv("CONTROL_HTTP_ADDR", ":8180"),
+		GRPCAddr:         GetEnv("CONTROL_GRPC_ADDR", ":9190"),
+		DBPath:           GetEnv("CONTROL_DB_PATH", "./data/control.db"),
+		RabbitURL:        GetEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
+		RabbitExchange:   GetEnv("RABBITMQ_EXCHANGE", "tasks.direct"),
+		JWTSecret:        GetEnv("CONTROL_JWT_SECRET", "change-me"),
+		ArtifactRoot:     GetEnv("ARTIFACT_ROOT", "./data/artifacts"),
+		ExecutionAPIKey:  GetEnv("EXECUTION_CALLBACK_KEY", "change-me-callback"),
+		CORSAllowOrigins: GetEnv("CONTROL_CORS_ALLOW_ORIGINS", "http://localhost:5109,http://127.0.0.1:5109"),
 	}
 }
 

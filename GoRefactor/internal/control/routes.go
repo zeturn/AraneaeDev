@@ -22,6 +22,14 @@ type createProjectRequest struct {
 	Name string `json:"name"`
 }
 
+type updateProjectRequest struct {
+	Name *string `json:"name"`
+}
+
+type updateArtifactVersionRequest struct {
+	FileName *string `json:"file_name"`
+}
+
 type createTaskRequest struct {
 	Name         string `json:"name"`
 	ProjectID    string `json:"project_id"`
@@ -29,6 +37,16 @@ type createTaskRequest struct {
 	EntryCommand string `json:"entry_command"`
 	CronExpr     string `json:"cron_expr"`
 	NodeQueue    string `json:"node_queue"`
+}
+
+type updateTaskRequest struct {
+	Name         *string `json:"name"`
+	ProjectID    *string `json:"project_id"`
+	VersionID    *string `json:"version_id"`
+	EntryCommand *string `json:"entry_command"`
+	CronExpr     *string `json:"cron_expr"`
+	NodeQueue    *string `json:"node_queue"`
+	Enabled      *bool   `json:"enabled"`
 }
 
 type createScheduleRequest struct {
@@ -66,10 +84,13 @@ type legacyScheduleOrder struct {
 
 type legacyScheduleStep struct {
 	TaskID    string   `json:"task_id"`
+	TaskStatus string  `json:"task_status"`
 	Name      string   `json:"name"`
 	ProjectID string   `json:"project_id"`
 	Node      []string `json:"node"`
+	Trigger   string   `json:"trigger"`
 	Crons     string   `json:"crons"`
+	Previous  string   `json:"previous"`
 }
 
 func (a *App) setupRoutes() {
@@ -84,10 +105,18 @@ func (a *App) setupRoutes() {
 	api.Post("/projects", a.requireRoles("admin", "operator"), a.createProject)
 	api.Get("/projects", a.listProjects)
 	api.Get("/projects/:id", a.getProject)
+	api.Put("/projects/:id", a.requireRoles("admin", "operator"), a.updateProject)
+	api.Delete("/projects/:id", a.requireRoles("admin", "operator"), a.deleteProject)
 	api.Get("/projects/:id/versions", a.listProjectVersions)
+	api.Get("/projects/:projectID/versions/:versionID", a.getProjectVersion)
+	api.Put("/projects/:projectID/versions/:versionID", a.requireRoles("admin", "operator"), a.updateProjectVersion)
+	api.Delete("/projects/:projectID/versions/:versionID", a.requireRoles("admin", "operator"), a.deleteProjectVersion)
 	api.Post("/projects/:id/upload", a.requireRoles("admin", "operator"), a.uploadArtifact)
 	api.Post("/tasks", a.requireRoles("admin", "operator"), a.createTask)
 	api.Get("/tasks", a.listTasks)
+	api.Get("/tasks/:id", a.getTask)
+	api.Put("/tasks/:id", a.requireRoles("admin", "operator"), a.updateTask)
+	api.Delete("/tasks/:id", a.requireRoles("admin", "operator"), a.deleteTask)
 	api.Post("/tasks/:id/trigger", a.requireRoles("admin", "operator"), a.triggerTask)
 	api.Get("/tasks/:id/runs", a.listRuns)
 	api.Post("/schedules", a.requireRoles("admin", "operator"), a.createSchedule)
@@ -100,6 +129,61 @@ func (a *App) setupRoutes() {
 	api.Post("/schedules/:id/trigger", a.requireRoles("admin", "operator"), a.triggerSchedule)
 	api.Get("/schedules/:id/runs", a.listScheduleRuns)
 	api.Get("/runs", a.listRecentRuns)
+
+	api.Get("/nodes/discover/", a.discoverNodes)
+	api.Post("/nodes/register/", a.requireRoles("admin", "operator"), a.registerNode)
+	api.Get("/nodes/", a.listNodes)
+	api.Get("/nodes", a.listNodes)
+	api.Get("/nodes/:id/", a.getNode)
+	api.Get("/nodes/:id", a.getNode)
+	api.Put("/nodes/:id/", a.requireRoles("admin", "operator"), a.updateNode)
+	api.Put("/nodes/:id", a.requireRoles("admin", "operator"), a.updateNode)
+	api.Delete("/nodes/:id/", a.requireRoles("admin", "operator"), a.deleteNode)
+	api.Delete("/nodes/:id", a.requireRoles("admin", "operator"), a.deleteNode)
+	api.Get("/nodes/:id/status/", a.getNodeStatus)
+	api.Get("/nodes/:id/status", a.getNodeStatus)
+	api.Get("/nodes/:id/capabilities/", a.getNodeCapabilities)
+	api.Get("/nodes/:id/capabilities", a.getNodeCapabilities)
+	api.Post("/nodes/:id/refresh_capabilities/", a.requireRoles("admin", "operator"), a.refreshNodeCapabilities)
+	api.Post("/nodes/:id/refresh_capabilities", a.requireRoles("admin", "operator"), a.refreshNodeCapabilities)
+	api.Get("/nodes/:id/installers/", a.getNodeInstallers)
+	api.Get("/nodes/:id/installers", a.getNodeInstallers)
+	api.Post("/nodes/:id/install_runtime/", a.requireRoles("admin", "operator"), a.installRuntime)
+	api.Post("/nodes/:id/install_runtime", a.requireRoles("admin", "operator"), a.installRuntime)
+	api.Get("/nodes/:id/install_status/:jobID/", a.getInstallStatus)
+	api.Get("/nodes/:id/install_status/:jobID", a.getInstallStatus)
+
+	api.Get("/teams/my_teams/", a.listMyTeams)
+	api.Get("/teams/my_teams", a.listMyTeams)
+	api.Post("/teams/", a.requireRoles("admin", "operator"), a.createTeam)
+	api.Post("/teams", a.requireRoles("admin", "operator"), a.createTeam)
+	api.Get("/teams/:id/", a.getTeam)
+	api.Get("/teams/:id", a.getTeam)
+	api.Put("/teams/:id/", a.requireRoles("admin", "operator"), a.updateTeam)
+	api.Put("/teams/:id", a.requireRoles("admin", "operator"), a.updateTeam)
+	api.Delete("/teams/:id/", a.requireRoles("admin", "operator"), a.deleteTeam)
+	api.Delete("/teams/:id", a.requireRoles("admin", "operator"), a.deleteTeam)
+	api.Get("/teams/:id/members/", a.getTeamMembers)
+	api.Get("/teams/:id/members", a.getTeamMembers)
+	api.Post("/teams/:id/add_members/", a.requireRoles("admin", "operator"), a.addTeamMembers)
+	api.Post("/teams/:id/add_members", a.requireRoles("admin", "operator"), a.addTeamMembers)
+
+	api.Get("/workplaces/", a.listWorkplaces)
+	api.Get("/workplaces", a.listWorkplaces)
+	api.Get("/workplaces/my_workplaces/", a.listMyWorkplaces)
+	api.Get("/workplaces/my_workplaces", a.listMyWorkplaces)
+	api.Post("/workplaces/", a.requireRoles("admin", "operator"), a.createWorkplace)
+	api.Post("/workplaces", a.requireRoles("admin", "operator"), a.createWorkplace)
+	api.Get("/workplaces/:id/", a.getWorkplace)
+	api.Get("/workplaces/:id", a.getWorkplace)
+	api.Put("/workplaces/:id/", a.requireRoles("admin", "operator"), a.updateWorkplace)
+	api.Put("/workplaces/:id", a.requireRoles("admin", "operator"), a.updateWorkplace)
+	api.Delete("/workplaces/:id/", a.requireRoles("admin", "operator"), a.deleteWorkplace)
+	api.Delete("/workplaces/:id", a.requireRoles("admin", "operator"), a.deleteWorkplace)
+	api.Post("/workplaces/:id/add_teams/", a.requireRoles("admin", "operator"), a.addWorkplaceTeams)
+	api.Post("/workplaces/:id/add_teams", a.requireRoles("admin", "operator"), a.addWorkplaceTeams)
+	api.Post("/workplaces/:id/add_people/", a.requireRoles("admin", "operator"), a.addWorkplacePeople)
+	api.Post("/workplaces/:id/add_people", a.requireRoles("admin", "operator"), a.addWorkplacePeople)
 }
 
 func (a *App) login(c *fiber.Ctx) error {
@@ -162,6 +246,95 @@ func (a *App) getProject(c *fiber.Ctx) error {
 	return c.JSON(project)
 }
 
+func (a *App) updateProject(c *fiber.Ctx) error {
+	projectID := strings.TrimSpace(c.Params("id"))
+	var project common.Project
+	if err := a.db.Where("id = ?", projectID).First(&project).Error; err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "project not found")
+	}
+
+	var req updateProjectRequest
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+
+	if req.Name != nil {
+		newName := strings.TrimSpace(*req.Name)
+		if newName == "" {
+			return fiber.NewError(fiber.StatusBadRequest, "project name is required")
+		}
+		project.Name = newName
+	}
+
+	if err := a.db.Save(&project).Error; err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+	return c.JSON(project)
+}
+
+func (a *App) deleteProject(c *fiber.Ctx) error {
+	projectID := strings.TrimSpace(c.Params("id"))
+	var project common.Project
+	if err := a.db.Where("id = ?", projectID).First(&project).Error; err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "project not found")
+	}
+
+	var taskIDs []string
+	if err := a.db.Model(&common.Task{}).Where("project_id = ?", projectID).Pluck("id", &taskIDs).Error; err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+	var scheduleIDs []string
+	if err := a.db.Model(&common.Schedule{}).Where("project_id = ?", projectID).Pluck("id", &scheduleIDs).Error; err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+
+	for _, taskID := range taskIDs {
+		a.unregisterCronTask(taskID)
+	}
+	for _, scheduleID := range scheduleIDs {
+		a.unregisterCronSchedule(scheduleID)
+	}
+
+	tx := a.db.Begin()
+	if tx.Error != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, tx.Error.Error())
+	}
+
+	if len(taskIDs) > 0 {
+		if err := tx.Where("task_id IN ?", taskIDs).Delete(&common.TaskRun{}).Error; err != nil {
+			tx.Rollback()
+			return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+		}
+	}
+	if len(scheduleIDs) > 0 {
+		if err := tx.Where("schedule_id IN ?", scheduleIDs).Delete(&common.TaskRun{}).Error; err != nil {
+			tx.Rollback()
+			return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+		}
+	}
+	if err := tx.Where("project_id = ?", projectID).Delete(&common.Schedule{}).Error; err != nil {
+		tx.Rollback()
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+	if err := tx.Where("project_id = ?", projectID).Delete(&common.Task{}).Error; err != nil {
+		tx.Rollback()
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+	if err := tx.Where("project_id = ?", projectID).Delete(&common.ArtifactVersion{}).Error; err != nil {
+		tx.Rollback()
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+	if err := tx.Where("id = ?", projectID).Delete(&common.Project{}).Error; err != nil {
+		tx.Rollback()
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+	if err := tx.Commit().Error; err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+
+	return c.JSON(fiber.Map{"ok": true})
+}
+
 func (a *App) listProjectVersions(c *fiber.Ctx) error {
 	projectID := c.Params("id")
 	var versions []common.ArtifactVersion
@@ -169,6 +342,68 @@ func (a *App) listProjectVersions(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}
 	return c.JSON(versions)
+}
+
+func (a *App) getProjectVersion(c *fiber.Ctx) error {
+	projectID := strings.TrimSpace(c.Params("projectID"))
+	versionID := strings.TrimSpace(c.Params("versionID"))
+
+	var version common.ArtifactVersion
+	if err := a.db.Where("id = ? AND project_id = ?", versionID, projectID).First(&version).Error; err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "version not found")
+	}
+	return c.JSON(version)
+}
+
+func (a *App) updateProjectVersion(c *fiber.Ctx) error {
+	projectID := strings.TrimSpace(c.Params("projectID"))
+	versionID := strings.TrimSpace(c.Params("versionID"))
+
+	var version common.ArtifactVersion
+	if err := a.db.Where("id = ? AND project_id = ?", versionID, projectID).First(&version).Error; err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "version not found")
+	}
+
+	var req updateArtifactVersionRequest
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+	if req.FileName != nil {
+		fileName := strings.TrimSpace(*req.FileName)
+		if fileName == "" {
+			return fiber.NewError(fiber.StatusBadRequest, "file_name is required")
+		}
+		version.FileName = fileName
+	}
+
+	if err := a.db.Save(&version).Error; err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+	return c.JSON(version)
+}
+
+func (a *App) deleteProjectVersion(c *fiber.Ctx) error {
+	projectID := strings.TrimSpace(c.Params("projectID"))
+	versionID := strings.TrimSpace(c.Params("versionID"))
+
+	var version common.ArtifactVersion
+	if err := a.db.Where("id = ? AND project_id = ?", versionID, projectID).First(&version).Error; err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "version not found")
+	}
+
+	var refs int64
+	if err := a.db.Model(&common.Task{}).Where("version_id = ?", versionID).Count(&refs).Error; err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+	if refs > 0 {
+		return fiber.NewError(fiber.StatusBadRequest, "version is used by tasks and cannot be deleted")
+	}
+
+	if err := a.db.Where("id = ? AND project_id = ?", versionID, projectID).Delete(&common.ArtifactVersion{}).Error; err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+
+	return c.JSON(fiber.Map{"ok": true})
 }
 
 func (a *App) uploadArtifact(c *fiber.Ctx) error {
@@ -262,6 +497,120 @@ func (a *App) triggerTask(c *fiber.Ctx) error {
 	return c.JSON(run)
 }
 
+func (a *App) getTask(c *fiber.Ctx) error {
+	taskID := strings.TrimSpace(c.Params("id"))
+	var task common.Task
+	if err := a.db.Where("id = ?", taskID).First(&task).Error; err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "task not found")
+	}
+	return c.JSON(task)
+}
+
+func (a *App) updateTask(c *fiber.Ctx) error {
+	taskID := strings.TrimSpace(c.Params("id"))
+	var task common.Task
+	if err := a.db.Where("id = ?", taskID).First(&task).Error; err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "task not found")
+	}
+
+	var req updateTaskRequest
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+
+	oldCronExpr := task.CronExpr
+
+	if req.Name != nil {
+		name := strings.TrimSpace(*req.Name)
+		if name == "" {
+			return fiber.NewError(fiber.StatusBadRequest, "task name is required")
+		}
+		task.Name = name
+	}
+	if req.ProjectID != nil {
+		task.ProjectID = strings.TrimSpace(*req.ProjectID)
+	}
+	if req.VersionID != nil {
+		task.VersionID = strings.TrimSpace(*req.VersionID)
+	}
+	if req.EntryCommand != nil {
+		task.EntryCommand = strings.TrimSpace(*req.EntryCommand)
+	}
+	if req.CronExpr != nil {
+		task.CronExpr = strings.TrimSpace(*req.CronExpr)
+	}
+	if req.NodeQueue != nil {
+		task.NodeQueue = strings.TrimSpace(*req.NodeQueue)
+	}
+	if req.Enabled != nil {
+		task.Enabled = *req.Enabled
+	}
+
+	if task.ProjectID == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "project_id is required")
+	}
+	if task.VersionID == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "version_id is required")
+	}
+	if task.EntryCommand == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "entry_command is required")
+	}
+	if task.NodeQueue == "" {
+		task.NodeQueue = "default"
+	}
+
+	var project common.Project
+	if err := a.db.Where("id = ?", task.ProjectID).First(&project).Error; err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "project not found")
+	}
+	var version common.ArtifactVersion
+	if err := a.db.Where("id = ? AND project_id = ?", task.VersionID, task.ProjectID).First(&version).Error; err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "version not found")
+	}
+
+	if err := a.db.Save(&task).Error; err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+
+	a.unregisterCronTask(task.ID)
+	if task.Enabled && task.CronExpr != "" {
+		if err := a.registerCronTask(task); err != nil {
+			_ = a.db.Model(&common.Task{}).Where("id = ?", task.ID).Update("cron_expr", oldCronExpr).Error
+			return fiber.NewError(fiber.StatusBadRequest, err.Error())
+		}
+	}
+
+	return c.JSON(task)
+}
+
+func (a *App) deleteTask(c *fiber.Ctx) error {
+	taskID := strings.TrimSpace(c.Params("id"))
+	var task common.Task
+	if err := a.db.Where("id = ?", taskID).First(&task).Error; err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "task not found")
+	}
+
+	a.unregisterCronTask(taskID)
+
+	tx := a.db.Begin()
+	if tx.Error != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, tx.Error.Error())
+	}
+	if err := tx.Where("task_id = ?", taskID).Delete(&common.TaskRun{}).Error; err != nil {
+		tx.Rollback()
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+	if err := tx.Where("id = ?", taskID).Delete(&common.Task{}).Error; err != nil {
+		tx.Rollback()
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+	if err := tx.Commit().Error; err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+
+	return c.JSON(fiber.Map{"ok": true})
+}
+
 func (a *App) listTasks(c *fiber.Ctx) error {
 	var tasks []common.Task
 	if err := a.db.Order("created_at desc").Find(&tasks).Error; err != nil {
@@ -285,12 +634,19 @@ func (a *App) createSchedule(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	}
 
+	var normalizedLegacy *legacyScheduleOrder
 	if legacy, ok := parseLegacyOrder(req.Order); ok {
-		if req.Name == "" {
-			req.Name = strings.TrimSpace(legacy.Name)
+		normalized, err := a.validateAndNormalizeLegacyOrder(legacy)
+		if err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, err.Error())
 		}
-		if len(legacy.Schedule) > 0 {
-			step := legacy.Schedule[0]
+		normalizedLegacy = &normalized
+
+		if req.Name == "" {
+			req.Name = strings.TrimSpace(normalized.Name)
+		}
+		if len(normalized.Schedule) > 0 {
+			step := normalized.Schedule[0]
 			if req.Name == "" {
 				req.Name = strings.TrimSpace(step.Name)
 			}
@@ -300,7 +656,7 @@ func (a *App) createSchedule(c *fiber.Ctx) error {
 			if req.ProjectID == "" {
 				req.ProjectID = strings.TrimSpace(step.ProjectID)
 			}
-			if req.CronExpr == "" {
+			if req.CronExpr == "" && strings.EqualFold(strings.TrimSpace(step.Trigger), "crons") {
 				req.CronExpr = strings.TrimSpace(step.Crons)
 			}
 			if req.NodeQueue == "" && len(step.Node) > 0 {
@@ -345,8 +701,8 @@ func (a *App) createSchedule(c *fiber.Ctx) error {
 	if req.Name == "" {
 		req.Name = "schedule-" + uuid.NewString()[:8]
 	}
-	if req.ProjectID == "" || req.VersionID == "" || req.EntryCommand == "" || req.CronExpr == "" {
-		return fiber.NewError(fiber.StatusBadRequest, "project_id, version_id, entry_command and cron_expr are required")
+	if req.ProjectID == "" || req.VersionID == "" || req.EntryCommand == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "project_id, version_id and entry_command are required")
 	}
 
 	var project common.Project
@@ -365,23 +721,36 @@ func (a *App) createSchedule(c *fiber.Ctx) error {
 
 	orderJSON := ""
 	if req.Order != nil {
-		switch o := req.Order.(type) {
-		case string:
-			orderJSON = strings.TrimSpace(o)
-		default:
-			if b, err := json.Marshal(o); err == nil {
+		if normalizedLegacy != nil {
+			if b, err := json.Marshal(normalizedLegacy); err == nil {
 				orderJSON = string(b)
+			}
+		}
+		if orderJSON == "" {
+			switch o := req.Order.(type) {
+			case string:
+				orderJSON = strings.TrimSpace(o)
+			default:
+				if b, err := json.Marshal(o); err == nil {
+					orderJSON = string(b)
+				}
 			}
 		}
 	}
 	if orderJSON == "" {
+		trigger := "api"
+		if req.CronExpr != "" {
+			trigger = "crons"
+		}
 		fallback := legacyScheduleOrder{
 			Name: req.Name,
 			Schedule: []legacyScheduleStep{{
 				TaskID:    req.TaskID,
+				TaskStatus: "exist",
 				Name:      req.Name,
 				ProjectID: req.ProjectID,
 				Node:      []string{req.NodeQueue},
+				Trigger:   trigger,
 				Crons:     req.CronExpr,
 			}},
 		}
@@ -520,8 +889,8 @@ func (a *App) updateSchedule(c *fiber.Ctx) error {
 	if schedule.Name == "" {
 		schedule.Name = "schedule-" + schedule.ID[:8]
 	}
-	if schedule.ProjectID == "" || schedule.VersionID == "" || schedule.EntryCommand == "" || schedule.CronExpr == "" {
-		return fiber.NewError(fiber.StatusBadRequest, "project_id, version_id, entry_command and cron_expr are required")
+	if schedule.ProjectID == "" || schedule.VersionID == "" || schedule.EntryCommand == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "project_id, version_id and entry_command are required")
 	}
 
 	var project common.Project
@@ -695,6 +1064,96 @@ func parseLegacyOrder(raw any) (legacyScheduleOrder, bool) {
 		return legacyScheduleOrder{}, false
 	}
 	return parsed, true
+}
+
+func (a *App) validateAndNormalizeLegacyOrder(order legacyScheduleOrder) (legacyScheduleOrder, error) {
+	order.Name = strings.TrimSpace(order.Name)
+	if len(order.Schedule) == 0 {
+		return legacyScheduleOrder{}, errors.New("order.schedule must contain at least one task")
+	}
+
+	normalized := make([]legacyScheduleStep, 0, len(order.Schedule))
+	for idx, rawStep := range order.Schedule {
+		step := rawStep
+		step.TaskID = strings.TrimSpace(step.TaskID)
+		if step.TaskID == "" {
+			return legacyScheduleOrder{}, errors.New("each schedule step must reference an existing task_id")
+		}
+
+		var task common.Task
+		if err := a.db.Where("id = ?", step.TaskID).First(&task).Error; err != nil {
+			return legacyScheduleOrder{}, errors.New("schedule step references a task that does not exist")
+		}
+
+		step.Name = strings.TrimSpace(step.Name)
+		if step.Name == "" {
+			step.Name = task.Name
+		}
+
+		step.ProjectID = strings.TrimSpace(step.ProjectID)
+		if step.ProjectID == "" {
+			step.ProjectID = task.ProjectID
+		}
+
+		cleanNodes := make([]string, 0, len(step.Node))
+		for _, node := range step.Node {
+			trimmed := strings.TrimSpace(node)
+			if trimmed != "" {
+				cleanNodes = append(cleanNodes, trimmed)
+			}
+		}
+		if len(cleanNodes) == 0 {
+			if queue := strings.TrimSpace(task.NodeQueue); queue != "" {
+				cleanNodes = []string{queue}
+			}
+		}
+		step.Node = cleanNodes
+
+		if idx == 0 {
+			trigger := strings.ToLower(strings.TrimSpace(step.Trigger))
+			if trigger == "" {
+				if strings.TrimSpace(step.Crons) != "" {
+					trigger = "crons"
+				} else {
+					trigger = "api"
+				}
+			}
+			if trigger != "crons" && trigger != "api" {
+				return legacyScheduleOrder{}, errors.New("first schedule step trigger must be crons or api")
+			}
+
+			step.Trigger = trigger
+			step.Crons = strings.TrimSpace(step.Crons)
+			if trigger == "crons" && step.Crons == "" {
+				return legacyScheduleOrder{}, errors.New("cron expression is required when first step trigger is crons")
+			}
+			if trigger == "api" {
+				step.Crons = ""
+			}
+			step.Previous = ""
+		} else {
+			trigger := strings.ToLower(strings.TrimSpace(step.Trigger))
+			if trigger != "" && trigger != "previous" {
+				return legacyScheduleOrder{}, errors.New("only the first schedule step can use crons or api trigger")
+			}
+			prevName := normalized[idx-1].Name
+			if prevName == "" {
+				prevName = normalized[idx-1].TaskID
+			}
+			step.Trigger = "previous"
+			step.Crons = ""
+			step.Previous = prevName
+		}
+
+		step.TaskStatus = "exist"
+		normalized = append(normalized, step)
+	}
+
+	if order.Name == "" {
+		order.Name = normalized[0].Name
+	}
+	order.Schedule = normalized
+	return order, nil
 }
 
 func marshalOrderJSON(raw any) (string, error) {

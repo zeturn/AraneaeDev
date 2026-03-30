@@ -11,10 +11,14 @@ import Tabs from '@/components/Tabs.vue';
 const tabsList = computed(() => {
 	const route = useRoute();
 	const id = route.params.id || 'default-id';  // 如果没有ID，使用默认值
-	return [
+	const tabs = [
 		{name: '程序项目', url: `/aprons/projects/${id}/repo`},
 		{name: '创建项目', url: `/aprons/projects/${id}/repo/create`},
 	];
+	if (route.params.versionId) {
+		tabs.push({name: '版本设置', url: `/aprons/projects/${id}/versions/${route.params.versionId}/settings`});
+	}
+	return tabs;
 });
 </script>
 

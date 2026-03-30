@@ -36,8 +36,11 @@ const fetchProjects = async () => {
   isLoading.value = true;
   errorMessage.value = null;
   try {
-	  const response = await ApiService.getMyProjects(); // 假设这个方法返回项目数据
-    projects.value = response.data; // 将响应的数据赋值给projects
+	  const response = await ApiService.getMyProjects();
+	  const payload = response?.data;
+    projects.value = Array.isArray(payload)
+		? payload
+		: (Array.isArray(payload?.results) ? payload.results : []);
   } catch (error: any) {
     errorMessage.value = error.message || '无法加载项目';
   } finally {
@@ -53,7 +56,7 @@ onMounted(() => {
 
 <template>
   <Aprons>
-    <div class="flex flex-row flex-1 mb-4">
+    <div class="mb-4 flex flex-row items-center gap-3">
       <h1 class="text-3xl font-semibold text-gray-500">项目</h1>
     </div>
     <div v-if="isLoading" class="text-center py-4">
@@ -68,20 +71,20 @@ onMounted(() => {
     <div v-else>
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <div v-for="project in projects" :key="project.id"
-             class="p-6 bg-white rounded-lg shadow-md border border-gray-200">
+             class="surface-card">
           <RouterLink :to="`/aprons/projects/${project.id}`">
             <h2 class="text-xl font-semibold text-gray-700">{{ project.name }}</h2>
             <p class="text-sm text-gray-600 mt-2">描述: {{ project.description || '无描述' }}</p>
             <div class="flex flex-wrap items-center gap-4 mt-4">
-              <span class="px-3 py-1 bg-blue-100 text-blue-800 text-sm font-medium rounded-full">语言: {{
+              <span class="tag-pill">语言: {{
                   project.language
                 }}</span>
-              <span class="px-3 py-1 bg-green-100 text-green-800 text-sm font-medium rounded-full">模式: {{
+              <span class="tag-pill">模式: {{
                   project.mode
                 }}</span>
             </div>
             <p class="text-sm text-gray-600 mt-2">命令: <code
-                class="bg-gray-100 text-gray-800 px-2 py-1 rounded">{{ project.command }}</code></p>
+                class="rounded bg-gray-100 px-2 py-1 text-gray-800">{{ project.command }}</code></p>
             <div class="mt-4 text-sm text-gray-500">
               <p>创建于: {{ project.created_at }}</p>
               <p>更新于: {{ project.updated_at }}</p>

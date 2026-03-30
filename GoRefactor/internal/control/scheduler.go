@@ -42,6 +42,16 @@ func (a *App) registerCronTask(task common.Task) error {
 	return nil
 }
 
+func (a *App) unregisterCronTask(taskID string) {
+	a.cronMu.Lock()
+	defer a.cronMu.Unlock()
+
+	if old, ok := a.cronEntries[taskID]; ok {
+		a.cron.Remove(old)
+		delete(a.cronEntries, taskID)
+	}
+}
+
 func (a *App) loadCronSchedules() error {
 	var schedules []common.Schedule
 	if err := a.db.Where("enabled = ? AND cron_expr <> ''", true).Find(&schedules).Error; err != nil {

@@ -75,6 +75,72 @@ type Schedule struct {
 	UpdatedAt       time.Time  `gorm:"not null" json:"updated_at"`
 }
 
+type Node struct {
+	ID               uint      `gorm:"primaryKey" json:"id"`
+	Name             string    `gorm:"size:128;not null" json:"name"`
+	Description      string    `gorm:"size:512" json:"description"`
+	Status           string    `gorm:"size:32;not null;default:active" json:"status"`
+	IPAddress        string    `gorm:"index;size:64;not null" json:"ip_address"`
+	Port             int       `gorm:"not null;default:4280" json:"port"`
+	GRPCPort         int       `gorm:"not null;default:9190" json:"grpc_port"`
+	RPCURL           string    `gorm:"size:255" json:"rpc_url"`
+	CeleryQueue      string    `gorm:"size:64;not null;default:default" json:"celery_queue"`
+	IsEnabled        bool      `gorm:"not null;default:true" json:"is_enabled"`
+	LastActiveTime   time.Time `gorm:"not null" json:"last_active_time"`
+	HDID             string    `gorm:"size:64" json:"HDID"`
+	CPUInfo          string    `gorm:"type:text" json:"cpu_info"`
+	MemoryInfo       string    `gorm:"type:text" json:"memory_info"`
+	CapabilitiesJSON string    `gorm:"type:text" json:"-"`
+	CreatedBy        string    `gorm:"size:36" json:"created_by"`
+	CreatedAt        time.Time `gorm:"not null" json:"created_at"`
+	UpdatedAt        time.Time `gorm:"not null" json:"updated_at"`
+}
+
+type NodeInstallJob struct {
+	ID         string    `gorm:"primaryKey;size:64" json:"id"`
+	NodeID     uint      `gorm:"index;not null" json:"node_id"`
+	RuntimeKey string    `gorm:"size:64;not null" json:"runtime_key"`
+	Status     string    `gorm:"size:32;not null" json:"status"`
+	Log        string    `gorm:"type:text" json:"log"`
+	CreatedAt  time.Time `gorm:"not null" json:"created_at"`
+	UpdatedAt  time.Time `gorm:"not null" json:"updated_at"`
+}
+
+type Team struct {
+	ID          uint      `gorm:"primaryKey" json:"id"`
+	Name        string    `gorm:"size:128;not null" json:"name"`
+	Description string    `gorm:"size:512" json:"description"`
+	JoinAble    bool      `gorm:"not null;default:false" json:"join_able"`
+	CreatedBy   string    `gorm:"size:36" json:"created_by"`
+	CreatedAt   time.Time `gorm:"not null" json:"created_at"`
+	UpdatedAt   time.Time `gorm:"not null" json:"updated_at"`
+}
+
+type TeamMember struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	TeamID    uint      `gorm:"index;not null" json:"team_id"`
+	UserID    string    `gorm:"index;size:36;not null" json:"user_id"`
+	Role      string    `gorm:"size:32;not null;default:member" json:"role"`
+	CreatedAt time.Time `gorm:"not null" json:"created_at"`
+}
+
+type Workplace struct {
+	ID          uint      `gorm:"primaryKey" json:"id"`
+	Name        string    `gorm:"size:128;not null" json:"name"`
+	Description string    `gorm:"size:512" json:"description"`
+	Status      string    `gorm:"size:32;not null;default:active" json:"status"`
+	CreatedBy   string    `gorm:"size:36" json:"created_by"`
+	CreatedAt   time.Time `gorm:"not null" json:"created_at"`
+	UpdatedAt   time.Time `gorm:"not null" json:"updated_at"`
+}
+
+type WorkplaceTeam struct {
+	ID          uint      `gorm:"primaryKey" json:"id"`
+	WorkplaceID uint      `gorm:"uniqueIndex:idx_workplace_team;not null" json:"workplace_id"`
+	TeamID      uint      `gorm:"uniqueIndex:idx_workplace_team;not null" json:"team_id"`
+	CreatedAt   time.Time `gorm:"not null" json:"created_at"`
+}
+
 func AutoMigrateModels() []interface{} {
 	return []interface{}{
 		&User{},
@@ -83,5 +149,11 @@ func AutoMigrateModels() []interface{} {
 		&Task{},
 		&Schedule{},
 		&TaskRun{},
+		&Node{},
+		&NodeInstallJob{},
+		&Team{},
+		&TeamMember{},
+		&Workplace{},
+		&WorkplaceTeam{},
 	}
 }

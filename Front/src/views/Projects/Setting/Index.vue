@@ -11,19 +11,52 @@
 
 <template>
 	<Project>
-		<div>
-			<a>
-				项目设置
-			</a>
-			<button class="delete-button" @click="deleteProject">
-				删除项目
-			</button>
+		<div class="mx-auto max-w-3xl px-4 pb-10">
+			<div class="surface-panel space-y-6">
+				<header class="space-y-2">
+					<p class="text-xs uppercase tracking-wider text-slate-500">Project Settings</p>
+					<h1 class="text-2xl font-semibold text-slate-900">{{ form.name || '项目设置' }}</h1>
+					<p class="text-sm text-slate-500">支持项目重命名、修改元信息与删除操作。</p>
+				</header>
+
+				<div class="grid gap-4 md:grid-cols-2">
+					<div class="md:col-span-2">
+						<label class="mb-2 block text-sm font-medium text-slate-700">项目名称</label>
+						<input v-model="form.name" type="text" class="field-input" placeholder="输入项目名称" />
+					</div>
+					<div>
+						<label class="mb-2 block text-sm font-medium text-slate-700">语言</label>
+						<input v-model="form.language" type="text" class="field-input" placeholder="python / go / node" />
+					</div>
+					<div>
+						<label class="mb-2 block text-sm font-medium text-slate-700">默认命令</label>
+						<input v-model="form.command" type="text" class="field-input" placeholder="例如: python app.py" />
+					</div>
+					<div class="md:col-span-2">
+						<label class="mb-2 block text-sm font-medium text-slate-700">描述</label>
+						<textarea v-model="form.description" rows="4" class="field-input" placeholder="项目描述"></textarea>
+					</div>
+				</div>
+
+				<div class="flex flex-wrap items-center gap-3">
+					<button class="btn-primary" :disabled="loading" @click="saveProject">
+						{{ loading ? '保存中...' : '保存设置' }}
+					</button>
+					<router-link :to="`/aprons/projects/${projectId}/repo`" class="btn-muted">版本管理</router-link>
+					<button class="btn-danger" :disabled="loading" @click="deleteProject">删除项目</button>
+					<span class="text-sm text-slate-500">{{ notice }}</span>
+				</div>
+
+				<div class="grid gap-3 text-sm text-slate-500 md:grid-cols-2">
+					<p>创建时间: {{ formatDate(form.created_at) }}</p>
+					<p>更新时间: {{ formatDate(form.updated_at) }}</p>
+				</div>
+			</div>
 		</div>
 	</Project>
 </template>
 
 <script>
-import {ref, onMounted} from "vue";
 import ApiService from "@/services/ApiService.js"; // 引入ApiService
 import Project from "@/views/Projects/Project.vue";
 
@@ -31,16 +64,18 @@ export default {
 	components: {Project},
 	data() {
 		return {
-			id: this.$route.params.id,
-			name: null,
-			description: null,
-			language: null,
-			command: null,
-			mode: null,
-			created_at: null,
-			edited_at: null,
-			owners: [],
-			editors: []
+			projectId: this.$route.params.id,
+			loading: false,
+			notice: '',
+			form: {
+				id: '',
+				name: '',
+				description: '',
+				language: '',
+				command: '',
+				created_at: '',
+				updated_at: '',
+			},
 		};
 	},
 	created() {
@@ -54,52 +89,71 @@ export default {
 			const projectId = this.getProjectIdFromURL();
 			ApiService.getProject(projectId)
 				.then(response => {
-					this.id = response.data.id;
-					this.name = response.data.name;
-					this.description = response.data.description;
-					this.language = response.data.language;
-					this.command = response.data.command;
-					this.mode = response.data.mode;
-					this.created_at = response.data.created_at;
-					this.edited_at = response.data.updated_at;
+					this.form.id = response?.data?.id || projectId;
+					this.form.name = response?.data?.name || '';
+					this.form.description = response?.data?.description || '';
+					this.form.language = response?.data?.language || '';
+					this.form.command = response?.data?.command || '';
+					this.form.created_at = response?.data?.created_at || '';
+					this.form.updated_at = response?.data?.updated_at || '';
+					this.notice = '';
 				})
 				.catch(error => {
 					console.error("Error fetching project data:", error);
+					this.notice = '加载项目信息失败';
+				});
+		},
+		saveProject() {
+			const name = String(this.form.name || '').trim();
+			if (!name) {
+				this.notice = '项目名称不能为空';
+				return;
+			}
+			this.loading = true;
+			this.notice = '';
+			ApiService.updateProject(this.projectId, {
+				name,
+				description: this.form.description,
+				language: this.form.language,
+				command: this.form.command,
+			})
+				.then(() => {
+					this.notice = '项目设置已保存';
+					this.form.updated_at = new Date().toISOString();
+				})
+				.catch(error => {
+					console.error('save project failed:', error);
+					this.notice = error?.response?.data?.detail || '保存失败';
+				})
+				.finally(() => {
+					this.loading = false;
 				});
 		},
 		deleteProject() {
-			if (confirm("确定要删除该项目吗？此操作不可撤销！")) {
-				ApiService.deleteProject(this.id)
-					.then(() => {
-						alert("项目已成功删除！");
-						this.$router.push("/aprons/projects"); // 删除后跳转到项目列表
-					})
-					.catch(error => {
-						console.error("删除项目时出错:", error);
-						alert("删除项目失败，请重试！");
-					});
+			if (!window.confirm('确认删除该项目？此操作不可撤销。')) {
+				return;
 			}
+			this.loading = true;
+			this.notice = '';
+			ApiService.deleteProject(this.projectId)
+				.then(() => {
+					this.$router.push('/aprons/projects');
+				})
+				.catch(error => {
+					console.error('delete project failed:', error);
+					this.notice = error?.response?.data?.detail || '删除失败';
+				})
+				.finally(() => {
+					this.loading = false;
+				});
 		},
 		formatDate(dateString) {
+			if (!dateString) {
+				return '-';
+			}
 			const options = {year: "numeric", month: "long", day: "numeric", hour: "numeric", minute: "numeric"};
 			return new Date(dateString).toLocaleDateString(undefined, options);
 		}
 	}
 };
 </script>
-
-<style scoped>
-.delete-button {
-	margin-top: 10px;
-	padding: 8px 12px;
-	background-color: red;
-	color: white;
-	border: none;
-	border-radius: 4px;
-	cursor: pointer;
-}
-
-.delete-button:hover {
-	background-color: darkred;
-}
-</style>

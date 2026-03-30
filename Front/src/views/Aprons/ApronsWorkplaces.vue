@@ -26,7 +26,10 @@ const workplaces = ref<Workplace[]>([]);
 const fetchWorkplaces = async () => {
   try {
 	  const response = await ApiService.getMyWorkplaces();
-	  workplaces.value = response.data.results;
+	  const payload = response?.data;
+	  workplaces.value = Array.isArray(payload)
+		  ? payload
+		  : (Array.isArray(payload?.results) ? payload.results : []);
   } catch (error) {
     console.error('Error fetching workplaces:', error);
   }
@@ -39,39 +42,36 @@ onMounted(() => {
 
 <template>
 	<Aprons>
-		<div class="flex items-center mb-6">
-			<h1 class="text-gray-500 text-3xl m-2">工作区</h1>
+		<div class="mb-6 flex items-center">
+			<h1 class="m-2 text-3xl text-gray-500">工作区</h1>
 			<RouterLink
 				v-if="workplaces.length"
-				class="ml-auto rounded text-green-600 hover:bg-gray-200 p-2"
+				class="btn-primary ml-auto"
 				to="/aprons/workplaces/create"
 			>
 				创建工作区
 			</RouterLink>
 		</div>
-		<div v-if="workplaces.length" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+		<div v-if="workplaces.length" class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
 			<div
 				v-for="workplace in workplaces"
 				:key="workplace.id"
-				class="p-6  rounded-lg bg-[#F9FAFB] transition-all hover:bg-gray-200"
+				class="surface-card transition-all hover:-translate-y-0.5"
 			>
 				<RouterLink :to="`/aprons/workplaces/${workplace.id}`" class="block">
-					<h2 class="text-2xl font-semibold text-gray-900 mb-1">{{ workplace.name }}</h2>
-					<span
-						class="inline-block mx-1 px-3 py-1 text-xs font-mono font-semibold text-blue-600 bg-blue-100 rounded-lg">
-					  ID: {{ workplace.id }}
-					</span>
-					<p class="inline-block mx-1 px-3 py-1 text-xs font-mono font-semibold text-green-600 bg-green-100 rounded-lg">
-						{{ workplace.status }}
-					</p>
-					<h3 class="text-gray-500 mb-2 m-2">{{ workplace.description }}</h3>
+					<h2 class="mb-2 text-2xl font-semibold text-gray-900">{{ workplace.name }}</h2>
+					<div class="mb-2 flex flex-wrap gap-2">
+						<span class="tag-pill">ID: {{ workplace.id }}</span>
+						<span class="tag-pill">{{ workplace.status || 'active' }}</span>
+					</div>
+					<h3 class="m-1 text-gray-500">{{ workplace.description || '暂无描述' }}</h3>
 				</RouterLink>
 			</div>
 		</div>
-		<div v-else class="flex flex-col items-center justify-center h-full">
+		<div v-else class="flex h-full flex-col items-center justify-center gap-3 py-8">
 			<p class="text-gray-500 text-lg">还没有工作区</p>
 			<RouterLink
-				class="mt-4 rounded text-green-600 hover:bg-gray-200 p-2"
+				class="btn-primary"
 				to="/aprons/workplaces/create"
 			>
 				创建工作区↗

@@ -87,51 +87,13 @@
 											class="bg-gray-50 p-4 rounded-lg shadow-sm space-y-3"
 										>
 											<!-- Order Item -->
-											<div class="block text-sm font-medium text-gray-600">
-												<label class="block text-sm font-medium text-gray-600">Task
-													Status</label>
-												<select
-													type="checkbox"
-													v-model="schedule.task_status"
-													class="w-full px-4 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-													<option value="new">new</option>
-													<option value="exist">exist</option>
-												</select>
-											</div>
-											<div v-if="schedule.task_status == 'new'">
-												<div class="flex items-center space-x-4">
-													<div class="flex-1">
-														<label class="block text-sm font-medium text-gray-600">Task
-															Name</label>
-														<input
-															v-model="schedule.name"
-															class="w-full px-4 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-															placeholder="Task Name"
-															type="text"
-														/>
-													</div>
-													<div class="w-1/2">
-														<label
-															class="block text-sm font-medium text-gray-600">Project</label>
-														<select
-															v-model="schedule.project_id"
-															class="w-full px-4 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-														>
-															<option v-for="project in projectsList" :key="project.id"
-															        :value="project.id">
-																{{ project.name }}
-															</option>
-														</select>
-													</div>
-												</div>
-											</div>
-											<div v-else>
-												<label class="block text-sm font-medium text-gray-600">Task Name</label>
+											<div>
+												<label class="block text-sm font-medium text-gray-600">Task</label>
 												<select
 													v-model="schedule.task_id"
 													class="w-full px-4 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-													@change="updateTaskName(schedule)"
 												>
+													<option disabled value="">Select an existing task</option>
 													<option v-for="task in tasksList" :key="task.id" :value="task.id">
 														{{ task.name }}
 													</option>
@@ -140,7 +102,7 @@
 
 											<!-- trigger config-->
 											<div class="flex items-center space-x-4">
-												<div class="w-1/2">
+												<div class="w-1/2" v-if="index === 0">
 													<label
 														class="block text-sm font-medium text-gray-600">Trigger</label>
 													<select
@@ -148,10 +110,16 @@
 														class="w-full px-4 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
 													>
 														<option value="crons">Crons</option>
-														<option value="previous">Previous Schedule</option>
+														<option value="api">API Trigger</option>
 													</select>
 												</div>
-												<div v-if="schedule.trigger === 'crons'" class="w-1/2">
+												<div class="w-1/2" v-else>
+													<label class="block text-sm font-medium text-gray-600">Trigger</label>
+													<div class="w-full px-4 py-2 border rounded-lg shadow-sm bg-gray-100 text-gray-700">
+														Previous Task Completion
+													</div>
+												</div>
+												<div v-if="index === 0 && schedule.trigger === 'crons'" class="w-1/2">
 													<label class="block text-sm font-medium text-gray-600">Cron
 														Expression</label>
 													<input
@@ -161,18 +129,11 @@
 													/>
 												</div>
 											</div>
-											<div v-if="schedule.trigger === 'previous'">
-												<label class="block text-sm font-medium text-gray-600">Previous
-													Schedule</label>
-												<select
-													v-model="schedule.previous"
-													class="w-full px-4 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-												>
-													<option v-for="(s, idx) in schedulesConfig" :key="idx"
-													        :value="s.name">
-														{{ s.name }}
-													</option>
-												</select>
+											<div v-if="index > 0">
+												<label class="block text-sm font-medium text-gray-600">Previous Task</label>
+												<div class="w-full px-4 py-2 border rounded-lg shadow-sm bg-gray-100 text-gray-700">
+													{{ getTaskName(schedulesConfig[index - 1]?.task_id) || 'Select previous task first' }}
+												</div>
 											</div>
 											<div>
 												<label class="block text-sm font-medium text-gray-600">Nodes</label>
@@ -194,7 +155,7 @@
 										class="px-4 py-2 bg-gray-700 text-white rounded-md hover:bg-gray-900 focus:ring-2 focus:ring-gray-500"
 										type="button"
 										@click="addScheduleConfig"
-									>Add New Task
+										>Add Task Step
 									</button>
 								</div>
 							</div>
@@ -220,22 +181,10 @@
 <script setup>
 import {ref, reactive, computed, onMounted} from 'vue';
 import {useRoute} from 'vue-router';
-import Tabs from '@/components/Tabs.vue';
 import ApiService from '@/services/ApiService.js';
 import Schedules from '@/views/Workplaces/Schedules/Schedules.vue';
 import Workplace from '@/views/Workplaces/Workplace.vue';
 
-
-function updateTaskName(schedule) {
-	// 中文：查找选中的任务
-	// EN: Find the selected task
-	const selected = tasksList.value.find(t => t.id === schedule.task_id);
-	if (selected) {
-		schedule.name = selected.name;
-	} else {
-		schedule.name = '';
-	}
-}
 
 const route = useRoute();
 const workplaceId = computed(() => route.params.id || 'default-id');
@@ -247,13 +196,9 @@ const tabsList = computed(() => [
 
 const schedules = ref([]);
 const newSchedule = reactive({name: '', description: '', order: '', mode: 'once', enabled: true});
-const newOrder = reactive({name: '', schedules: []});
 const schedulesConfig = ref([
 	{
-		task_status: 'exist',
-		task_id: " ",
-		name: '',
-		project_id: null,
+		task_id: '',
 		node: [],
 		trigger: 'crons',
 		crons: '',
@@ -261,25 +206,35 @@ const schedulesConfig = ref([
 	}
 ]);
 const nodesList = ref([]);
-const projectsList = ref([]);
 const tasksList = ref([]);
+
+const getTaskByID = taskID => tasksList.value.find(task => String(task.id) === String(taskID));
+const getTaskName = taskID => getTaskByID(taskID)?.name || (taskID ? `task-${taskID}` : '');
+
+const buildOrderSteps = () => {
+	return schedulesConfig.value.map((s, index) => {
+		const task = getTaskByID(s.task_id);
+		const taskName = task?.name || (s.task_id ? `task-${s.task_id}` : `task-step-${index + 1}`);
+		const previousTaskName = index > 0
+			? getTaskName(schedulesConfig.value[index - 1]?.task_id)
+			: undefined;
+
+		return {
+			task_id: s.task_id || undefined,
+			name: taskName,
+			project_id: task?.project_id || undefined,
+			node: Array.isArray(s.node) ? s.node : [],
+			trigger: index === 0 ? s.trigger : 'previous',
+			crons: index === 0 && s.trigger === 'crons' ? s.crons : undefined,
+			previous: index > 0 ? previousTaskName : undefined,
+		};
+	});
+};
 
 const generatedOrderJson = computed(() => JSON.stringify(
 	{
 		name: newSchedule.name,
-		schedule: schedulesConfig.value.map(s => ({
-			task_status: s.task_status,
-			task_id: s.task_id || undefined,
-			name: s.name,
-			project_id: s.project_id,
-			node: s.node,
-			trigger: s.trigger,
-			crons: s.trigger === 'crons' ? s.crons : undefined,
-			previous: s.trigger === 'previous' ? (() => {
-				const prev = schedulesConfig.value.find(cfg => cfg.name === s.previous);
-				return prev ? prev.name : undefined;
-			})() : undefined
-		}))
+		schedule: buildOrderSteps(),
 	}, null, 2
 ));
 
@@ -300,16 +255,6 @@ const fetchNodesList = async () => {
 		console.error('Error fetching nodes:', err);
 	}
 };
-
-const fetchProjectsList = async () => {
-	try {
-		const res = await ApiService.getWorkplaceProjects(workplaceId.value);
-		projectsList.value = res.data;
-	} catch (err) {
-		console.error('Error fetching projects:', err);
-	}
-};
-
 const fetchWorkplaceTasks = async () => {
 	try {
 		const res = await ApiService.getWorkplaceTasks(workplaceId.value);
@@ -323,37 +268,42 @@ const fetchWorkplaceTasks = async () => {
 
 const addScheduleConfig = () => {
 	schedulesConfig.value.push({
-		task_status: 'exist',
 		task_id: '',
-		name: '',
-		project_id: null,
 		node: [],
-		trigger: 'crons',
+		trigger: 'previous',
 		crons: '',
 		previous: ''
 	});
 };
 
 const handleCreateSchedule = async () => {
+	if (schedulesConfig.value.length === 0) {
+		window.alert('Please add at least one task step.');
+		return;
+	}
+
+	for (let i = 0; i < schedulesConfig.value.length; i += 1) {
+		if (!schedulesConfig.value[i].task_id) {
+			window.alert(`Please select an existing task for step ${i + 1}.`);
+			return;
+		}
+	}
+
+	const firstStepTrigger = schedulesConfig.value[0].trigger;
+	if (firstStepTrigger !== 'crons' && firstStepTrigger !== 'api') {
+		window.alert('The first task can only be triggered by cron or API.');
+		return;
+	}
+	if (firstStepTrigger === 'crons' && !String(schedulesConfig.value[0].crons || '').trim()) {
+		window.alert('Please provide a cron expression for the first step.');
+		return;
+	}
+
+	const orderSteps = buildOrderSteps();
+
 	const orderPayload = {
-		name: newSchedule.name, schedule: schedulesConfig.value.map(s => ({
-			task_status: s.task_status,
-			task_id: s.task_id,
-			name: s.task_status === 'exist'
-				? tasksList.value.find(task => task.id === s.task_id)?.name
-				: s.name,
-			project_id: s.project_id ? s.project_id : undefined,
-			node: s.node,
-			trigger: s.trigger,
-			crons: s.trigger === 'crons' ? s.crons : undefined,
-			previous: s.trigger === 'previous' ? (() => {
-				const prev = schedulesConfig.value.find(cfg => cfg.name === s.previous);
-				if (!prev) return undefined;
-				return prev.task_status === 'exist'
-					? tasksList.value.find(task => task.id === prev.task_id)?.name
-					: prev.name;
-			})() : undefined
-		}))
+		name: newSchedule.name,
+		schedule: orderSteps,
 	};
 
 	const schedulePayload = {
@@ -369,8 +319,7 @@ const handleCreateSchedule = async () => {
 		const res = await ApiService.createSchedule(schedulePayload);
 		schedules.value.push(res.data);
 		Object.assign(newSchedule, {name: '', description: '', order: '', mode: 'once', enabled: true});
-		Object.assign(newOrder, {name: '', schedules: []});
-		schedulesConfig.value = [{name: '', project_id: null, node: [], trigger: 'crons', crons: '', previous: ''}];
+		schedulesConfig.value = [{task_id: '', node: [], trigger: 'crons', crons: '', previous: ''}];
 	} catch (err) {
 		console.error('Error creating schedule:', err.response?.data || err);
 	}
@@ -378,7 +327,6 @@ const handleCreateSchedule = async () => {
 
 onMounted(() => {
 	fetchNodesList();
-	fetchProjectsList();
 	fetchWorkplaceSchedule();
 	fetchWorkplaceTasks();
 });

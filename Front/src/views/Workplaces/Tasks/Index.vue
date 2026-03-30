@@ -12,45 +12,42 @@
 <template>
 	<Workplace>
 		<Task>
-			<div>
-				<div v-if="tasks.length === 0" class="text-gray-500">没有可用的项目。</div>
-				<div v-else>
-					<!-- 排序控制 -->
-					<div class="flex items-center mb-4 space-x-2">
-						<label for="sort" class="font-medium">排序：</label>
-						<select id="sort" v-model="sortKey" class="border rounded p-1">
+			<section class="space-y-4">
+				<div class="surface-panel">
+					<div class="mb-4 flex flex-wrap items-center gap-3">
+						<label for="sort" class="text-sm font-medium text-slate-700">排序</label>
+						<select id="sort" v-model="sortKey" class="field-input max-w-[220px]">
 							<option value="name">名称</option>
-							<option value="mode">模式</option>
+							<option value="node_queue">节点队列</option>
 							<option value="created_at">创建时间</option>
-							<option value="updated_at">更新时间</option>
 							<option value="enabled">状态</option>
 						</select>
-						<button @click="toggleSortOrder" class="border rounded p-1">
-							{{ sortOrderLabel }}
-						</button>
+						<button class="btn-muted" @click="toggleSortOrder">{{ sortOrderLabel }}</button>
+						<span class="text-sm text-slate-500">{{ notice }}</span>
 					</div>
 
-					<!-- 卡片网格 -->
-					<div class="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-						<div
-							v-for="task in sortedTasks"
-							:key="task.id"
-							class="group rounded-xl bg-[#F9FAFB] p-6 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-						>
-							<h3 class="font-bold text-lg">{{ task.name }}</h3>
-							<p class="text-sm">{{ task.description }}</p>
-							<div class="mt-4 flex flex-wrap gap-2">
-								<p class="rounded-lg bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-600">模式: {{
-									task.mode }}</p>
-								<p class="rounded-lg bg-yellow-100 px-3 py-1 text-xs font-semibold text-yellow-600">状态:
-									{{ task.enabled ? '启用' : '禁用' }}</p>
-								<p class="text-xs text-gray-500 mt-2">创建: {{ task.created_at }}</p>
-								<p class="text-xs text-gray-500">更新: {{ task.updated_at }}</p>
+					<div v-if="tasks.length === 0" class="py-6 text-sm text-slate-500">没有可用任务。</div>
+					<div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+						<article v-for="task in sortedTasks" :key="task.id" class="surface-card space-y-3">
+							<header class="space-y-1">
+								<h3 class="text-base font-semibold text-slate-900">{{ task.name || 'untitled-task' }}</h3>
+								<p class="text-xs text-slate-500">ID: {{ task.id }}</p>
+							</header>
+							<div class="flex flex-wrap gap-2 text-xs">
+								<span class="tag-pill">队列: {{ task.node_queue || 'default' }}</span>
+								<span class="tag-pill">{{ task.enabled ? '已启用' : '已禁用' }}</span>
+								<span class="tag-pill" v-if="task.cron_expr">cron: {{ task.cron_expr }}</span>
 							</div>
-						</div>
+							<p class="text-xs text-slate-500">创建时间: {{ formatDate(task.created_at) }}</p>
+							<div class="flex flex-wrap gap-2 pt-1">
+								<button class="btn-muted" @click="renameTask(task)">重命名</button>
+								<button class="btn-muted" @click="openSettings(task)">设置</button>
+								<button class="btn-danger" @click="removeTask(task)">删除</button>
+							</div>
+						</article>
 					</div>
 				</div>
-			</div>
+			</section>
 		</Task>
 	</Workplace>
 </template>
@@ -65,6 +62,7 @@ export default {
 	data() {
 		return {
 			tasks: [],
+			notice: '',
 			sortKey: 'name',
 			sortOrder: 'asc',
 		};
@@ -76,7 +74,7 @@ export default {
 				let aVal = a[key];
 				let bVal = b[key];
 
-				if (key === 'created_at' || key === 'updated_at') {
+				if (key === 'created_at') {
 					aVal = new Date(aVal);
 					bVal = new Date(bVal);
 					return this.sortOrder === 'asc' ? aVal - bVal : bVal - aVal;
@@ -98,6 +96,12 @@ export default {
 		},
 	},
 	methods: {
+		formatDate(value) {
+			if (!value) {
+				return '-';
+			}
+			return new Date(value).toLocaleString();
+		},
 		getWorkplaceIdFromURL() {
 			return this.$route.params.id;
 		},
@@ -106,12 +110,50 @@ export default {
 			try {
 				const response = await ApiService.getWorkplaceTasks(taskId);
 				this.tasks = response.data.tasks;
+				this.notice = '';
 			} catch (error) {
 				console.error("Error fetching workplace task:", error);
+				this.notice = '加载任务失败';
 			}
 		},
 		toggleSortOrder() {
 			this.sortOrder = this.sortOrder === 'asc' ? 'desc' : 'asc';
+		},
+		openSettings(task) {
+			const workplaceId = this.getWorkplaceIdFromURL();
+			this.$router.push(`/aprons/workplaces/${workplaceId}/tasks/${task.id}/settings`);
+		},
+		async renameTask(task) {
+			const nextName = window.prompt('输入新任务名称', task.name || '');
+			if (nextName === null) {
+				return;
+			}
+			const name = nextName.trim();
+			if (!name) {
+				this.notice = '任务名称不能为空';
+				return;
+			}
+			try {
+				await ApiService.updateTask(task.id, {name});
+				this.notice = '任务名称已更新';
+				await this.fetchWorkplaceTask();
+			} catch (error) {
+				console.error('rename task failed:', error);
+				this.notice = error?.response?.data?.detail || '更新任务失败';
+			}
+		},
+		async removeTask(task) {
+			if (!window.confirm(`确认删除任务 ${task.name || task.id} ?`)) {
+				return;
+			}
+			try {
+				await ApiService.deleteTask(task.id);
+				this.notice = '任务已删除';
+				await this.fetchWorkplaceTask();
+			} catch (error) {
+				console.error('delete task failed:', error);
+				this.notice = error?.response?.data?.detail || '删除任务失败';
+			}
 		},
 	},
 	mounted() {
