@@ -27,10 +27,6 @@
 							<input v-model="form.entry_command" type="text" class="field-input" placeholder="例如: python app.py" />
 						</div>
 						<div>
-							<label class="mb-2 block text-sm font-medium text-slate-700">Cron 表达式</label>
-							<input v-model="form.cron_expr" type="text" class="field-input" placeholder="留空表示仅手动/API触发" />
-						</div>
-						<div>
 							<label class="mb-2 block text-sm font-medium text-slate-700">节点队列</label>
 							<input v-model="form.node_queue" type="text" class="field-input" placeholder="default" />
 						</div>
@@ -45,6 +41,12 @@
 					<div class="flex flex-wrap items-center gap-3">
 						<button class="btn-primary" :disabled="loading" @click="saveTask">
 							{{ loading ? '保存中...' : '保存设置' }}
+						</button>
+						<button class="btn-muted" :disabled="loading" @click="runTaskOnce">
+							{{ loading ? '处理中...' : '手动运行一次' }}
+						</button>
+						<button class="btn-muted" :disabled="loading" @click="openTaskRuns">
+							查看运行记录
 						</button>
 						<button class="btn-danger" :disabled="loading" @click="deleteTask">
 							删除任务
@@ -75,7 +77,6 @@ const form = reactive({
 	project_id: '',
 	version_id: '',
 	entry_command: '',
-	cron_expr: '',
 	node_queue: 'default',
 	enabled: true,
 });
@@ -92,7 +93,6 @@ const fetchTask = async () => {
 		form.project_id = data.project_id || '';
 		form.version_id = data.version_id || '';
 		form.entry_command = data.entry_command || '';
-		form.cron_expr = data.cron_expr || '';
 		form.node_queue = data.node_queue || 'default';
 		form.enabled = data.enabled !== false;
 		notice.value = '';
@@ -119,7 +119,6 @@ const saveTask = async () => {
 			project_id: String(form.project_id).trim(),
 			version_id: String(form.version_id).trim(),
 			entry_command: String(form.entry_command).trim(),
-			cron_expr: String(form.cron_expr || '').trim(),
 			node_queue: String(form.node_queue || 'default').trim() || 'default',
 			enabled: !!form.enabled,
 		});
@@ -127,6 +126,21 @@ const saveTask = async () => {
 	} catch (error) {
 		console.error('update task failed:', error);
 		notice.value = error?.response?.data?.detail || '保存失败';
+	} finally {
+		loading.value = false;
+	}
+};
+
+const runTaskOnce = async () => {
+	loading.value = true;
+	notice.value = '';
+	try {
+		const response = await ApiService.triggerTask(taskId());
+		const runId = response?.data?.id;
+		notice.value = runId ? `任务已触发，运行ID: ${runId}` : '任务已触发';
+	} catch (error) {
+		console.error('trigger task failed:', error);
+		notice.value = error?.response?.data?.detail || '触发失败';
 	} finally {
 		loading.value = false;
 	}
@@ -147,6 +161,10 @@ const deleteTask = async () => {
 	} finally {
 		loading.value = false;
 	}
+};
+
+const openTaskRuns = () => {
+	router.push(`/aprons/workplaces/${workplaceId()}/tasks/${taskId()}/runs`);
 };
 
 onMounted(fetchTask);

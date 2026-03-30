@@ -147,6 +147,12 @@ const routes = [
         component: () => import('../views/Workplaces/Tasks/Setting.vue'),
         meta: {requiresAuth: true}
     },
+    {
+        name: 'workplaceTaskRuns',
+        path: '/aprons/workplaces/:id/tasks/:taskId/runs',
+        component: () => import('../views/Workplaces/Tasks/Runs.vue'),
+        meta: {requiresAuth: true}
+    },
     // Aprons.Projects
     {
         path: '/aprons/projects',

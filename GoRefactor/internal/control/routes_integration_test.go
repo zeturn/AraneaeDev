@@ -331,6 +331,35 @@ func TestControlRoutes_TriggerReturns503WhenQueueUnavailable(t *testing.T) {
 	}
 }
 
+func TestControlRoutes_TaskCronExprIgnored(t *testing.T) {
+	app := newTestControlApp(t)
+	token := loginAndGetToken(t, app)
+	project, version, _ := createProjectVersionTask(t, app, token, "")
+
+	rec := doJSONRequest(t, app, http.MethodPost, "/api/v1/tasks", token, map[string]any{
+		"name":          "cron-ignored-task",
+		"project_id":    project.ID,
+		"version_id":    version.ID,
+		"entry_command": "bash run.sh",
+		"cron_expr":     "*/15 * * * * *",
+		"node_queue":    "default",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create task failed: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var task common.Task
+	if err := json.Unmarshal(rec.Body.Bytes(), &task); err != nil {
+		t.Fatalf("decode task: %v", err)
+	}
+	if task.CronExpr != "" {
+		t.Fatalf("expected empty task cron_expr, got %q", task.CronExpr)
+	}
+	if len(app.cronEntries) != 0 {
+		t.Fatalf("expected no task cron entries, got %d", len(app.cronEntries))
+	}
+}
+
 func TestControlRoutes_ScheduleFlowWithoutQueue(t *testing.T) {
 	app := newTestControlApp(t)
 	token := loginAndGetToken(t, app)

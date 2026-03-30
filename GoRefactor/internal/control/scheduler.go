@@ -8,37 +8,15 @@ import (
 )
 
 func (a *App) loadCronTasks() error {
-	var tasks []common.Task
-	if err := a.db.Where("enabled = ? AND cron_expr <> ''", true).Find(&tasks).Error; err != nil {
+	// Task-level cron is disabled: only schedules are allowed to run by cron.
+	if err := a.db.Model(&common.Task{}).Where("cron_expr <> ''").Update("cron_expr", "").Error; err != nil {
 		return err
-	}
-	for _, t := range tasks {
-		if err := a.registerCronTask(t); err != nil {
-			return err
-		}
 	}
 	return nil
 }
 
 func (a *App) registerCronTask(task common.Task) error {
-	if task.CronExpr == "" {
-		return nil
-	}
-	a.cronMu.Lock()
-	defer a.cronMu.Unlock()
-
-	if old, ok := a.cronEntries[task.ID]; ok {
-		a.cron.Remove(old)
-	}
-	entryID, err := a.cron.AddFunc(task.CronExpr, func() {
-		if _, e := a.publishTaskRun(task, "schedule", ""); e != nil {
-			a.log.Error("scheduled trigger failed", zap.Error(e), zap.String("task_id", task.ID))
-		}
-	})
-	if err != nil {
-		return fmt.Errorf("register cron task %s: %w", task.ID, err)
-	}
-	a.cronEntries[task.ID] = entryID
+	_ = task
 	return nil
 }
 

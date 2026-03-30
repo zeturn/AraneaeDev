@@ -21,7 +21,6 @@ interface Project {
   description: string | null;
   language: string;
   command: string;
-  mode: string;
   created_at: string;
   updated_at: string;
 }
@@ -78,9 +77,6 @@ onMounted(() => {
             <div class="flex flex-wrap items-center gap-4 mt-4">
               <span class="tag-pill">语言: {{
                   project.language
-                }}</span>
-              <span class="tag-pill">模式: {{
-                  project.mode
                 }}</span>
             </div>
             <p class="text-sm text-gray-600 mt-2">命令: <code

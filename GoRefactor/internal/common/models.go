@@ -11,10 +11,14 @@ type User struct {
 }
 
 type Project struct {
-	ID        string    `gorm:"primaryKey;size:36" json:"id"`
-	Name      string    `gorm:"size:128;not null" json:"name"`
-	CreatedBy string    `gorm:"size:36;not null" json:"created_by"`
-	CreatedAt time.Time `gorm:"not null" json:"created_at"`
+	ID          string    `gorm:"primaryKey;size:36" json:"id"`
+	Name        string    `gorm:"size:128;not null" json:"name"`
+	Description string    `gorm:"size:512" json:"description"`
+	Language    string    `gorm:"size:64" json:"language"`
+	Command     string    `gorm:"size:512" json:"command"`
+	CreatedBy   string    `gorm:"size:36;not null" json:"created_by"`
+	CreatedAt   time.Time `gorm:"not null" json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 type ArtifactVersion struct {

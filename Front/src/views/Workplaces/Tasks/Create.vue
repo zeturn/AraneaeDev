@@ -51,26 +51,35 @@
 						</select>
 					</div>
 					<div v-if="isGoApi">
-						<label for="project_id" class="block mb-2 text-gray-700 text-sm font-medium">项目 ID</label>
-						<input
+						<label for="project_id" class="block mb-2 text-gray-700 text-sm font-medium">项目</label>
+						<select
 							v-model="goForm.project_id"
 							id="project_id"
-							type="text"
 							required
 							class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400"
-							placeholder="请输入项目 ID"
-						/>
+						>
+							<option disabled value="">请选择项目</option>
+							<option v-for="project in goProjects" :key="project.id" :value="project.id">
+								{{ formatProjectLabel(project) }}
+							</option>
+						</select>
+						<p v-if="!goProjectLoading && goProjects.length === 0" class="mt-2 text-xs text-slate-500">暂无可用项目，请先创建项目。</p>
 					</div>
 					<div v-if="isGoApi">
-						<label for="version_id" class="block mb-2 text-gray-700 text-sm font-medium">版本 ID</label>
-						<input
+						<label for="version_id" class="block mb-2 text-gray-700 text-sm font-medium">版本</label>
+						<select
 							v-model="goForm.version_id"
 							id="version_id"
-							type="text"
 							required
-							class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400"
-							placeholder="请输入版本 ID"
-						/>
+							:disabled="!goForm.project_id || goVersionLoading"
+							class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400 disabled:opacity-60"
+						>
+							<option disabled value="">{{ goForm.project_id ? '请选择版本' : '请先选择项目' }}</option>
+							<option v-for="version in goVersions" :key="version.id" :value="version.id">
+								{{ formatVersionLabel(version) }}
+							</option>
+						</select>
+						<p v-if="goForm.project_id && !goVersionLoading && goVersions.length === 0" class="mt-2 text-xs text-slate-500">该项目暂无可用版本，请先上传版本。</p>
 					</div>
 					<div v-if="isGoApi">
 						<label for="entry_command" class="block mb-2 text-gray-700 text-sm font-medium">执行命令</label>
@@ -81,16 +90,6 @@
 							required
 							class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400"
 							placeholder="例如: bash run.sh"
-						/>
-					</div>
-					<div v-if="isGoApi">
-						<label for="cron_expr" class="block mb-2 text-gray-700 text-sm font-medium">Cron 表达式</label>
-						<input
-							v-model="goForm.cron_expr"
-							id="cron_expr"
-							type="text"
-							class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400"
-							placeholder="例如: */30 * * * * *（留空表示只支持手动/API触发）"
 						/>
 					</div>
 					<div v-if="isGoApi">
@@ -132,7 +131,7 @@
 
 
 <script setup lang="ts">
-import {reactive, ref} from 'vue';
+import {onMounted, reactive, ref, watch} from 'vue';
 import {useRoute, useRouter} from 'vue-router';
 import ApiService from '@/services/ApiService.js';
 import Workplace from '@/views/Workplaces/Workplace.vue';
@@ -161,12 +160,94 @@ const form = reactive({
 const loading = ref(false);
 const error = ref<string | null>(null);
 const isGoApi = ((import.meta.env.VITE_API_FLAVOR || 'django').toLowerCase() === 'go');
+const goProjectLoading = ref(false);
+const goVersionLoading = ref(false);
+const goProjects = ref<Array<{id: string; name?: string; command?: string}>>([]);
+const goVersions = ref<Array<{id: string; file_name?: string; version_hash?: string; created_at?: string; release_date?: string}>>([]);
 const goForm = reactive({
 	project_id: '',
 	version_id: '',
 	entry_command: 'bash run.sh',
-	cron_expr: '*/30 * * * * *',
 	node_queue: 'default',
+});
+
+function formatProjectLabel(project: {id: string; name?: string}) {
+	const projectName = String(project?.name || '').trim() || 'untitled-project';
+	const shortId = String(project?.id || '').slice(0, 8);
+	return shortId ? `${projectName} (${shortId})` : projectName;
+}
+
+function formatVersionLabel(version: {id: string; file_name?: string; version_hash?: string; created_at?: string; release_date?: string}) {
+	const fileName = String(version?.file_name || '').trim() || 'artifact';
+	const hash = String(version?.version_hash || version?.id || '').slice(0, 8);
+	return hash ? `${fileName} (${hash})` : fileName;
+}
+
+async function loadGoProjects() {
+	if (!isGoApi) {
+		return;
+	}
+	goProjectLoading.value = true;
+	try {
+		const response = await ApiService.getWorkplaceProjects(workplaceId);
+		const payload = response?.data;
+		goProjects.value = Array.isArray(payload)
+			? payload
+			: (Array.isArray(payload?.results) ? payload.results : []);
+	} catch (e) {
+		goProjects.value = [];
+	} finally {
+		goProjectLoading.value = false;
+	}
+}
+
+async function loadGoVersions(projectId: string) {
+	if (!isGoApi || !projectId) {
+		goVersions.value = [];
+		return;
+	}
+	goVersionLoading.value = true;
+	try {
+		const response = await ApiService.getVersionsFromProject(projectId);
+		const payload = response?.data;
+		goVersions.value = Array.isArray(payload)
+			? payload
+			: (Array.isArray(payload?.versions) ? payload.versions : []);
+	} catch (e) {
+		goVersions.value = [];
+	} finally {
+		goVersionLoading.value = false;
+	}
+}
+
+watch(
+	() => goForm.project_id,
+	async (projectId, prevId) => {
+		if (!isGoApi) {
+			return;
+		}
+		if (!projectId) {
+			goForm.version_id = '';
+			goVersions.value = [];
+			return;
+		}
+		if (projectId !== prevId) {
+			goForm.version_id = '';
+		}
+		await loadGoVersions(projectId);
+
+		const selectedProject = goProjects.value.find(item => String(item.id) === String(projectId));
+		if (selectedProject?.command && (!goForm.entry_command || goForm.entry_command === 'bash run.sh')) {
+			goForm.entry_command = selectedProject.command;
+		}
+	}
+);
+
+onMounted(async () => {
+	if (!isGoApi) {
+		return;
+	}
+	await loadGoProjects();
 });
 
 /**
@@ -183,7 +264,6 @@ async function submitForm() {
 				project_id: goForm.project_id,
 				version_id: goForm.version_id,
 				entry_command: goForm.entry_command,
-				cron_expr: goForm.cron_expr,
 				node_queue: goForm.node_queue || 'default',
 			}
 			: {

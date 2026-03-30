@@ -151,6 +151,14 @@ const buildGoSchedulePayload = schedule => {
     };
 };
 
+const emptyAvatarResponse = () => ({
+    data: {avatar: null},
+    headers: {'content-type': 'application/json'},
+    status: 204,
+    statusText: 'No Content',
+    config: {},
+});
+
 const ApiService = {
     getUsers() {
         return apiClient.get('/users/');
@@ -162,9 +170,15 @@ const ApiService = {
         return apiClient.get('/profile/');
     },
     getProfileAvatar() {
+        if (isGoApi) {
+            return Promise.resolve(emptyAvatarResponse());
+        }
         return apiClient.get('/profile/avatar/');
     },
     updateProfileAvatar(formData) {
+        if (isGoApi) {
+            return Promise.reject(new Error('Profile avatar update is not supported in Go API mode.'));
+        }
         //setCsrfToken()
         return apiClient.put('/profile/avatar/', formData, {
             headers: {
@@ -362,6 +376,9 @@ const ApiService = {
         if (isGoApi) {
             return apiClient.post('/projects', {
                 name: project?.name || project?.title || 'untitled-project',
+                description: project?.description || '',
+                language: project?.language || '',
+                command: project?.command || '',
             });
         }
         return apiClient.post(`/projects/`, project);
@@ -370,6 +387,9 @@ const ApiService = {
         if (isGoApi) {
             return apiClient.put(`/projects/${projectId}`, {
                 name: project?.name,
+                description: project?.description,
+                language: project?.language,
+                command: project?.command,
             });
         }
         return apiClient.put(`/projects/${projectId}/`, project);
@@ -600,7 +620,6 @@ const ApiService = {
                 project_id: task.project_id,
                 version_id: task.version_id,
                 entry_command: task.entry_command || 'bash run.sh',
-                cron_expr: task.cron_expr || '',
                 node_queue: task.node_queue || 'default',
             });
         }
@@ -618,6 +637,12 @@ const ApiService = {
         }
         return apiClient.delete(`/tasks/${taskId}/`);
     },
+    triggerTask(taskId) {
+        if (isGoApi) {
+            return apiClient.post(`/tasks/${taskId}/trigger`);
+        }
+        return apiClient.post(`/tasks/${taskId}/trigger/`);
+    },
     //  Task
     getTasks() {
         if (isGoApi) {
@@ -630,6 +655,12 @@ const ApiService = {
             return apiClient.get(`/tasks/${taskId}`);
         }
         return apiClient.get(`/tasks/${taskId}/`);
+    },
+    getTaskRuns(taskId) {
+        if (isGoApi) {
+            return apiClient.get(`/tasks/${taskId}/runs`);
+        }
+        return apiClient.get(`/tasks/${taskId}/runs/`);
     },
     //  Account
     login(credentials) {

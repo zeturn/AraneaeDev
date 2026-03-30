@@ -16,6 +16,7 @@ const tabsList = computed(() => {
 	];
 	if (route.params.taskId) {
 		tabs.push({name: '任务设置', url: `/aprons/workplaces/${id}/tasks/${route.params.taskId}/settings`});
+		tabs.push({name: '运行记录', url: `/aprons/workplaces/${id}/tasks/${route.params.taskId}/runs`});
 	}
 	return tabs;
 });

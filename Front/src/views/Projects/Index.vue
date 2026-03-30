@@ -31,7 +31,7 @@
 						<p>Updated: {{ formatDate(updated_at) }}</p>
 					</div>
 				</div>
-				<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+				<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 
 					<!-- Language -->
 					<div class="border border-gray-200 rounded-xl p-4 bg-gray-50">
@@ -50,16 +50,6 @@
 						<p class="text-gray-900">{{ command }}</p>
 					</div>
 
-					<!-- Mode -->
-					<div class="border border-gray-200 rounded-xl p-4 bg-gray-50">
-						<p class="font-semibold text-gray-700">Mode:</p>
-						<span
-							:class="modeClass"
-							class="inline-block px-3 py-1 text-xs font-semibold rounded-md"
-						>
-			              {{ mode }}
-			            </span>
-					</div>
 				</div>
 			</div>
 		</div>
@@ -67,7 +57,6 @@
 </template>
 
 <script>
-import {ref, onMounted} from 'vue';
 import ApiService from "@/services/ApiService.js";
 import Project from "@/views/Projects/Project.vue";
 
@@ -80,7 +69,6 @@ export default {
       description: null,
       language: null,
       command: null,
-      mode: null,
       created_at: null,
       updated_at: null,
       loading: true,
@@ -103,7 +91,6 @@ export default {
             this.description = response.data.description;
             this.language = response.data.language;
             this.command = response.data.command;
-            this.mode = response.data.mode;
             this.created_at = response.data.created_at;
             this.updated_at = response.data.updated_at;
             this.loading = false;
@@ -119,6 +106,21 @@ export default {
 		  const options = {year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: 'numeric'};
 		  return new Date(dateString).toLocaleDateString(undefined, options);
 	  }
+	},
+	computed: {
+		languageClass() {
+			const language = (this.language || '').toLowerCase();
+			if (language.includes('python')) {
+				return 'inline-flex items-center rounded-md bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700';
+			}
+			if (language.includes('go')) {
+				return 'inline-flex items-center rounded-md bg-cyan-50 px-3 py-1 text-xs font-semibold text-cyan-700';
+			}
+			if (language.includes('javascript') || language.includes('typescript')) {
+				return 'inline-flex items-center rounded-md bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700';
+			}
+			return 'inline-flex items-center rounded-md bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700';
+		}
   }
 };
 </script>

@@ -36,11 +36,12 @@
 							<div class="flex flex-wrap gap-2 text-xs">
 								<span class="tag-pill">队列: {{ task.node_queue || 'default' }}</span>
 								<span class="tag-pill">{{ task.enabled ? '已启用' : '已禁用' }}</span>
-								<span class="tag-pill" v-if="task.cron_expr">cron: {{ task.cron_expr }}</span>
 							</div>
 							<p class="text-xs text-slate-500">创建时间: {{ formatDate(task.created_at) }}</p>
 							<div class="flex flex-wrap gap-2 pt-1">
+								<button class="btn-primary" @click="runTaskOnce(task)">手动运行一次</button>
 								<button class="btn-muted" @click="renameTask(task)">重命名</button>
+								<button class="btn-muted" @click="openRuns(task)">运行记录</button>
 								<button class="btn-muted" @click="openSettings(task)">设置</button>
 								<button class="btn-danger" @click="removeTask(task)">删除</button>
 							</div>
@@ -123,6 +124,10 @@ export default {
 			const workplaceId = this.getWorkplaceIdFromURL();
 			this.$router.push(`/aprons/workplaces/${workplaceId}/tasks/${task.id}/settings`);
 		},
+		openRuns(task) {
+			const workplaceId = this.getWorkplaceIdFromURL();
+			this.$router.push(`/aprons/workplaces/${workplaceId}/tasks/${task.id}/runs`);
+		},
 		async renameTask(task) {
 			const nextName = window.prompt('输入新任务名称', task.name || '');
 			if (nextName === null) {
@@ -153,6 +158,16 @@ export default {
 			} catch (error) {
 				console.error('delete task failed:', error);
 				this.notice = error?.response?.data?.detail || '删除任务失败';
+			}
+		},
+		async runTaskOnce(task) {
+			try {
+				const response = await ApiService.triggerTask(task.id);
+				const runId = response?.data?.id;
+				this.notice = runId ? `任务已触发，运行ID: ${runId}` : '任务已触发';
+			} catch (error) {
+				console.error('trigger task failed:', error);
+				this.notice = error?.response?.data?.detail || '触发任务失败';
 			}
 		},
 	},

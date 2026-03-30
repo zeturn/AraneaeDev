@@ -81,11 +81,6 @@ export default {
 			            >
 			              {{ project.id }}
 			            </span>
-						<span
-							class="rounded-lg bg-green-100 px-3 py-1 text-xs font-mono font-semibold text-green-600"
-						>
-			              {{ project.mode }}
-			            </span>
 					</div>
 				</RouterLink>
 			</div>

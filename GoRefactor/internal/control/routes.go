@@ -19,11 +19,17 @@ type loginRequest struct {
 }
 
 type createProjectRequest struct {
-	Name string `json:"name"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Language    string `json:"language"`
+	Command     string `json:"command"`
 }
 
 type updateProjectRequest struct {
-	Name *string `json:"name"`
+	Name        *string `json:"name"`
+	Description *string `json:"description"`
+	Language    *string `json:"language"`
+	Command     *string `json:"command"`
 }
 
 type updateArtifactVersionRequest struct {
@@ -224,11 +230,16 @@ func (a *App) createProject(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "project name is required")
 	}
 	uid, _ := c.Locals("uid").(string)
+	now := time.Now()
 	p := common.Project{
-		ID:        uuid.NewString(),
-		Name:      req.Name,
-		CreatedBy: uid,
-		CreatedAt: time.Now(),
+		ID:          uuid.NewString(),
+		Name:        strings.TrimSpace(req.Name),
+		Description: strings.TrimSpace(req.Description),
+		Language:    strings.TrimSpace(req.Language),
+		Command:     strings.TrimSpace(req.Command),
+		CreatedBy:   uid,
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}
 	if err := a.db.Create(&p).Error; err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
@@ -272,6 +283,20 @@ func (a *App) updateProject(c *fiber.Ctx) error {
 		}
 		project.Name = newName
 	}
+
+	if req.Description != nil {
+		project.Description = strings.TrimSpace(*req.Description)
+	}
+
+	if req.Language != nil {
+		project.Language = strings.TrimSpace(*req.Language)
+	}
+
+	if req.Command != nil {
+		project.Command = strings.TrimSpace(*req.Command)
+	}
+
+	project.UpdatedAt = time.Now()
 
 	if err := a.db.Save(&project).Error; err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
@@ -468,7 +493,7 @@ func (a *App) createTask(c *fiber.Ctx) error {
 		ProjectID:    req.ProjectID,
 		VersionID:    req.VersionID,
 		EntryCommand: req.EntryCommand,
-		CronExpr:     strings.TrimSpace(req.CronExpr),
+		CronExpr:     "",
 		NodeQueue:    req.NodeQueue,
 		Enabled:      true,
 		CreatedBy:    uid,
@@ -479,11 +504,6 @@ func (a *App) createTask(c *fiber.Ctx) error {
 	}
 	if err := a.db.Create(&task).Error; err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
-	}
-	if task.CronExpr != "" {
-		if err := a.registerCronTask(task); err != nil {
-			return fiber.NewError(fiber.StatusBadRequest, err.Error())
-		}
 	}
 	return c.JSON(task)
 }
@@ -525,8 +545,6 @@ func (a *App) updateTask(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	}
 
-	oldCronExpr := task.CronExpr
-
 	if req.Name != nil {
 		name := strings.TrimSpace(*req.Name)
 		if name == "" {
@@ -544,7 +562,7 @@ func (a *App) updateTask(c *fiber.Ctx) error {
 		task.EntryCommand = strings.TrimSpace(*req.EntryCommand)
 	}
 	if req.CronExpr != nil {
-		task.CronExpr = strings.TrimSpace(*req.CronExpr)
+		task.CronExpr = ""
 	}
 	if req.NodeQueue != nil {
 		task.NodeQueue = strings.TrimSpace(*req.NodeQueue)
@@ -565,6 +583,7 @@ func (a *App) updateTask(c *fiber.Ctx) error {
 	if task.NodeQueue == "" {
 		task.NodeQueue = "default"
 	}
+	task.CronExpr = ""
 
 	var project common.Project
 	if err := a.db.Where("id = ?", task.ProjectID).First(&project).Error; err != nil {
@@ -577,14 +596,6 @@ func (a *App) updateTask(c *fiber.Ctx) error {
 
 	if err := a.db.Save(&task).Error; err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
-	}
-
-	a.unregisterCronTask(task.ID)
-	if task.Enabled && task.CronExpr != "" {
-		if err := a.registerCronTask(task); err != nil {
-			_ = a.db.Model(&common.Task{}).Where("id = ?", task.ID).Update("cron_expr", oldCronExpr).Error
-			return fiber.NewError(fiber.StatusBadRequest, err.Error())
-		}
 	}
 
 	return c.JSON(task)

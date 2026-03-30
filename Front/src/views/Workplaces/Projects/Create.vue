@@ -62,22 +62,6 @@
 						/>
 					</div>
 
-					<!-- 模式 -->
-					<div>
-						<label class="block mb-2 text-gray-700 text-sm font-medium" for="mode">
-							模式
-						</label>
-						<select
-							id="mode"
-							v-model="projectData.mode"
-							class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400"
-							required
-						>
-							<option value="manual">手动</option>
-							<option value="automatic">自动</option>
-						</select>
-					</div>
-
 					<!-- 描述（跨两列） -->
 					<div class="col-span-1 md:col-span-2">
 						<label class="block mb-2 text-gray-700 text-sm font-medium" for="description">
@@ -128,7 +112,6 @@ export default {
 				description: "",
 				language: "",
 				command: "",
-				mode: "manual",
 				workplace: null,
 			},
 		};

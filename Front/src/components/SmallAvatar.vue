@@ -23,6 +23,7 @@
 
 <script>
 import ApiService from "@/services/ApiService.js"; // 引入ApiService
+import defaultAvatar from "@/assets/default_avatar.jpg";
 
 export default {
 	name: "SmallAvatar",
@@ -38,18 +39,18 @@ export default {
 		fetchAvatar() {
 			ApiService.getProfileAvatar()
 				.then(response => {
-					// 确保 Content-Type 是图片
-					const contentType = response.headers["content-type"];
-					if (contentType && contentType.startsWith("image/")) {
-						this.validateImage(response.data.avatar);
-					} else {
-						console.info("Invalid content type, using default avatar.");
-						this.avatarUrl = "/src/assets/default_avatar.jpg"; // 不是图片，使用默认头像
+					const avatar = response?.data?.avatar;
+					if (avatar) {
+						this.validateImage(avatar);
+						return;
 					}
+					this.avatarUrl = defaultAvatar;
 				})
 				.catch(error => {
-					console.error("Error fetching avatar:", error);
-					this.avatarUrl = "/src/assets/default_avatar.jpg"; // 兜底
+					if (error?.response?.status !== 404) {
+						console.error("Error fetching avatar:", error);
+					}
+					this.avatarUrl = defaultAvatar;
 				});
 		},
 		validateImage(url) {
@@ -60,7 +61,7 @@ export default {
 			};
 			img.onerror = () => {
 				console.warn("Invalid image URL, using default.");
-				this.avatarUrl = "/src/assets/default_avatar.jpg";
+				this.avatarUrl = defaultAvatar;
 			};
 		}
 	},
