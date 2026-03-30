@@ -174,28 +174,64 @@ const ApiService = {
     },
     // Teams
     getTeam(teamId) {
+        if (isGoApi) {
+            return apiClient.get(`/teams/${teamId}`);
+        }
         return apiClient.get(`/teams/${teamId}/`);
     },
     getMyTeams() {
+        if (isGoApi) {
+            return apiClient.get('/teams/my_teams').then(resp => ({
+                ...resp,
+                data: {
+                    results: Array.isArray(resp?.data?.results) ? resp.data.results : [],
+                    count: resp?.data?.count || 0,
+                },
+            }));
+        }
         return apiClient.get('/teams/my_teams/');
     },
     createTeam(team) {
+        if (isGoApi) {
+            return apiClient.post('/teams', team);
+        }
         return apiClient.post('/teams/', team);
     },
     updateTeam(teamId, team) {
+        if (isGoApi) {
+            return apiClient.put(`/teams/${teamId}`, team);
+        }
         return apiClient.put(`/teams/${teamId}/`, team);
     },
     deleteTeam(teamId) {
+        if (isGoApi) {
+            return apiClient.delete(`/teams/${teamId}`);
+        }
         return apiClient.delete(`/teams/${teamId}/`);
     },
     getTeamMembers(teamId) {
+        if (isGoApi) {
+            return apiClient.get(`/teams/${teamId}/members`);
+        }
         return apiClient.get(`/teams/${teamId}/members/`);
     },
     addTeamMembers(teamId, userIds) {
+        if (isGoApi) {
+            return apiClient.post(
+                `/teams/${teamId}/add_members`,
+                {user_ids: userIds}
+            );
+        }
         return apiClient.post(
             `/teams/${teamId}/add_members/`,
             {user_ids: userIds}
         );
+    },
+    removeTeamMember(teamId, userId) {
+        if (isGoApi) {
+            return apiClient.delete(`/teams/${teamId}/members/${userId}`);
+        }
+        return apiClient.delete(`/teams/${teamId}/members/${userId}/`);
     },
     // Node
     registerNodes(ip, name) {

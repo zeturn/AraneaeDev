@@ -93,6 +93,22 @@ type addWorkplacePeopleRequest struct {
 	UserIDs []string `json:"user_ids"`
 }
 
+func (a *App) resolveUserIdentifier(identifier string) (common.User, error) {
+	value := strings.TrimSpace(identifier)
+	if value == "" {
+		return common.User{}, gorm.ErrRecordNotFound
+	}
+
+	var user common.User
+	if err := a.db.Where("id = ?", value).First(&user).Error; err == nil {
+		return user, nil
+	}
+	if err := a.db.Where("username = ?", value).First(&user).Error; err == nil {
+		return user, nil
+	}
+	return common.User{}, gorm.ErrRecordNotFound
+}
+
 func parseUintParam(c *fiber.Ctx, key string) (uint, error) {
 	raw := strings.TrimSpace(c.Params(key))
 	if raw == "" {
@@ -509,6 +525,38 @@ func (a *App) getInstallStatus(c *fiber.Ctx) error {
 	})
 }
 
+func (a *App) listUsers(c *fiber.Ctx) error {
+	var users []common.User
+	if err := a.db.Order("created_at asc").Find(&users).Error; err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+
+	results := make([]fiber.Map, 0, len(users))
+	for _, u := range users {
+		results = append(results, fiber.Map{
+			"id":         u.ID,
+			"username":   u.Username,
+			"role":       u.Role,
+			"created_at": u.CreatedAt,
+		})
+	}
+	return c.JSON(fiber.Map{"results": results, "count": len(results)})
+}
+
+func (a *App) getUser(c *fiber.Ctx) error {
+	identifier := strings.TrimSpace(c.Params("id"))
+	user, err := a.resolveUserIdentifier(identifier)
+	if err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "user not found")
+	}
+	return c.JSON(fiber.Map{
+		"id":         user.ID,
+		"username":   user.Username,
+		"role":       user.Role,
+		"created_at": user.CreatedAt,
+	})
+}
+
 func (a *App) listMyTeams(c *fiber.Ctx) error {
 	uid, _ := c.Locals("uid").(string)
 	var memberships []common.TeamMember
@@ -581,7 +629,32 @@ func (a *App) getTeam(c *fiber.Ctx) error {
 	if err := a.db.Where("id = ?", teamID).First(&team).Error; err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "team not found")
 	}
-	return c.JSON(team)
+
+	uid, _ := c.Locals("uid").(string)
+	role := ""
+	if uid != "" {
+		var member common.TeamMember
+		if err := a.db.Where("team_id = ? AND user_id = ?", team.ID, uid).First(&member).Error; err == nil {
+			role = member.Role
+		}
+	}
+
+	var membersCount int64
+	if err := a.db.Model(&common.TeamMember{}).Where("team_id = ?", team.ID).Count(&membersCount).Error; err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+
+	return c.JSON(fiber.Map{
+		"id":            team.ID,
+		"name":          team.Name,
+		"description":   team.Description,
+		"join_able":     team.JoinAble,
+		"created_by":    team.CreatedBy,
+		"created_at":    team.CreatedAt,
+		"updated_at":    team.UpdatedAt,
+		"role":          role,
+		"members_count": membersCount,
+	})
 }
 
 func (a *App) updateTeam(c *fiber.Ctx) error {
@@ -662,24 +735,72 @@ func (a *App) addTeamMembers(c *fiber.Ctx) error {
 	}
 	now := time.Now()
 	added := 0
+	skipped := 0
+	notFound := make([]string, 0)
 	for _, userID := range req.UserIDs {
-		userID = strings.TrimSpace(userID)
-		if userID == "" {
+		identifier := strings.TrimSpace(userID)
+		if identifier == "" {
 			continue
 		}
+
+		user, resolveErr := a.resolveUserIdentifier(identifier)
+		if resolveErr != nil {
+			notFound = append(notFound, identifier)
+			continue
+		}
+
 		var count int64
-		if err := a.db.Model(&common.TeamMember{}).Where("team_id = ? AND user_id = ?", teamID, userID).Count(&count).Error; err != nil {
+		if err := a.db.Model(&common.TeamMember{}).Where("team_id = ? AND user_id = ?", teamID, user.ID).Count(&count).Error; err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 		}
 		if count > 0 {
+			skipped++
 			continue
 		}
-		if err := a.db.Create(&common.TeamMember{TeamID: teamID, UserID: userID, Role: "member", CreatedAt: now}).Error; err != nil {
+		if err := a.db.Create(&common.TeamMember{TeamID: teamID, UserID: user.ID, Role: "member", CreatedAt: now}).Error; err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 		}
 		added++
 	}
-	return c.JSON(fiber.Map{"ok": true, "added": added})
+	return c.JSON(fiber.Map{"ok": true, "added": added, "skipped": skipped, "not_found": notFound})
+}
+
+func (a *App) removeTeamMember(c *fiber.Ctx) error {
+	teamID, err := parseUintParam(c, "id")
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid team id")
+	}
+
+	identifier := strings.TrimSpace(c.Params("userID"))
+	if identifier == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "user id is required")
+	}
+
+	user, resolveErr := a.resolveUserIdentifier(identifier)
+	if resolveErr != nil {
+		return fiber.NewError(fiber.StatusNotFound, "user not found")
+	}
+
+	var member common.TeamMember
+	if err := a.db.Where("team_id = ? AND user_id = ?", teamID, user.ID).First(&member).Error; err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "team member not found")
+	}
+
+	if member.Role == "owner" {
+		var owners int64
+		if err := a.db.Model(&common.TeamMember{}).Where("team_id = ? AND role = ?", teamID, "owner").Count(&owners).Error; err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+		}
+		if owners <= 1 {
+			return fiber.NewError(fiber.StatusBadRequest, "cannot remove the last owner")
+		}
+	}
+
+	if err := a.db.Where("id = ?", member.ID).Delete(&common.TeamMember{}).Error; err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+
+	return c.JSON(fiber.Map{"ok": true})
 }
 
 func (a *App) listWorkplaces(c *fiber.Ctx) error {

@@ -130,6 +130,11 @@ func (a *App) setupRoutes() {
 	api.Get("/schedules/:id/runs", a.listScheduleRuns)
 	api.Get("/runs", a.listRecentRuns)
 
+	api.Get("/users/", a.listUsers)
+	api.Get("/users", a.listUsers)
+	api.Get("/users/:id/", a.getUser)
+	api.Get("/users/:id", a.getUser)
+
 	api.Get("/nodes/discover/", a.discoverNodes)
 	api.Post("/nodes/register/", a.requireRoles("admin", "operator"), a.registerNode)
 	api.Get("/nodes/", a.listNodes)
@@ -167,6 +172,8 @@ func (a *App) setupRoutes() {
 	api.Get("/teams/:id/members", a.getTeamMembers)
 	api.Post("/teams/:id/add_members/", a.requireRoles("admin", "operator"), a.addTeamMembers)
 	api.Post("/teams/:id/add_members", a.requireRoles("admin", "operator"), a.addTeamMembers)
+	api.Delete("/teams/:id/members/:userID/", a.requireRoles("admin", "operator"), a.removeTeamMember)
+	api.Delete("/teams/:id/members/:userID", a.requireRoles("admin", "operator"), a.removeTeamMember)
 
 	api.Get("/workplaces/", a.listWorkplaces)
 	api.Get("/workplaces", a.listWorkplaces)

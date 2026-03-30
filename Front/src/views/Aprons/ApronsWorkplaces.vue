@@ -56,7 +56,7 @@ onMounted(() => {
 			<div
 				v-for="workplace in workplaces"
 				:key="workplace.id"
-				class="surface-card transition-all hover:-translate-y-0.5"
+				class="rounded-lg bg-[#F9FAFB] p-6 transition-all hover:bg-gray-200"
 			>
 				<RouterLink :to="`/aprons/workplaces/${workplace.id}`" class="block">
 					<h2 class="mb-2 text-2xl font-semibold text-gray-900">{{ workplace.name }}</h2>

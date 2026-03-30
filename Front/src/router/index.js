@@ -211,6 +211,12 @@ const routes = [
         meta: {requiresAuth: true}
     },
     {
+        name: "teamMembers",
+        path: '/aprons/teams/:id/members',
+        component: () => import('../views/Teams/Members.vue'),
+        meta: {requiresAuth: true}
+    },
+    {
         name: "apronsTeamSettings",
         path: '/aprons/teams/:id/settings',
         component: () => import('../views/Teams/Setting/Index.vue'),

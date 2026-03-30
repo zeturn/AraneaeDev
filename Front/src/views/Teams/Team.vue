@@ -32,6 +32,8 @@ import Sidebar from '../../components/Sidebar.vue';
 import RightSidebar from "@/components/RightSidebar.vue";
 import {useRoute} from "vue-router";
 
+const route = useRoute();
+
 defineComponent({
 	components: {
 		Header,
@@ -48,20 +50,17 @@ const isLargeScreen = ref(window.innerWidth >= 768);
 // 定义链接列表
 // 定义链接列表，并动态填入 ID
 const links = computed(() => {
-	let route = useRoute();
 	const id = route.params.id || 'default-id';  // 如果没有ID，使用默认值
 	return [
-		{name: '返回', url: `/aprons/teams`},
-		{name: '概览', url: `/aprons/teams/${id}`},
-		{name: '项目设置', url: `/aprons/teams/${id}/settings`},
+		{name: '团队概况', url: `/aprons/teams/${id}`},
+		{name: '添加成员', url: `/aprons/teams/${id}/members`},
+		{name: '设置', url: `/aprons/teams/${id}/settings`},
 	];
 });
 
 const right_links = computed(() => {
-	let route = useRoute();
-	const id = route.params.id || 'default-id';  // 如果没有ID，使用默认值
 	return [
-		{name: '概览', url: `/aprons/teams`},
+		{name: '团队列表', url: `/aprons/teams`},
 		{name: '个人资料', url: `/profile`},
 		{name: '注销', url: `/logout`},
 	];

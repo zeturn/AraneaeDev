@@ -97,19 +97,19 @@ onMounted(async () => {
 				<!-- 团队下拉 -->
 				<div class="mb-5">
 					<label class="block mb-2 text-gray-700 text-sm font-medium">所属团队</label>
-					<select
+					<el-select
 						v-model="newWorkplace.team_id"
-						class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-600 focus:border-blue-600"
+						class="araneae-select w-full"
+						placeholder="请选择团队"
+						popper-class="araneae-select-popper"
 					>
-						<option disabled value="">请选择团队</option>
-						<option
+						<el-option
 							v-for="team in teams"
 							:key="team.id"
+							:label="`${team.name}（角色: ${team.role}）`"
 							:value="team.id"
-						>
-							{{ team.name }}（角色: {{ team.role }}）
-						</option>
-					</select>
+						/>
+					</el-select>
 				</div>
 
 				<!-- 名称输入 -->
@@ -117,7 +117,7 @@ onMounted(async () => {
 					<label class="block mb-2 text-gray-700 text-sm font-medium">名称</label>
 					<input
 						v-model="newWorkplace.name"
-						class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400"
+						class="field-input"
 						placeholder="请输入工作区名称"
 						required
 						type="text"
@@ -129,7 +129,7 @@ onMounted(async () => {
 					<label class="block mb-2 text-gray-700 text-sm font-medium">描述</label>
 					<input
 						v-model="newWorkplace.description"
-						class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400"
+						class="field-input"
 						placeholder="请输入描述（可选）"
 						type="text"
 					/>
@@ -138,13 +138,14 @@ onMounted(async () => {
 				<!-- 状态选择 -->
 				<div class="mb-6">
 					<label class="block mb-2 text-gray-700 text-sm font-medium">状态</label>
-					<select
+					<el-select
 						v-model="newWorkplace.status"
-						class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400"
+						class="araneae-select w-full"
+						popper-class="araneae-select-popper"
 					>
-						<option value="active">启用</option>
-						<option value="inactive">停用</option>
-					</select>
+						<el-option label="启用" value="active"/>
+						<el-option label="停用" value="inactive"/>
+					</el-select>
 				</div>
 
 				<button
@@ -160,5 +161,48 @@ onMounted(async () => {
 
 
 <style scoped>
-/* ... */
+:deep(.araneae-select .el-select__wrapper) {
+	border: none;
+	box-shadow: none;
+	background: #f3f4f6;
+	border-radius: 12px;
+	padding: 9px 12px;
+	min-height: 48px;
+}
+
+:deep(.araneae-select .el-select__wrapper.is-focused) {
+	box-shadow: 0 0 0 2px var(--focus);
+	background: #f8fafc;
+}
+
+:deep(.araneae-select .el-select__placeholder) {
+	color: #94a3b8;
+}
+
+:deep(.araneae-select-popper.el-popper) {
+	border: none;
+	border-radius: 14px;
+	box-shadow: 0 14px 36px -24px rgba(15, 23, 42, 0.38);
+	overflow: hidden;
+	padding: 6px;
+}
+
+:deep(.araneae-select-popper .el-select-dropdown__item) {
+	border-radius: 10px;
+	color: #334155;
+	font-size: 13px;
+	line-height: 34px;
+	height: 34px;
+	padding: 0 10px;
+}
+
+:deep(.araneae-select-popper .el-select-dropdown__item.hover) {
+	background: #f1f5f9;
+}
+
+:deep(.araneae-select-popper .el-select-dropdown__item.selected) {
+	background: #edf8f6;
+	color: #0f766e;
+	font-weight: 600;
+}
 </style>

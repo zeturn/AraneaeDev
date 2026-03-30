@@ -16,13 +16,13 @@
 -->
 <template>
 	<Aprons>
-		<div class="container">
+		<div class="mx-auto max-w-4xl px-4 pb-10">
 			<h2 class="text-3xl font-semibold text-gray-500">
 				创建团队
 			</h2>
 
 			<form
-				class="p-6 bg-white rounded-2xl my-4"
+				class="team-panel my-4"
 				@submit.prevent="onSubmit"
 			>
 
@@ -35,7 +35,7 @@
 					<input
 						id="name"
 						v-model="name"
-						class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400"
+						class="field-input"
 						placeholder="输入团队名称"
 						required
 						type="text"
@@ -51,7 +51,7 @@
 					<textarea
 						id="description"
 						v-model="description"
-						class="w-full p-3 bg-gray-100 rounded-lg h-24 resize-none focus:ring-4 focus:ring-blue-400 focus:border-blue-400"
+						class="field-input h-24 resize-none"
 						placeholder="添加团队描述（可选）"
 					></textarea>
 				</div>
@@ -72,15 +72,15 @@
 
 				<button
 					:disabled="loading"
-					class="w-full py-3 bg-gray-800 text-white rounded-lg hover:bg-gray-900 transition-colors font-medium font-medium disabled:opacity-50"
+					class="btn-primary w-full disabled:opacity-50"
 					type="submit"
 				>
 					<span v-if="loading">提交中...</span>
-					<span v-else>提交</span>
+					<span v-else>创建团队</span>
 				</button>
 
-				<p v-if="error" class="text-red-500 text-sm mt-2">{{ error }}</p>
-				<p v-if="success" class="text-green-500 text-sm mt-2">创建成功！</p>
+				<p v-if="error" class="mt-2 text-sm text-red-500">{{ error }}</p>
+				<p v-if="success" class="mt-2 text-sm text-green-600">创建成功！</p>
 			</form>
 		</div>
 	</Aprons>
@@ -95,7 +95,6 @@
 import {ref} from 'vue';
 import ApiService from '@/services/ApiService.js';
 import Aprons from "@/views/Aprons/Aprons.vue";
-import {useRouter} from 'vue-router';
 import EventBus from '@/utils/event-bus'
 import router from "@/router/index.js";
 
