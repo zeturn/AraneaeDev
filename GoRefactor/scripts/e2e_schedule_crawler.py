@@ -393,7 +393,6 @@ def run_e2e() -> Dict[str, Any]:
             payload={
                 "name": "e2e-cron-schedule",
                 "description": "cron auto run verification",
-                "mode": "recurring",
                 "enabled": True,
                 "order": {
                     "name": "e2e-cron-schedule",
@@ -419,7 +418,6 @@ def run_e2e() -> Dict[str, Any]:
             payload={
                 "name": "e2e-chain-schedule",
                 "description": "chain trigger verification",
-                "mode": "once",
                 "enabled": False,
                 "order": {
                     "name": "e2e-chain-schedule",

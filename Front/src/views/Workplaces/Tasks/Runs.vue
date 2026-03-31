@@ -28,8 +28,8 @@
 								<button
 									v-for="run in runs"
 									:key="run.id"
-									class="w-full rounded-xl border px-3 py-3 text-left transition"
-									:class="selectedRun?.id === run.id ? 'border-slate-400 bg-slate-100' : 'border-slate-200 bg-white hover:bg-slate-50'"
+									class="btn-run-item"
+									:class="selectedRun?.id === run.id ? 'btn-run-item-selected' : 'btn-run-item-idle'"
 									@click="selectRun(run.id)"
 								>
 									<p class="text-sm font-medium text-slate-900">{{ run.status || 'unknown' }}</p>

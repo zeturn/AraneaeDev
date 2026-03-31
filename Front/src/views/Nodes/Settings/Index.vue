@@ -121,7 +121,7 @@ onMounted(() => {
 					<div>
 						<label class="block mb-2 text-gray-700 text-sm font-medium">名称</label>
 						<input v-model="form.name"
-						       class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400"
+						       class="field-input"
 						       type="text"
 						       required
 						       placeholder="请输入节点名称"
@@ -130,7 +130,7 @@ onMounted(() => {
 					<div>
 						<label class="block mb-2 text-gray-700 text-sm font-medium">描述</label>
 						<textarea v-model="form.description"
-						          class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400"
+						          class="field-input"
 						          rows="3"
 						          placeholder="请输入描述（可选）"
 						></textarea>
@@ -138,7 +138,7 @@ onMounted(() => {
 					<div>
 						<label class="block mb-2 text-gray-700 text-sm font-medium">状态</label>
 						<select v-model="form.status"
-						        class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400"
+						        class="field-input"
 						>
 							<option value="active">启用</option>
 							<option value="inactive">停用</option>
@@ -147,7 +147,7 @@ onMounted(() => {
 					<div>
 						<label class="block mb-2 text-gray-700 text-sm font-medium">IP 地址</label>
 						<input v-model="form.ip_address"
-						       class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400"
+						       class="field-input"
 						       type="text"
 						       placeholder="请输入节点 IP"
 						/>
@@ -155,7 +155,7 @@ onMounted(() => {
 					<div>
 						<label class="block mb-2 text-gray-700 text-sm font-medium">端口</label>
 						<input v-model="form.port"
-						       class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400"
+						       class="field-input"
 						       type="number"
 						       placeholder="请输入端口"
 						/>
@@ -163,7 +163,7 @@ onMounted(() => {
 					<div>
 						<label class="block mb-2 text-gray-700 text-sm font-medium">RPC URL</label>
 						<input v-model="form.rpc_url"
-						       class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400 break-all"
+						       class="field-input break-all"
 						       type="text"
 						       placeholder="请输入 RPC URL"
 						/>
@@ -171,7 +171,7 @@ onMounted(() => {
 					<div>
 						<label class="block mb-2 text-gray-700 text-sm font-medium">Celery 队列</label>
 						<input v-model="form.celery_queue"
-						       class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400"
+						       class="field-input"
 						       type="text"
 						       placeholder="请输入 Celery 队列"
 						/>
@@ -182,7 +182,7 @@ onMounted(() => {
 					</div>
 					<div class="flex justify-end space-x-4 mt-4">
 						<button
-							class="py-3 px-8 ring-green-400 text-green-600 rounded-lg hover:bg-green-200 transition-colors"
+							class="btn-primary px-8 py-3"
 							type="submit"
 						>
 							保存
@@ -193,7 +193,7 @@ onMounted(() => {
 				<div class="flex justify-end mt-4">
 					<button
 						@click="deleteNode"
-						class="py-3 px-8 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+						class="btn-danger px-8 py-3"
 					>
 						删除节点
 					</button>

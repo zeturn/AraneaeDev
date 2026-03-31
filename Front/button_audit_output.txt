@@ -1,0 +1,7 @@
+B|src/components/HelloWorld.vue|15|no-static-class
+C|src/components/LButton.vue|7|dynamic; no-static-class
+C|src/components/LSelect.vue|3|dynamic; static=btn-ghost btn-ghost-muted l-select-trigger
+C|src/components/LSelect.vue|31|dynamic; static=btn-ghost btn-ghost-muted l-select-option
+A|src/views/Schedules/Edit/Index.vue|86|text-sm text-red-600 hover:text-red-800
+C|src/views/Workplaces/Tasks/Runs.vue|28|dynamic; static=btn-run-item
+SUMMARY|A=1|B=1|C=4|TOTAL=71

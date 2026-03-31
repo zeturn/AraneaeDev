@@ -10,12 +10,12 @@
       <p class="text-lg font-medium">NO AVATAR~</p>
     </div>
 
-    <input class="mb-4 p-2 border rounded-lg cursor-pointer focus:outline-none focus:ring focus:border-blue-300"
+    <input class="mb-4 w-full max-w-md cursor-pointer"
            type="file"
            @change="onFileChange"/>
 
     <button
-        class="px-6 py-2 text-white bg-blue-500 rounded-lg hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-400"
+        class="btn-primary px-6 py-2"
         @click="uploadAvatar">
       Upload Avatar
     </button>

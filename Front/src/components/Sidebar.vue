@@ -7,7 +7,7 @@
   <div :class="sidebarClasses">
     <div class="p-4">
       <div :class="smallSidebarClasses" class="flex items-center">
-        <button class="mr-4 bg-transparent text-emerald-200" @click="$emit('toggleSidebar')">
+        <button class="btn-muted mr-4 px-2 py-1" @click="$emit('toggleSidebar')">
           ☰
         </button>
         <h1 class="text-lg text-blue-600">Araneae</h1>

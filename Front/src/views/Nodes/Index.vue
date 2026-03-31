@@ -34,7 +34,7 @@
 					<h2 class="text-xl font-semibold text-gray-800">运行时环境</h2>
 					<button
 						:disabled="capLoading"
-						class="px-4 py-1.5 text-sm font-medium bg-gray-800 text-white rounded-lg hover:bg-gray-900 transition-colors disabled:opacity-50"
+						class="btn-primary px-4 py-1.5 text-sm disabled:opacity-50"
 						@click="doRefreshCapabilities"
 					>
 						<span v-if="capLoading">检测中...</span>
@@ -85,7 +85,7 @@
 						<!-- Install button (show only when not installed and not currently installing) -->
 						<button
 							v-if="!cap.available && !isInstalling(cap.key) && installJobs[cap.key]?.status !== 'success'"
-							class="mt-2 w-full text-xs py-1 px-2 rounded-md bg-gray-700 text-white hover:bg-gray-900 transition-colors"
+							class="btn-primary mt-2 w-full px-2 py-1 text-xs"
 							@click="doInstall(cap.key)"
 						>
 							📦 安装
@@ -94,7 +94,7 @@
 						<!-- View log button (show when a job exists) -->
 						<button
 							v-if="installJobs[cap.key]"
-							class="mt-1 w-full text-xs py-1 px-2 rounded-md border border-gray-300 text-gray-600 hover:bg-gray-100 transition-colors"
+							class="btn-muted mt-1 w-full px-2 py-1 text-xs"
 							@click="openLog(cap.key)"
 						>
 							📋 查看日志
@@ -106,7 +106,7 @@
 				<div v-if="logPanelKey" class="mt-6 rounded-xl border border-gray-200 overflow-hidden">
 					<div class="flex items-center justify-between bg-gray-800 px-4 py-2">
 						<span class="text-sm font-medium text-white">📋 安装日志 — {{ logPanelKey }}</span>
-						<button class="text-gray-400 hover:text-white text-xs" @click="logPanelKey = null">✕ 关闭</button>
+						<button class="btn-muted px-2 py-1 text-xs text-gray-200" @click="logPanelKey = null">✕ 关闭</button>
 					</div>
 					<pre
 						ref="logPanelRef"
@@ -126,7 +126,7 @@
 						</span>
 						<button
 							v-if="!isInstalling(logPanelKey)"
-							class="ml-auto text-xs bg-gray-700 text-white px-3 py-1 rounded hover:bg-gray-600"
+							class="btn-primary ml-auto px-3 py-1 text-xs"
 							@click="doInstall(logPanelKey)"
 						>
 							重试安装

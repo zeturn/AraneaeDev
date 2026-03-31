@@ -11,83 +11,13 @@
 
 <!-- ButtonLargeOutline.vue -->
 <template>
-	<button
-		:style="computedStyles"
-		@blur="blurEffect"
-		@focus="focusEffect"
-		@mouseout="resetEffect"
-		@mouseover="hoverEffect">
+	<button class="btn-ghost btn-ghost-primary min-w-32 h-16 px-6 text-base">
 		大按钮
 	</button>
 </template>
 
 <script>
-import colors from '@/config/colors';
-
 export default {
 	name: 'ButtonLargeOutline',
-	data() {
-		return {
-			colors,
-		};
-	},
-	computed: {
-		computedStyles() {
-			return {
-				width: this.getWidth(),
-				height: this.getHeight(),
-				border: this.getBorder(),
-				color: this.getColor(),
-				backgroundColor: this.getBackgroundColor(),
-				borderRadius: this.getBorderRadius(),
-				padding: this.getPadding(),
-				transition: this.getTransition(),
-				fontSize: this.getFontSize(),
-			};
-		},
-	},
-	methods: {
-		getWidth() {
-			return '128px';
-		},
-		getHeight() {
-			return '64px';
-		},
-		getBorder() {
-			return `2px solid ${this.colors.yellowGreen}`;
-		},
-		getColor() {
-			return this.colors.yellowGreen;
-		},
-		getBackgroundColor() {
-			return this.colors.white;
-		},
-		getBorderRadius() {
-			return '8px';
-		},
-		getPadding() {
-			return '12px 24px';
-		},
-		getTransition() {
-			return 'all 0.2s';
-		},
-		getFontSize() {
-			return '16px';
-		},
-		hoverEffect(event) {
-			event.target.style.backgroundColor = this.colors.yellowGreen;
-			event.target.style.color = this.colors.white;
-		},
-		resetEffect(event) {
-			event.target.style.backgroundColor = this.colors.white;
-			event.target.style.color = this.colors.yellowGreen;
-		},
-		focusEffect(event) {
-			event.target.style.outline = `4px solid ${this.colors.grayLight}`;
-		},
-		blurEffect(event) {
-			event.target.style.outline = 'none';
-		},
-	},
 };
 </script>

@@ -64,7 +64,6 @@ type createScheduleRequest struct {
 	EntryCommand string `json:"entry_command"`
 	CronExpr     string `json:"cron_expr"`
 	NodeQueue    string `json:"node_queue"`
-	Mode         string `json:"mode"`
 	Enabled      *bool  `json:"enabled"`
 	Order        any    `json:"order"`
 }
@@ -78,7 +77,6 @@ type updateScheduleRequest struct {
 	EntryCommand *string `json:"entry_command"`
 	CronExpr     *string `json:"cron_expr"`
 	NodeQueue    *string `json:"node_queue"`
-	Mode         *string `json:"mode"`
 	Enabled      *bool   `json:"enabled"`
 	Order        any     `json:"order"`
 }
@@ -708,13 +706,9 @@ func (a *App) createSchedule(c *fiber.Ctx) error {
 	req.CronExpr = strings.TrimSpace(req.CronExpr)
 	req.NodeQueue = strings.TrimSpace(req.NodeQueue)
 	req.Name = strings.TrimSpace(req.Name)
-	req.Mode = strings.TrimSpace(req.Mode)
 
 	if req.NodeQueue == "" {
 		req.NodeQueue = "default"
-	}
-	if req.Mode == "" {
-		req.Mode = "recurring"
 	}
 	if req.Name == "" {
 		req.Name = "schedule-" + uuid.NewString()[:8]
@@ -789,7 +783,6 @@ func (a *App) createSchedule(c *fiber.Ctx) error {
 		EntryCommand: req.EntryCommand,
 		CronExpr:     req.CronExpr,
 		NodeQueue:    req.NodeQueue,
-		Mode:         req.Mode,
 		OrderJSON:    orderJSON,
 		Enabled:      enabled,
 		CreatedBy:    uid,
@@ -863,9 +856,6 @@ func (a *App) updateSchedule(c *fiber.Ctx) error {
 	if req.NodeQueue != nil {
 		schedule.NodeQueue = strings.TrimSpace(*req.NodeQueue)
 	}
-	if req.Mode != nil {
-		schedule.Mode = strings.TrimSpace(*req.Mode)
-	}
 	if req.Enabled != nil {
 		schedule.Enabled = *req.Enabled
 	}
@@ -900,9 +890,6 @@ func (a *App) updateSchedule(c *fiber.Ctx) error {
 
 	if schedule.NodeQueue == "" {
 		schedule.NodeQueue = "default"
-	}
-	if schedule.Mode == "" {
-		schedule.Mode = "recurring"
 	}
 	if schedule.Name == "" {
 		schedule.Name = "schedule-" + schedule.ID[:8]

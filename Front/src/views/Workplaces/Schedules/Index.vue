@@ -39,11 +39,6 @@
 							<span class="rounded-lg bg-blue-100 px-3 py-1 text-xs font-mono font-semibold text-blue-600">
               {{ schedule.id }}
             </span>
-							<!-- Mode chip -->
-							<span
-								class="rounded-lg bg-yellow-100 px-3 py-1 text-xs font-mono font-semibold text-yellow-600">
-              {{ schedule.mode }}
-            </span>
 							<!-- Enabled / Disabled chip -->
 							<span
 								class="rounded-lg px-3 py-1 text-xs font-mono font-semibold"
@@ -68,15 +63,15 @@
 
 					<div class="mt-4 flex items-center gap-2">
 						<button
-							class="rounded-md px-3 py-1.5 text-sm font-medium text-white"
-							:class="schedule.enabled ? 'bg-orange-600 hover:bg-orange-700' : 'bg-green-600 hover:bg-green-700'"
+							class="btn-ghost px-3 py-1.5 text-sm font-medium"
+							:style="{ color: schedule.enabled ? '#c2410c' : '#15803d' }"
 							:disabled="isBusy(schedule.id)"
 							@click="toggleScheduleEnabled(schedule)"
 						>
 							{{ isBusy(schedule.id) ? '处理中...' : (schedule.enabled ? '停用' : '启用') }}
 						</button>
 						<button
-							class="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
+							class="btn-danger px-3 py-1.5 text-sm font-medium"
 							:disabled="isBusy(schedule.id)"
 							@click="deleteSchedule(schedule)"
 						>

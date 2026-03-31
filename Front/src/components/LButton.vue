@@ -6,8 +6,7 @@
 <template>
   <button
       :class="buttonClasses"
-      @mouseenter="isHovered = true"
-      @mouseleave="isHovered = false"
+      :style="buttonStyle"
   >
     {{ text }}
   </button>
@@ -18,7 +17,7 @@ export default {
   props: {
     color: {
       type: String,
-      default: 'green',
+      default: 'primary',
     },
     text: {
       type: String,
@@ -26,24 +25,37 @@ export default {
     },
     type: {
       type: String,
-      default: 'outline', // 'outline' or 'solid'
+      default: 'ghost', // 'ghost' or 'solid'
     },
-  },
-  data() {
-    return {
-      isHovered: false,
-    };
   },
   computed: {
-    buttonClasses() {
-      const baseClasses = 'px-4 py-2 rounded-md transition-all duration-300';
-
-      if (this.type === 'outline') {
-        return `${baseClasses} border-2 border-${this.color}-500 text-${this.color}-500 bg-white hover:bg-${this.color}-500 hover:text-white`;
-      } else if (this.type === 'solid') {
-        return `${baseClasses} bg-${this.color}-500 text-white hover:bg-${this.color}-600`;
-      }
+    resolvedType() {
+      return this.type === 'outline' ? 'ghost' : this.type;
     },
+    resolvedColor() {
+      const colorMap = {
+        primary: 'var(--accent)',
+        green: '#0f766e',
+        red: 'var(--danger)',
+        danger: 'var(--danger)',
+        blue: '#1d4ed8',
+        slate: '#475569',
+        gray: '#475569',
+      };
+      return colorMap[this.color] || colorMap.primary;
+    },
+    buttonClasses() {
+      const baseClasses = 'px-4 py-2.5 rounded-xl transition';
+      return this.resolvedType === 'solid'
+        ? `${baseClasses} btn-solid`
+        : `${baseClasses} btn-ghost`;
+    },
+    buttonStyle() {
+      if (this.resolvedType === 'solid') {
+        return {'--btn-solid-bg': this.resolvedColor};
+      }
+      return {color: this.resolvedColor};
+    }
   },
 };
 </script>

@@ -22,7 +22,7 @@
 							id="name"
 							type="text"
 							required
-							class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400"
+							class="field-input"
 							placeholder="请输入任务名称"
 						/>
 					</div>
@@ -33,7 +33,7 @@
 							v-model="form.description"
 							id="description"
 							rows="3"
-							class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400 resize-none"
+							class="field-input resize-none"
 							placeholder="请输入任务描述"
 						></textarea>
 					</div>
@@ -44,7 +44,7 @@
 							v-model="form.mode"
 							id="mode"
 							required
-							class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400"
+							class="field-input"
 						>
 							<option value="once">一次性</option>
 							<option value="recurring">循环</option>
@@ -56,7 +56,7 @@
 							v-model="goForm.project_id"
 							id="project_id"
 							required
-							class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400"
+							class="field-input"
 						>
 							<option disabled value="">请选择项目</option>
 							<option v-for="project in goProjects" :key="project.id" :value="project.id">
@@ -72,7 +72,7 @@
 							id="version_id"
 							required
 							:disabled="!goForm.project_id || goVersionLoading"
-							class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400 disabled:opacity-60"
+							class="field-input disabled:opacity-60"
 						>
 							<option disabled value="">{{ goForm.project_id ? '请选择版本' : '请先选择项目' }}</option>
 							<option v-for="version in goVersions" :key="version.id" :value="version.id">
@@ -88,7 +88,7 @@
 							id="entry_command"
 							type="text"
 							required
-							class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400"
+							class="field-input"
 							placeholder="例如: bash run.sh"
 						/>
 					</div>
@@ -98,7 +98,7 @@
 							v-model="goForm.node_queue"
 							id="node_queue"
 							type="text"
-							class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400"
+							class="field-input"
 							placeholder="默认 default"
 						/>
 					</div>
@@ -108,7 +108,7 @@
 							v-model="form.enabled"
 							id="enabled"
 							type="checkbox"
-							class="h-4 w-4 text-blue-600 focus:ring-blue-400 border-gray-300 rounded"
+							class="h-4 w-4 accent-teal-600"
 						/>
 						<label for="enabled" class="ml-2 text-gray-700 text-sm font-medium">启用</label>
 					</div>
@@ -117,7 +117,7 @@
 						<button
 							type="submit"
 							:disabled="loading"
-							class="w-full py-3 bg-gray-800 text-white rounded-lg hover:bg-gray-900 transition-colors font-medium font-medium disabled:opacity-50"
+							class="btn-primary w-full disabled:opacity-50"
 						>
 							{{ loading ? '提交中...' : '创建' }}
 						</button>

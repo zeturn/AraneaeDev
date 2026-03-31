@@ -21,7 +21,7 @@
 						<input
 							id="project_id"
 							v-model="project_id"
-							class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400"
+							class="field-input"
 							readonly
 							type="text"
 						/>
@@ -32,7 +32,7 @@
 						<select
 							id="version"
 							v-model="version"
-							class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4  focus:border-blue-400 focus:ring-indigo-500"
+							class="field-input"
 						>
 							<option v-for="ver in versions" :key="ver.version_hash" :value="ver.version_hash">
 								{{ ver.version_hash }} - {{ formatDate(ver.release_date) }}
@@ -45,7 +45,7 @@
 						<select
 							id="targets"
 							v-model="selectedTargets"
-							class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400"
+							class="field-input"
 							multiple
 						>
 							<option v-for="node in nodes" :key="node.id" :value="node.id">
@@ -55,7 +55,7 @@
 					</div>
 				</div>
 				<button
-					class="w-full py-3 ring-green-400 text-green-600 rounded-lg hover:bg-green-200 transition-colors font-medium disabled:opacity-50"
+					class="btn-primary w-full disabled:opacity-50"
 					@click="distributeSource"
 				>
 					Distribute

@@ -61,7 +61,7 @@
 					<input
 						id="joinAble"
 						v-model="joinAble"
-						class="h-4 w-4 text-blue-600 focus:ring-blue-400 border-gray-300 rounded"
+						class="h-4 w-4 accent-teal-600"
 						type="checkbox"
 					/>
 					<label

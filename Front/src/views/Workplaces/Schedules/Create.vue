@@ -23,7 +23,7 @@
 							<input
 								id="name"
 								v-model="newSchedule.name"
-								class="w-full px-4 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+								class="field-input"
 								placeholder="Enter schedule name"
 								required
 								type="text"
@@ -34,24 +34,9 @@
 							<textarea
 								id="description"
 								v-model="newSchedule.description"
-								class="w-full px-4 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+								class="field-input"
 								placeholder="Enter description"
 							/>
-						</div>
-						<div class="space-y-2">
-							<label class="block text-lg font-medium text-gray-800" for="mode">
-								<span>Mode</span>
-								<span class="ml-1 text-red-500">*</span>
-							</label>
-							<select
-								id="mode"
-								v-model="newSchedule.mode"
-								class="w-full px-4 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-								required
-							>
-								<option value="once">Once</option>
-								<option value="recurring">Recurring</option>
-							</select>
 						</div>
 
 						<div class="space-y-2 py-4 bg-white">
@@ -65,7 +50,7 @@
 										id="enabled"
 										v-model="newSchedule.enabled"
 										type="checkbox"
-										class="h-6 w-6 text-blue-600 border-gray-300 rounded transition duration-150 focus:ring-2 focus:ring-blue-500"
+										class="h-6 w-6 accent-teal-600"
 										required
 									/>
 									<p class="text-sm text-gray-500">
@@ -91,7 +76,7 @@
 												<label class="block text-sm font-medium text-gray-600">Task</label>
 												<select
 													v-model="schedule.task_id"
-													class="w-full px-4 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+													class="field-input"
 												>
 													<option disabled value="">Select an existing task</option>
 													<option v-for="task in tasksList" :key="task.id" :value="task.id">
@@ -107,7 +92,7 @@
 														class="block text-sm font-medium text-gray-600">Trigger</label>
 													<select
 														v-model="schedule.trigger"
-														class="w-full px-4 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+														class="field-input"
 													>
 														<option value="crons">Crons</option>
 														<option value="api">API Trigger</option>
@@ -124,7 +109,7 @@
 														Expression</label>
 													<input
 														v-model="schedule.crons"
-														class="w-full px-4 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+														class="field-input"
 														placeholder="* * * * * *"
 													/>
 												</div>
@@ -140,7 +125,7 @@
 												<select
 													v-model="schedule.node"
 													multiple
-													class="w-full px-4 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+													class="field-input"
 												>
 													<option v-for="node in nodesList" :key="node.id" :value="node.id">
 														{{ node.name }}
@@ -152,7 +137,7 @@
 										</div>
 									</div>
 									<button
-										class="px-4 py-2 bg-gray-700 text-white rounded-md hover:bg-gray-900 focus:ring-2 focus:ring-gray-500"
+										class="btn-muted"
 										type="button"
 										@click="addScheduleConfig"
 										>Add Task Step
@@ -163,7 +148,7 @@
 						<div class="flex justify-end mt-6">
 							<button
 								type="submit"
-								class="px-6 py-3 bg-gray-800 text-white text-lg rounded-md shadow-lg hover:bg-gray-900 focus:ring-2 focus:ring-gray-500"
+								class="btn-primary px-6 py-3 text-lg"
 							>Create Schedule
 							</button>
 						</div>
@@ -195,7 +180,7 @@ const tabsList = computed(() => [
 ]);
 
 const schedules = ref([]);
-const newSchedule = reactive({name: '', description: '', order: '', mode: 'once', enabled: true});
+const newSchedule = reactive({name: '', description: '', order: '', enabled: true});
 const schedulesConfig = ref([
 	{
 		task_id: '',
@@ -309,7 +294,6 @@ const handleCreateSchedule = async () => {
 	const schedulePayload = {
 		name: newSchedule.name,
 		description: newSchedule.description,
-		mode: newSchedule.mode,
 		enabled: newSchedule.enabled,
 		workplace: workplaceId.value,
 		order: JSON.stringify(orderPayload)
@@ -318,7 +302,7 @@ const handleCreateSchedule = async () => {
 	try {
 		const res = await ApiService.createSchedule(schedulePayload);
 		schedules.value.push(res.data);
-		Object.assign(newSchedule, {name: '', description: '', order: '', mode: 'once', enabled: true});
+		Object.assign(newSchedule, {name: '', description: '', order: '', enabled: true});
 		schedulesConfig.value = [{task_id: '', node: [], trigger: 'crons', crons: '', previous: ''}];
 	} catch (err) {
 		console.error('Error creating schedule:', err.response?.data || err);

@@ -10,10 +10,7 @@
 
 				<section class="team-card space-y-3">
 					<div class="grid gap-3 md:grid-cols-2">
-						<select v-model="selectedUserId" class="field-input">
-							<option value="">从用户列表选择</option>
-							<option v-for="u in users" :key="u.id" :value="u.id">{{ u.username }} ({{ u.role }})</option>
-						</select>
+						<LSelect v-model="selectedUserId" :options="userOptions" placeholder="从用户列表选择" />
 						<input v-model="manualIdentifiers" class="field-input" placeholder="输入用户名/ID，多个用逗号分隔" type="text" />
 					</div>
 					<div class="flex items-center gap-3">
@@ -54,6 +51,7 @@
 import {computed, onMounted, ref} from 'vue';
 import {useRoute} from 'vue-router';
 import ApiService from '@/services/ApiService.js';
+import LSelect from '@/components/LSelect.vue';
 import Team from '@/views/Teams/Team.vue';
 
 const route = useRoute();
@@ -66,6 +64,13 @@ const members = ref([]);
 const users = ref([]);
 const selectedUserId = ref('');
 const manualIdentifiers = ref('');
+
+const userOptions = computed(() => {
+	return users.value.map((u) => ({
+		label: `${u.username} (${u.role})`,
+		value: String(u.id),
+	}));
+});
 
 const fetchMembers = async () => {
 	const response = await ApiService.getTeamMembers(teamId.value);

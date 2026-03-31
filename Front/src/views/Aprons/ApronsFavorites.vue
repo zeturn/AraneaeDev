@@ -76,7 +76,7 @@
 					<h2 class="text-2xl font-semibold mb-2">基础卡片</h2>
 					<p class="text-gray-500 text-sm mb-4">使用于显示各类内容</p>
 					<BasicCard description="这是一个简单的描述" title="示例标题">
-						<button class="bg-green-500 text-white px-4 py-2 rounded-lg">点击</button>
+						<button class="btn-solid btn-solid-primary">点击</button>
 					</BasicCard>
 				</div>
 				<div class="mt-4">
@@ -86,7 +86,7 @@
 						title="示例标题"
 						titleColor="red"
 					>
-						<button class="bg-red-500 text-white px-4 py-2 rounded-lg">点击</button>
+						<button class="btn-solid btn-solid-danger">点击</button>
 					</BasicCard>
 				</div>
 			</div>

@@ -7,18 +7,16 @@
   <div class="flex flex-col mb-4">
     <label :for="inputId" class="mb-1 text-gray-700">{{ label }}</label>
     <div
-        :style="{ borderColor: active ? activeBorderColor : borderColor }"
-        class="relative border border-gray-300 rounded p-2 transition duration-300"
+        :style="{ boxShadow: active ? `0 0 0 2px ${activeBorderColor}` : `0 0 0 0 ${borderColor}` }"
+        class="relative rounded-xl transition duration-300"
         @mouseenter="active = true"
         @mouseleave="active = false"
     >
       <input
           :id="inputId"
-          :class="{'ring ring-offset-2': active}"
           :placeholder="placeholder"
-          :style="{ borderColor: active ? activeBorderColor : borderColor }"
           :value="value"
-          class="w-full outline-none"
+          class="field-input w-full"
           type="text"
           @blur="active = false"
           @focus="active = true"

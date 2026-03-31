@@ -70,7 +70,6 @@ type Schedule struct {
 	EntryCommand    string     `gorm:"size:512;not null" json:"entry_command"`
 	CronExpr        string     `gorm:"size:128;not null" json:"cron_expr"`
 	NodeQueue       string     `gorm:"size:64;not null" json:"node_queue"`
-	Mode            string     `gorm:"size:32;not null;default:recurring" json:"mode"`
 	OrderJSON       string     `gorm:"type:text" json:"order"`
 	Enabled         bool       `gorm:"not null;default:true" json:"enabled"`
 	CreatedBy       string     `gorm:"size:36;not null" json:"created_by"`

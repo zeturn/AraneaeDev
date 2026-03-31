@@ -22,7 +22,7 @@
 						<input
 							id="name"
 							v-model="projectData.name"
-							class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400"
+							class="field-input"
 							placeholder="请输入项目名称"
 							required
 							type="text"
@@ -37,7 +37,7 @@
 						<select
 							id="language"
 							v-model="projectData.language"
-							class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400"
+							class="field-input"
 							required
 						>
 							<option disabled value="">请选择语言</option>
@@ -55,7 +55,7 @@
 						<input
 							id="command"
 							v-model="projectData.command"
-							class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400"
+							class="field-input"
 							placeholder="请输入项目命令"
 							required
 							type="text"
@@ -70,7 +70,7 @@
 						<textarea
 							id="description"
 							v-model="projectData.description"
-							class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400 resize-none"
+							class="field-input resize-none"
 							placeholder="请输入项目描述"
 							rows="4"
 						></textarea>
@@ -79,7 +79,7 @@
 					<!-- 提交按钮（跨两列） -->
 					<div class="col-span-1 md:col-span-2">
 						<button
-							class="w-full py-3 bg-gray-800 text-white rounded-lg hover:bg-gray-900 transition-colors font-medium"
+							class="btn-primary w-full"
 							type="submit"
 						>
 							创建项目

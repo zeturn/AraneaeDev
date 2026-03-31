@@ -340,7 +340,6 @@ def run_test() -> Dict[str, Any]:
         cron_schedule = api_json("POST", "/schedules", token=token, payload={
             "name": "sim-cron-schedule",
             "description": "cron schedule validation",
-            "mode": "recurring",
             "enabled": True,
             "order": {
                 "name": "sim-cron-schedule",
@@ -368,7 +367,6 @@ def run_test() -> Dict[str, Any]:
         chain_schedule = api_json("POST", "/schedules", token=token, payload={
             "name": "sim-chain-schedule",
             "description": "chain schedule validation",
-            "mode": "once",
             "enabled": False,
             "order": {
                 "name": "sim-chain-schedule",

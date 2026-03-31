@@ -36,8 +36,7 @@
 					已选择文件：<span class="font-medium">{{ selectedFile.name }}</span>
 				</p>
 				<button
-					class="mt-4 w-full px-4 py-2 bg-indigo-500 text-white rounded-md shadow
-                    hover:bg-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:ring-offset-2"
+					class="btn-primary mt-4 w-full"
 					@click="uploadFile"
 				>
 					上传

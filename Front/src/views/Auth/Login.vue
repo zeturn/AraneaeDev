@@ -12,7 +12,7 @@
         <div class="relative">
           <input
             v-model="username"
-            :class="['block w-full mb-4 p-3 rounded border', usernameError ? 'border-red-500' : 'border-gray-300']"
+            :class="['field-input block w-full mb-4 p-3', usernameError ? 'login-input-error' : '']"
             placeholder="Email, phone, or username"
             type="text"
           />
@@ -24,7 +24,7 @@
         <div class="relative">
           <input
             v-model="password"
-            :class="['block w-full mb-6 p-3 rounded border', passwordError ? 'border-red-500' : 'border-gray-300']"
+            :class="['field-input block w-full mb-6 p-3', passwordError ? 'login-input-error' : '']"
             placeholder="Password"
             type="password"
           />
@@ -34,7 +34,7 @@
         </div>
 
         <button
-          class="w-full p-3 rounded bg-blue-600 text-white font-medium hover:bg-blue-700 transition-colors duration-200"
+          class="btn-primary w-full"
           type="submit"
         >
           Local Sign In
@@ -42,7 +42,7 @@
       </form>
 
       <button
-        class="mt-3 w-full p-3 rounded border border-gray-300 text-gray-700 font-medium hover:bg-gray-100 transition-colors duration-200"
+        class="btn-muted mt-3 w-full"
         type="button"
         @click="loginWithBasaltPass"
       >
@@ -126,3 +126,11 @@ export default {
   },
 };
 </script>
+
+<style scoped>
+.login-input-error {
+  outline: 2px solid #ef4444;
+  outline-offset: 1px;
+  background-color: #fef2f2 !important;
+}
+</style>

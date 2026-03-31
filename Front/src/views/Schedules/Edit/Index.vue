@@ -23,7 +23,7 @@
             <input
               id="name"
               v-model="form.name"
-              class="w-full px-4 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              class="field-input"
               placeholder="Enter schedule name"
               required
               type="text"
@@ -35,25 +35,9 @@
             <textarea
               id="description"
               v-model="form.description"
-              class="w-full px-4 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              class="field-input"
               placeholder="Enter description"
             />
-          </div>
-
-          <div class="space-y-2 mt-4">
-            <label class="block text-lg font-medium text-gray-800" for="mode">
-              <span>Mode</span>
-              <span class="ml-1 text-red-500">*</span>
-            </label>
-            <select
-              id="mode"
-              v-model="form.mode"
-              class="w-full px-4 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              required
-            >
-              <option value="once">Once</option>
-              <option value="recurring">Recurring</option>
-            </select>
           </div>
 
           <div class="space-y-2 mt-4">
@@ -65,7 +49,7 @@
                 id="enabled"
                 v-model="form.enabled"
                 type="checkbox"
-                class="h-6 w-6 text-blue-600 border-gray-300 rounded transition duration-150 focus:ring-2 focus:ring-blue-500"
+                class="h-6 w-6 accent-teal-600"
               />
               <p class="text-sm text-gray-500">Enable this schedule to run automatically.</p>
             </div>
@@ -86,7 +70,7 @@
                       <button
                         v-if="index > 0"
                         type="button"
-                        class="text-sm text-red-600 hover:text-red-800"
+                        class="btn-danger px-2 py-1 text-sm"
                         @click="removeScheduleConfig(index)"
                       >
                         Remove
@@ -97,7 +81,7 @@
                       <label class="block text-sm font-medium text-gray-600">Task</label>
                       <select
                         v-model="step.task_id"
-                        class="w-full px-4 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        class="field-input"
                       >
                         <option disabled value="">Select an existing task</option>
                         <option v-for="task in tasksList" :key="task.id" :value="task.id">
@@ -111,7 +95,7 @@
                         <label class="block text-sm font-medium text-gray-600">Trigger</label>
                         <select
                           v-model="step.trigger"
-                          class="w-full px-4 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          class="field-input"
                         >
                           <option value="crons">Crons</option>
                           <option value="api">API Trigger</option>
@@ -127,7 +111,7 @@
                         <label class="block text-sm font-medium text-gray-600">Cron Expression</label>
                         <input
                           v-model="step.crons"
-                          class="w-full px-4 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          class="field-input"
                           placeholder="* * * * * *"
                         />
                       </div>
@@ -145,7 +129,7 @@
                       <select
                         v-model="step.node"
                         multiple
-                        class="w-full px-4 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        class="field-input"
                       >
                         <option v-for="node in nodesList" :key="node.id" :value="node.id">
                           {{ node.name }}
@@ -156,7 +140,7 @@
                 </div>
 
                 <button
-                  class="px-4 py-2 bg-gray-700 text-white rounded-md hover:bg-gray-900 focus:ring-2 focus:ring-gray-500"
+                  class="btn-muted"
                   type="button"
                   @click="addScheduleConfig"
                 >
@@ -170,7 +154,7 @@
             <button
               type="submit"
               :disabled="saving"
-              class="px-6 py-3 bg-gray-800 text-white text-lg rounded-md shadow-lg hover:bg-gray-900 focus:ring-2 focus:ring-gray-500 disabled:opacity-50"
+              class="btn-primary px-6 py-3 text-lg disabled:opacity-50"
             >
               {{ saving ? 'Saving...' : 'Update Schedule' }}
             </button>
@@ -208,7 +192,6 @@ const tasksList = ref([]);
 const form = reactive({
   name: '',
   description: '',
-  mode: 'once',
   enabled: true,
   workplace: 'go-workspace',
 });
@@ -293,7 +276,6 @@ const removeScheduleConfig = index => {
 const fillFormFromSchedule = schedule => {
   form.name = schedule?.name || '';
   form.description = schedule?.description || '';
-  form.mode = schedule?.mode || 'once';
   form.enabled = schedule?.enabled !== false;
   form.workplace = schedule?.workplace || 'go-workspace';
 
@@ -388,7 +370,6 @@ const handleUpdateSchedule = async () => {
     await ApiService.updateSchedule(scheduleId, {
       name: form.name,
       description: form.description,
-      mode: form.mode,
       enabled: form.enabled,
       workplace: form.workplace,
       order: JSON.stringify(orderPayload),

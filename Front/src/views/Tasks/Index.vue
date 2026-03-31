@@ -26,7 +26,7 @@
 					<select
 						id="sort"
 						v-model="sortKey"
-						class="border rounded p-1 text-sm bg-gray-100 focus:ring-2 focus:ring-gray-400"
+						class="field-input w-auto px-2 py-1"
 					>
 						<option value="name">名称</option>
 						<option value="mode">模式</option>
@@ -35,7 +35,7 @@
 						<option value="enabled">状态</option>
 					</select>
 					<button
-						class="border rounded p-1 text-sm bg-gray-100 hover:bg-gray-200 transition-colors"
+						class="btn-muted px-2 py-1 text-sm"
 						@click="toggleSortOrder"
 					>
 						{{ sortOrderLabel }}

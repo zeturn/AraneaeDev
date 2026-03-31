@@ -115,7 +115,7 @@ onMounted(() => {
 				<div class="mb-5 rounded-xl border border-gray-200 bg-gray-50 p-4">
 					<div class="flex flex-wrap items-center gap-2">
 						<button
-							class="rounded bg-gray-700 px-3 py-2 text-sm text-white hover:bg-gray-900 disabled:opacity-60"
+							class="btn-muted px-3 py-2 text-sm disabled:opacity-60"
 							type="button"
 							:disabled="discoverLoading"
 							@click="discoverNodes('local')"
@@ -124,12 +124,12 @@ onMounted(() => {
 						</button>
 						<input
 							v-model="customCidr"
-							class="min-w-[220px] flex-1 rounded border border-gray-300 bg-white px-3 py-2 text-sm focus:border-gray-500 focus:outline-none"
+							class="field-input min-w-[220px] flex-1"
 							type="text"
 							placeholder="自定义网段 CIDR，如 192.168.1.0/24"
 						/>
 						<button
-							class="rounded bg-gray-700 px-3 py-2 text-sm text-white hover:bg-gray-900 disabled:opacity-60"
+							class="btn-muted px-3 py-2 text-sm disabled:opacity-60"
 							type="button"
 							:disabled="discoverLoading"
 							@click="discoverNodes('custom')"
@@ -143,7 +143,7 @@ onMounted(() => {
 						<button
 							v-for="candidate in discoveredNodes"
 							:key="candidate.ip"
-							class="flex w-full items-center justify-between rounded border border-gray-200 bg-white px-3 py-2 text-left hover:border-blue-300 hover:bg-blue-50"
+							class="btn-muted flex w-full items-center justify-between px-3 py-2 text-left"
 							type="button"
 							@click="applyCandidate(candidate)"
 						>
@@ -172,7 +172,7 @@ onMounted(() => {
 					<label class="block mb-2 text-gray-700 text-sm font-medium">节点名称</label>
 					<input
 						v-model="nodeName"
-						class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400"
+						class="field-input"
 						placeholder="请输入节点名称"
 						type="text"
 						required
@@ -184,7 +184,7 @@ onMounted(() => {
 					<label class="block mb-2 text-gray-700 text-sm font-medium">节点 IP 地址</label>
 					<input
 						v-model="nodeIp"
-						class="w-full p-3 bg-gray-100 rounded-lg focus:ring-4 focus:ring-blue-400 focus:border-blue-400"
+						class="field-input"
 						placeholder="请输入节点 IP"
 						type="text"
 						required
@@ -192,7 +192,7 @@ onMounted(() => {
 				</div>
 
 				<button
-					class="w-full py-3 bg-gray-800 text-white rounded-lg hover:bg-gray-900 transition-colors font-medium"
+					class="btn-primary w-full"
 					type="submit"
 				>
 					创建节点

@@ -19,15 +19,15 @@
 					<h2 class="text-2xl font-semibold border-b pb-2">调度详情</h2>
 					<div class="flex flex-wrap items-center gap-3">
 						<button
-							class="rounded-md px-4 py-2 text-sm font-medium text-white"
-							:class="schedule.enabled ? 'bg-orange-600 hover:bg-orange-700' : 'bg-green-600 hover:bg-green-700'"
+							class="btn-ghost px-4 py-2 text-sm font-medium"
+							:style="{ color: schedule.enabled ? '#c2410c' : '#15803d' }"
 							:disabled="actionLoading"
 							@click="toggleScheduleEnabled"
 						>
 							{{ actionLoading ? '处理中...' : (schedule.enabled ? '停用计划' : '启用计划') }}
 						</button>
 						<button
-							class="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
+							class="btn-danger px-4 py-2 text-sm font-medium"
 							:disabled="actionLoading"
 							@click="deleteSchedule"
 						>
@@ -46,10 +46,6 @@
 						<div>
 							<dt class="text-sm font-medium text-gray-500">描述</dt>
 							<dd class="mt-1 text-gray-700">{{ schedule.description }}</dd>
-						</div>
-						<div>
-							<dt class="text-sm font-medium text-gray-500">模式</dt>
-							<dd class="mt-1 text-gray-700">{{ schedule.mode }}</dd>
 						</div>
 						<div>
 							<dt class="text-sm font-medium text-gray-500">启用</dt>

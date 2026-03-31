@@ -7,7 +7,7 @@
   <header class="border-b border-slate-100 bg-white px-4 py-3">
     <div class="flex items-center justify-between gap-4">
       <div class="flex min-w-0 items-center gap-3">
-        <button class="rounded-lg px-2 py-1 text-emerald-300 transition hover:bg-slate-100" @click="$emit('toggleSidebar')">
+        <button class="btn-muted px-2 py-1" @click="$emit('toggleSidebar')">
           ☰
         </button>
 

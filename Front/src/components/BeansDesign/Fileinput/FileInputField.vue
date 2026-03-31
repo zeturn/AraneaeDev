@@ -10,16 +10,16 @@
   -->
 
 <template>
-	<div class="relative">
+	<div class="relative beans-file-input">
 		<input :accept="acceptTypes"
-			   :style="inputStyles"
+			   class="beans-file-input__native"
 			   multiple
 			   type="file"
 			   @change="handleFileChange">
-		<div :style="buttonStyles">
+		<div class="beans-file-input__button">
 			{{ buttonText }}
 		</div>
-		<div v-if="selectedFiles.length" :style="infoStyles">
+		<div v-if="selectedFiles.length" class="beans-file-input__info">
 			<span v-if="selectedFiles.length === 1">已选文件: {{ selectedFiles[0] }}</span>
 			<span v-else>已选 {{ selectedFiles.length }} 个文件</span>
 		</div>
@@ -27,8 +27,6 @@
 </template>
 
 <script>
-import colors from '@/config/colors';
-
 export default {
 	name: 'FileInputField',
 	props: {
@@ -39,46 +37,12 @@ export default {
 	},
 	data() {
 		return {
-			colors,
 			selectedFiles: []
 		};
 	},
 	computed: {
 		buttonText() {
 			return this.acceptTypes ? `选择文件 (${this.acceptTypes})` : '选择文件';
-		},
-		inputStyles() {
-			return {
-				position: 'absolute',
-				inset: '0',
-				width: '100%',
-				height: '100%',
-				opacity: '0',
-				cursor: 'pointer',
-				border: `2px solid ${this.colors.yellowGreen}`,
-				borderRadius: '8px',
-			};
-		},
-		buttonStyles() {
-			return {
-				border: `2px solid ${this.colors.yellowGreen}`,
-				borderRadius: '8px',
-				padding: '8px 16px',
-				fontSize: '14px',
-				fontWeight: '500',
-				textAlign: 'center',
-				backgroundColor: this.colors.white,
-				color: this.colors.yellowGreen,
-				cursor: 'pointer',
-				transition: 'all 0.2s',
-			};
-		},
-		infoStyles() {
-			return {
-				marginTop: '8px',
-				fontSize: '12px',
-				color: this.colors.gray,
-			};
 		},
 	},
 	methods: {
@@ -89,3 +53,43 @@ export default {
 	}
 };
 </script>
+
+<style scoped>
+.beans-file-input__native {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+	opacity: 0;
+	cursor: pointer;
+}
+
+.beans-file-input__button {
+	border: none;
+	border-radius: 12px;
+	padding: 0.75rem 1rem;
+	font-size: 0.875rem;
+	font-weight: 500;
+	text-align: center;
+	background: #f3f4f6;
+	color: #1f2a37;
+	transition: background-color 0.2s ease;
+}
+
+.beans-file-input:hover .beans-file-input__button,
+.beans-file-input:focus-within .beans-file-input__button {
+	background: #eef2f7;
+}
+
+.beans-file-input:focus-within .beans-file-input__button {
+	outline: 2px solid #14b8a6;
+	outline-offset: 1px;
+	background: #f8fafc;
+}
+
+.beans-file-input__info {
+	margin-top: 0.5rem;
+	font-size: 0.75rem;
+	color: #64748b;
+}
+</style>

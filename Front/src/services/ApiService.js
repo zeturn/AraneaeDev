@@ -125,7 +125,6 @@ const normalizeGoSchedule = (schedule, workplaceId = 'go-workspace') => {
 
     return {
         ...schedule,
-        mode: schedule?.mode || 'recurring',
         workplace: schedule?.workplace || workplaceId,
         updated_at: schedule?.updated_at || schedule?.created_at,
         order: parsedOrder || fallbackOrder,
@@ -139,7 +138,6 @@ const buildGoSchedulePayload = schedule => {
     return {
         name: schedule?.name || firstStep?.name || 'schedule',
         description: schedule?.description || '',
-        mode: schedule?.mode || 'recurring',
         enabled: schedule?.enabled !== false,
         task_id: schedule?.task_id || firstStep?.task_id || undefined,
         project_id: schedule?.project_id || firstStep?.project_id || undefined,
