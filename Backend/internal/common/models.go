@@ -1,6 +1,12 @@
 package common
 
-import "time"
+import (
+	"fmt"
+	"strings"
+	"time"
+
+	"gorm.io/gorm"
+)
 
 type User struct {
 	ID           string    `gorm:"primaryKey;size:36" json:"id"`
@@ -114,6 +120,7 @@ type Team struct {
 	Name        string    `gorm:"size:128;not null" json:"name"`
 	Description string    `gorm:"size:512" json:"description"`
 	JoinAble    bool      `gorm:"not null;default:false" json:"join_able"`
+	IsPersonal  bool      `gorm:"not null;default:false" json:"is_personal"`
 	CreatedBy   string    `gorm:"size:36" json:"created_by"`
 	CreatedAt   time.Time `gorm:"not null" json:"created_at"`
 	UpdatedAt   time.Time `gorm:"not null" json:"updated_at"`
@@ -142,6 +149,42 @@ type WorkplaceTeam struct {
 	WorkplaceID uint      `gorm:"uniqueIndex:idx_workplace_team;not null" json:"workplace_id"`
 	TeamID      uint      `gorm:"uniqueIndex:idx_workplace_team;not null" json:"team_id"`
 	CreatedAt   time.Time `gorm:"not null" json:"created_at"`
+}
+
+func personalTeamName(username string) string {
+	name := strings.TrimSpace(username)
+	if name == "" {
+		name = "user"
+	}
+	return fmt.Sprintf("%s Personal Team", name)
+}
+
+func (u *User) AfterCreate(tx *gorm.DB) error {
+	now := time.Now()
+	team := Team{
+		Name:        personalTeamName(u.Username),
+		Description: "Auto-created personal team",
+		JoinAble:    false,
+		IsPersonal:  true,
+		CreatedBy:   u.ID,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := tx.Create(&team).Error; err != nil {
+		return err
+	}
+
+	member := TeamMember{
+		TeamID:    team.ID,
+		UserID:    u.ID,
+		Role:      "owner",
+		CreatedAt: now,
+	}
+	if err := tx.Create(&member).Error; err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func AutoMigrateModels() []interface{} {

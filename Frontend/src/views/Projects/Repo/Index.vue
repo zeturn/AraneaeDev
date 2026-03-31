@@ -12,14 +12,13 @@
 <template>
 	<Project>
 		<Repo>
-			<section class="surface-panel space-y-4">
-				<header class="flex flex-wrap items-center justify-between gap-3">
-					<h2 class="text-lg font-semibold text-slate-900">版本列表</h2>
+			<section class="surface-panel repo-panel-flat space-y-4">
+				<header v-if="notice" class="flex flex-wrap items-center justify-end gap-3">
 					<span class="text-sm text-slate-500">{{ notice }}</span>
 				</header>
 				<div v-if="repos.length === 0" class="py-6 text-sm text-slate-500">暂无版本，请先上传构建产物。</div>
 				<div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2">
-					<article v-for="repo in repos" :key="repo.id || repo.version_hash" class="surface-card space-y-3">
+					<article v-for="repo in repos" :key="repo.id || repo.version_hash" class="surface-card repo-card-flat space-y-3">
 						<div class="space-y-1">
 							<h3 class="text-base font-semibold text-slate-900">{{ repo.file_name || repo.version_hash }}</h3>
 							<p class="text-xs text-slate-500">Version ID: {{ repo.id || repo.version_hash }}</p>
@@ -110,3 +109,16 @@ export default {
 	}
 };
 </script>
+
+<style scoped>
+.repo-panel-flat {
+	box-shadow: none;
+	margin: 0;
+	padding: 0;
+}
+
+.repo-card-flat {
+	background-color: #f3f4f6;
+	box-shadow: none;
+}
+</style>

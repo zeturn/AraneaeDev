@@ -57,17 +57,8 @@
 				</div>
 
 				<!-- 可加入 -->
-				<div class="flex items-center mb-6">
-					<input
-						id="joinAble"
-						v-model="joinAble"
-						class="h-4 w-4 accent-teal-600"
-						type="checkbox"
-					/>
-					<label
-						class="ml-2 text-gray-700 text-sm font-medium"
-						for="joinAble"
-					>可加入</label>
+				<div class="mb-6">
+					<CheckboxSquareField id="joinAble" v-model="joinAble">可加入</CheckboxSquareField>
 				</div>
 
 				<button
@@ -94,6 +85,7 @@
  */
 import {ref} from 'vue';
 import ApiService from '@/services/ApiService.js';
+import CheckboxSquareField from '@/components/BeansDesign/Checkbox/CheckboxSquareField.vue';
 import Aprons from "@/views/Aprons/Aprons.vue";
 import EventBus from '@/utils/event-bus'
 import router from "@/router/index.js";

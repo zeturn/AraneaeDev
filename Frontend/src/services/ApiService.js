@@ -75,6 +75,68 @@ apiClient.interceptors.request.use(config => {
     return config;
 });
 
+let hasTriggeredSessionLogout = false;
+
+const clearAuthState = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('csrf_token');
+
+    if (typeof document !== 'undefined') {
+        document.cookie = 'csrftoken=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict';
+    }
+};
+
+const isAuthExpiredResponse = error => {
+    const status = error?.response?.status;
+    if (status === 401) {
+        return true;
+    }
+
+    if (status !== 403) {
+        return false;
+    }
+
+    const body = error?.response?.data;
+    const text = typeof body === 'string'
+        ? body.toLowerCase()
+        : JSON.stringify(body || {}).toLowerCase();
+
+    return text.includes('csrf')
+        || text.includes('session')
+        || text.includes('not authenticated')
+        || text.includes('authentication credentials');
+};
+
+const redirectToLoginOnSessionExpiry = () => {
+    if (hasTriggeredSessionLogout || typeof window === 'undefined') {
+        return;
+    }
+
+    const isOnLoginPage = window.location.pathname === '/login';
+    if (isOnLoginPage) {
+        return;
+    }
+
+    hasTriggeredSessionLogout = true;
+    const next = `${window.location.pathname}${window.location.search || ''}`;
+    const nextQuery = next ? `&next=${encodeURIComponent(next)}` : '';
+    window.location.replace(`/login?reason=session_expired${nextQuery}`);
+};
+
+apiClient.interceptors.response.use(
+    response => response,
+    error => {
+        const hadLocalAuth = !!localStorage.getItem('token') || !!localStorage.getItem('refresh_token');
+        if (hadLocalAuth && isAuthExpiredResponse(error)) {
+            clearAuthState();
+            redirectToLoginOnSessionExpiry();
+        }
+
+        return Promise.reject(error);
+    }
+);
+
 const parseOrderPayload = order => {
     if (!order) {
         return null;
@@ -90,6 +152,32 @@ const parseOrderPayload = order => {
         return order;
     }
     return null;
+};
+
+const asNodeQueue = value => {
+    if (typeof value !== 'string') {
+        return '';
+    }
+    return value.trim();
+};
+
+const normalizeOrderForGo = order => {
+    const parsed = parseOrderPayload(order);
+    if (!parsed || !Array.isArray(parsed?.schedule)) {
+        return parsed;
+    }
+
+    return {
+        ...parsed,
+        schedule: parsed.schedule.map(step => {
+            const rawNodes = Array.isArray(step?.node) ? step.node : [step?.node];
+            const nodes = rawNodes.map(asNodeQueue).filter(Boolean);
+            return {
+                ...step,
+                node: nodes,
+            };
+        }),
+    };
 };
 
 const normalizeGoVersionList = payload => {
@@ -132,8 +220,9 @@ const normalizeGoSchedule = (schedule, workplaceId = 'go-workspace') => {
 };
 
 const buildGoSchedulePayload = schedule => {
-    const parsedOrder = parseOrderPayload(schedule?.order);
+    const parsedOrder = normalizeOrderForGo(schedule?.order);
     const firstStep = parsedOrder?.schedule?.[0] || {};
+    const nodeQueue = asNodeQueue(schedule?.node_queue) || asNodeQueue(firstStep?.node?.[0]) || 'default';
 
     return {
         name: schedule?.name || firstStep?.name || 'schedule',
@@ -144,8 +233,8 @@ const buildGoSchedulePayload = schedule => {
         version_id: schedule?.version_id || undefined,
         entry_command: schedule?.entry_command || undefined,
         cron_expr: schedule?.cron_expr || firstStep?.crons || undefined,
-        node_queue: schedule?.node_queue || firstStep?.node?.[0] || 'default',
-        order: schedule?.order || parsedOrder || undefined,
+        node_queue: nodeQueue,
+        order: parsedOrder || schedule?.order || undefined,
     };
 };
 
@@ -310,13 +399,52 @@ const ApiService = {
     },
     getWorkplaceTaskRecords(workplaceId) {
         if (isGoApi) {
-            return apiClient.get('/runs').then(resp => ({
-                ...resp,
-                data: {
-                    records: resp.data.records || [],
-                    count: resp.data.count || 0,
-                },
-            }));
+            return Promise.all([
+                apiClient.get('/runs'),
+                apiClient.get('/tasks'),
+                apiClient.get('/projects'),
+                apiClient.get('/schedules'),
+            ]).then(([runsResp, tasksResp, projectsResp, schedulesResp]) => {
+                const runRecords = Array.isArray(runsResp?.data?.records) ? runsResp.data.records : [];
+                const tasks = Array.isArray(tasksResp?.data) ? tasksResp.data : [];
+                const projects = Array.isArray(projectsResp?.data) ? projectsResp.data : [];
+                const schedules = Array.isArray(schedulesResp?.data) ? schedulesResp.data : [];
+
+                const taskMap = new Map(tasks.map(task => [task.id, task]));
+                const projectMap = new Map(projects.map(project => [project.id, project]));
+                const scheduleMap = new Map(schedules.map(schedule => [schedule.id, schedule]));
+
+                const records = runRecords.map(run => {
+                    const task = taskMap.get(run.task_id);
+                    const project = task ? projectMap.get(task.project_id) : null;
+                    const schedule = run.schedule_id ? scheduleMap.get(run.schedule_id) : null;
+                    return {
+                        id: run.id || '',
+                        task_id: run.task_id || '',
+                        task_status: run.status || '',
+                        task_result: run.output || '',
+                        task_created_at: run.created_at || run.started_at || null,
+                        task_updated_at: run.finished_at || run.created_at || null,
+                        node: task?.node_queue || '-',
+                        project: project?.name || task?.project_id || '-',
+                        version: task?.version_id || '-',
+                        schedule: schedule?.name || run.schedule_id || '-',
+                        run_output: run.output || '',
+                        trigger_source: run.trigger_source || '',
+                        exit_code: run.exit_code,
+                        started_at: run.started_at || null,
+                        finished_at: run.finished_at || null,
+                    };
+                });
+
+                return {
+                    ...runsResp,
+                    data: {
+                        records,
+                        count: Number(runsResp?.data?.count) || records.length,
+                    },
+                };
+            });
         }
         return apiClient.get(`/workplaces/${workplaceId}/workplace_taskrecords/`);
     },
@@ -610,6 +738,12 @@ const ApiService = {
             return apiClient.post(`/schedules/${scheduleId}/disable`);
         }
         return apiClient.post(`/schedules/${scheduleId}/disable/`);
+    },
+    getScheduleRuns(scheduleId) {
+        if (isGoApi) {
+            return apiClient.get(`/schedules/${scheduleId}/runs`);
+        }
+        return apiClient.get(`/schedules/${scheduleId}/runs/`);
     },
     createTask(task) {
         if (isGoApi) {

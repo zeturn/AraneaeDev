@@ -31,10 +31,7 @@
 							<input v-model="form.node_queue" type="text" class="field-input" placeholder="default" />
 						</div>
 						<div class="md:col-span-2">
-							<label class="inline-flex items-center gap-2 text-sm text-slate-700">
-								<input v-model="form.enabled" type="checkbox" />
-								启用任务
-							</label>
+							<CheckboxSquareField v-model="form.enabled">启用任务</CheckboxSquareField>
 						</div>
 					</div>
 
@@ -63,6 +60,7 @@
 import {onMounted, reactive, ref} from 'vue';
 import {useRoute, useRouter} from 'vue-router';
 import ApiService from '@/services/ApiService.js';
+import CheckboxSquareField from '@/components/BeansDesign/Checkbox/CheckboxSquareField.vue';
 import Workplace from '@/views/Workplaces/Workplace.vue';
 import Task from '@/views/Workplaces/Tasks/Tasks.vue';
 

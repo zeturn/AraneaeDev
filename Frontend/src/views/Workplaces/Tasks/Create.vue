@@ -103,14 +103,8 @@
 						/>
 					</div>
 					<!-- 启用 -->
-					<div v-if="!isGoApi" class="flex items-center mb-2">
-						<input
-							v-model="form.enabled"
-							id="enabled"
-							type="checkbox"
-							class="h-4 w-4 accent-teal-600"
-						/>
-						<label for="enabled" class="ml-2 text-gray-700 text-sm font-medium">启用</label>
+					<div v-if="!isGoApi" class="mb-2">
+						<CheckboxSquareField id="enabled" v-model="form.enabled">启用</CheckboxSquareField>
 					</div>
 					<!-- 提交按钮 -->
 					<div>
@@ -134,6 +128,7 @@
 import {onMounted, reactive, ref, watch} from 'vue';
 import {useRoute, useRouter} from 'vue-router';
 import ApiService from '@/services/ApiService.js';
+import CheckboxSquareField from '@/components/BeansDesign/Checkbox/CheckboxSquareField.vue';
 import Workplace from '@/views/Workplaces/Workplace.vue';
 import Task from '@/views/Workplaces/Tasks/Tasks.vue';
 

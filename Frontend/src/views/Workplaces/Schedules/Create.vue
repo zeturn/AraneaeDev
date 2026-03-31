@@ -12,8 +12,8 @@
 <template>
 	<Workplace>
 		<Schedules>
-			<div class="container">
-				<div class="bg-white rounded-lg m-4">
+			<div class="mx-auto w-full max-w-5xl px-4 pb-10">
+				<div class="rounded-2xl bg-white px-4 py-5 sm:px-6">
 					<form @submit.prevent="handleCreateSchedule">
 						<div class="space-y-2">
 							<label class="block text-lg font-medium text-gray-800" for="name">
@@ -39,37 +39,28 @@
 							/>
 						</div>
 
-						<div class="space-y-2 py-4 bg-white">
+						<div class="space-y-2 py-4">
 							<div>
 								<label for="enabled" class="block text-lg font-medium text-gray-800 mb-2">
 									<span>Enabled</span>
 									<span class="ml-1 text-red-500">*</span>
 								</label>
-								<div class="flex items-center space-x-3">
-									<input
-										id="enabled"
-										v-model="newSchedule.enabled"
-										type="checkbox"
-										class="h-6 w-6 accent-teal-600"
-										required
-									/>
-									<p class="text-sm text-gray-500">
-										Enable this schedule to run automatically.
-									</p>
-								</div>
+								<CheckboxSquareField id="enabled" v-model="newSchedule.enabled">
+									Enable this schedule to run automatically.
+								</CheckboxSquareField>
 							</div>
 						</div>
 
 
 						<div class="space-y-2">
-							<div class="bg-white rounded-lg shadow-md p-6 space-y-6">
+							<div class="rounded-2xl bg-slate-50/70 p-5 space-y-6">
 								<div class="space-y-4">
 									<label class="text-lg font-medium text-gray-800">Order Configuration</label>
 									<div class="space-y-4">
 										<div
 											v-for="(schedule, index) in schedulesConfig"
 											:key="index"
-											class="bg-gray-50 p-4 rounded-lg shadow-sm space-y-3"
+											class="rounded-xl bg-white p-4 space-y-3"
 										>
 											<!-- Order Item -->
 											<div>
@@ -86,8 +77,8 @@
 											</div>
 
 											<!-- trigger config-->
-											<div class="flex items-center space-x-4">
-												<div class="w-1/2" v-if="index === 0">
+											<div class="flex flex-col gap-4 md:flex-row md:items-center">
+												<div class="w-full md:w-1/2" v-if="index === 0">
 													<label
 														class="block text-sm font-medium text-gray-600">Trigger</label>
 													<select
@@ -98,13 +89,13 @@
 														<option value="api">API Trigger</option>
 													</select>
 												</div>
-												<div class="w-1/2" v-else>
+												<div class="w-full md:w-1/2" v-else>
 													<label class="block text-sm font-medium text-gray-600">Trigger</label>
-													<div class="w-full px-4 py-2 border rounded-lg shadow-sm bg-gray-100 text-gray-700">
+													<div class="w-full rounded-lg bg-slate-100 px-4 py-2 text-gray-700">
 														Previous Task Completion
 													</div>
 												</div>
-												<div v-if="index === 0 && schedule.trigger === 'crons'" class="w-1/2">
+												<div v-if="index === 0 && schedule.trigger === 'crons'" class="w-full md:w-1/2">
 													<label class="block text-sm font-medium text-gray-600">Cron
 														Expression</label>
 													<input
@@ -116,7 +107,7 @@
 											</div>
 											<div v-if="index > 0">
 												<label class="block text-sm font-medium text-gray-600">Previous Task</label>
-												<div class="w-full px-4 py-2 border rounded-lg shadow-sm bg-gray-100 text-gray-700">
+												<div class="w-full rounded-lg bg-slate-100 px-4 py-2 text-gray-700">
 													{{ getTaskName(schedulesConfig[index - 1]?.task_id) || 'Select previous task first' }}
 												</div>
 											</div>
@@ -127,7 +118,7 @@
 													multiple
 													class="field-input"
 												>
-													<option v-for="node in nodesList" :key="node.id" :value="node.id">
+													<option v-for="node in nodesList" :key="node.id" :value="node.celery_queue || String(node.id)">
 														{{ node.name }}
 													</option>
 												</select>
@@ -154,9 +145,9 @@
 						</div>
 					</form>
 				</div>
-				<div class="mt-6 bg-white rounded-lg shadow-md p-6">
+				<div class="mt-6 rounded-2xl bg-slate-50 p-5">
 					<h3 class="text-xl font-semibold text-gray-700">Generated JSON</h3>
-					<pre class="mt-2 p-4 bg-gray-50 rounded-lg text-sm text-gray-800">{{ generatedOrderJson }}</pre>
+					<pre class="mt-2 w-full max-w-full overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-white p-4 text-sm text-gray-800">{{ generatedOrderJson }}</pre>
 				</div>
 			</div>
 		</Schedules>
@@ -167,6 +158,7 @@
 import {ref, reactive, computed, onMounted} from 'vue';
 import {useRoute} from 'vue-router';
 import ApiService from '@/services/ApiService.js';
+import CheckboxSquareField from '@/components/BeansDesign/Checkbox/CheckboxSquareField.vue';
 import Schedules from '@/views/Workplaces/Schedules/Schedules.vue';
 import Workplace from '@/views/Workplaces/Workplace.vue';
 

@@ -5,8 +5,8 @@
 
 <template>
 	<Workplace>
-		<div class="mx-auto max-w-3xl px-4 pb-10">
-			<div class="surface-panel space-y-6">
+		<div class="mx-auto w-full max-w-4xl px-4 pb-10">
+			<div class="surface-panel workplace-settings-panel space-y-6">
 				<header class="space-y-2">
 					<p class="text-xs uppercase tracking-wider text-slate-500">Workplace Settings</p>
 					<h1 class="text-2xl font-semibold text-slate-900">{{ form.name || '工作区设置' }}</h1>
@@ -30,10 +30,7 @@
 						</select>
 					</div>
 					<div class="flex items-end">
-						<label class="inline-flex items-center gap-2 text-sm text-slate-700">
-							<input v-model="form.enabled" type="checkbox" />
-							启用
-						</label>
+						<CheckboxSquareField v-model="form.enabled">启用</CheckboxSquareField>
 					</div>
 				</div>
 
@@ -44,7 +41,7 @@
 					<button class="btn-danger" :disabled="loading" @click="confirmDelete">
 						删除工作区
 					</button>
-					<span class="text-sm text-slate-500">{{ notice }}</span>
+					<span class="text-sm text-slate-500 settings-notice">{{ notice }}</span>
 				</div>
 
 				<div class="grid gap-3 text-sm text-slate-500 md:grid-cols-2">
@@ -60,6 +57,7 @@
 import {onMounted, reactive, ref} from 'vue';
 import {useRoute, useRouter} from 'vue-router';
 import ApiService from '@/services/ApiService.js';
+import CheckboxSquareField from '@/components/BeansDesign/Checkbox/CheckboxSquareField.vue';
 import Workplace from '@/views/Workplaces/Workplace.vue';
 
 const route = useRoute();
@@ -146,4 +144,16 @@ const confirmDelete = async () => {
 
 onMounted(fetchWorkplace);
 </script>
+
+<style scoped>
+.workplace-settings-panel {
+	background: #f8fafc;
+	border: 1px solid #e2e8f0;
+	box-shadow: none;
+}
+
+.settings-notice {
+	min-height: 1.25rem;
+}
+</style>
 

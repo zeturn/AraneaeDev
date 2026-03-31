@@ -44,15 +44,9 @@
             <label for="enabled" class="block text-lg font-medium text-gray-800 mb-2">
               <span>Enabled</span>
             </label>
-            <div class="flex items-center space-x-3">
-              <input
-                id="enabled"
-                v-model="form.enabled"
-                type="checkbox"
-                class="h-6 w-6 accent-teal-600"
-              />
-              <p class="text-sm text-gray-500">Enable this schedule to run automatically.</p>
-            </div>
+            <CheckboxSquareField id="enabled" v-model="form.enabled">
+              Enable this schedule to run automatically.
+            </CheckboxSquareField>
           </div>
 
           <div class="space-y-2 mt-6">
@@ -131,7 +125,7 @@
                         multiple
                         class="field-input"
                       >
-                        <option v-for="node in nodesList" :key="node.id" :value="node.id">
+                        <option v-for="node in nodesList" :key="node.id" :value="node.celery_queue || String(node.id)">
                           {{ node.name }}
                         </option>
                       </select>
@@ -177,6 +171,7 @@
 import {ref, reactive, computed, onMounted} from 'vue';
 import {useRoute} from 'vue-router';
 import ApiService from '@/services/ApiService';
+import CheckboxSquareField from '@/components/BeansDesign/Checkbox/CheckboxSquareField.vue';
 import Schedules from '@/views/Schedules/Schedules.vue';
 
 const route = useRoute();

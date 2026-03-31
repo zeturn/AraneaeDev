@@ -3,6 +3,7 @@ package control
 import (
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 	"time"
 
@@ -55,6 +56,43 @@ type updateTaskRequest struct {
 	Enabled      *bool   `json:"enabled"`
 }
 
+type laxString string
+
+func (s *laxString) UnmarshalJSON(data []byte) error {
+	var asString string
+	if err := json.Unmarshal(data, &asString); err == nil {
+		*s = laxString(strings.TrimSpace(asString))
+		return nil
+	}
+
+	var asNumber float64
+	if err := json.Unmarshal(data, &asNumber); err == nil {
+		*s = laxString(strconv.FormatFloat(asNumber, 'f', -1, 64))
+		return nil
+	}
+
+	var asNull any
+	if err := json.Unmarshal(data, &asNull); err == nil && asNull == nil {
+		*s = ""
+		return nil
+	}
+
+	return errors.New("value must be a string or number")
+}
+
+func sanitizeNodeQueue(raw string) string {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return ""
+	}
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return value
+		}
+	}
+	return ""
+}
+
 type createScheduleRequest struct {
 	Name         string `json:"name"`
 	Description  string `json:"description"`
@@ -63,7 +101,7 @@ type createScheduleRequest struct {
 	VersionID    string `json:"version_id"`
 	EntryCommand string `json:"entry_command"`
 	CronExpr     string `json:"cron_expr"`
-	NodeQueue    string `json:"node_queue"`
+	NodeQueue    laxString `json:"node_queue"`
 	Enabled      *bool  `json:"enabled"`
 	Order        any    `json:"order"`
 }
@@ -76,7 +114,7 @@ type updateScheduleRequest struct {
 	VersionID    *string `json:"version_id"`
 	EntryCommand *string `json:"entry_command"`
 	CronExpr     *string `json:"cron_expr"`
-	NodeQueue    *string `json:"node_queue"`
+	NodeQueue    *laxString `json:"node_queue"`
 	Enabled      *bool   `json:"enabled"`
 	Order        any     `json:"order"`
 }
@@ -676,7 +714,7 @@ func (a *App) createSchedule(c *fiber.Ctx) error {
 				req.CronExpr = strings.TrimSpace(step.Crons)
 			}
 			if req.NodeQueue == "" && len(step.Node) > 0 {
-				req.NodeQueue = strings.TrimSpace(step.Node[0])
+				req.NodeQueue = laxString(strings.TrimSpace(step.Node[0]))
 			}
 		}
 	}
@@ -696,7 +734,7 @@ func (a *App) createSchedule(c *fiber.Ctx) error {
 			req.EntryCommand = task.EntryCommand
 		}
 		if req.NodeQueue == "" {
-			req.NodeQueue = task.NodeQueue
+			req.NodeQueue = laxString(task.NodeQueue)
 		}
 	}
 
@@ -704,11 +742,11 @@ func (a *App) createSchedule(c *fiber.Ctx) error {
 	req.VersionID = strings.TrimSpace(req.VersionID)
 	req.EntryCommand = strings.TrimSpace(req.EntryCommand)
 	req.CronExpr = strings.TrimSpace(req.CronExpr)
-	req.NodeQueue = strings.TrimSpace(req.NodeQueue)
+	req.NodeQueue = laxString(sanitizeNodeQueue(string(req.NodeQueue)))
 	req.Name = strings.TrimSpace(req.Name)
 
 	if req.NodeQueue == "" {
-		req.NodeQueue = "default"
+		req.NodeQueue = laxString("default")
 	}
 	if req.Name == "" {
 		req.Name = "schedule-" + uuid.NewString()[:8]
@@ -761,7 +799,7 @@ func (a *App) createSchedule(c *fiber.Ctx) error {
 				TaskStatus: "exist",
 				Name:      req.Name,
 				ProjectID: req.ProjectID,
-				Node:      []string{req.NodeQueue},
+				Node:      []string{string(req.NodeQueue)},
 				Trigger:   trigger,
 				Crons:     req.CronExpr,
 			}},
@@ -782,7 +820,7 @@ func (a *App) createSchedule(c *fiber.Ctx) error {
 		VersionID:    req.VersionID,
 		EntryCommand: req.EntryCommand,
 		CronExpr:     req.CronExpr,
-		NodeQueue:    req.NodeQueue,
+		NodeQueue:    string(req.NodeQueue),
 		OrderJSON:    orderJSON,
 		Enabled:      enabled,
 		CreatedBy:    uid,
@@ -854,7 +892,7 @@ func (a *App) updateSchedule(c *fiber.Ctx) error {
 		schedule.CronExpr = strings.TrimSpace(*req.CronExpr)
 	}
 	if req.NodeQueue != nil {
-		schedule.NodeQueue = strings.TrimSpace(*req.NodeQueue)
+		schedule.NodeQueue = sanitizeNodeQueue(string(*req.NodeQueue))
 	}
 	if req.Enabled != nil {
 		schedule.Enabled = *req.Enabled

@@ -11,12 +11,10 @@
 
 <template>
 	<Project>
-		<div class="mx-auto max-w-3xl px-4 pb-10">
-			<div class="surface-panel space-y-6">
-				<header class="space-y-2">
-					<p class="text-xs uppercase tracking-wider text-slate-500">Project Settings</p>
-					<h1 class="text-2xl font-semibold text-slate-900">{{ form.name || '项目设置' }}</h1>
-					<p class="text-sm text-slate-500">支持项目重命名、修改元信息与删除操作。</p>
+		<div class="project-setting-shell">
+			<div class="surface-panel project-setting-panel space-y-6">
+				<header v-if="notice" class="flex flex-wrap items-center justify-end gap-3">
+					<span class="text-sm text-slate-500">{{ notice }}</span>
 				</header>
 
 				<div class="grid gap-4 md:grid-cols-2">
@@ -157,3 +155,16 @@ export default {
 	}
 };
 </script>
+
+<style scoped>
+.project-setting-shell {
+	margin: 0;
+	max-width: none;
+	padding: 0;
+}
+
+.project-setting-panel {
+	background-color: #f3f4f6;
+	box-shadow: none;
+}
+</style>

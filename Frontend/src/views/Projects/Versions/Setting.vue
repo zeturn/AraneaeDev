@@ -1,13 +1,8 @@
 <template>
   <Project>
     <Repo>
-      <div class="mx-auto max-w-3xl px-4 pb-10">
-        <div class="surface-panel space-y-6">
-          <header class="space-y-2">
-            <p class="text-xs uppercase tracking-wider text-slate-500">Version Settings</p>
-            <h1 class="text-2xl font-semibold text-slate-900">{{ form.file_name || '版本设置' }}</h1>
-            <p class="text-sm text-slate-500">支持版本重命名、查看元信息与删除。</p>
-          </header>
+      <div class="version-setting-shell">
+        <div class="surface-panel version-setting-panel space-y-6">
 
           <div class="grid gap-4 md:grid-cols-2">
             <div class="md:col-span-2">
@@ -129,3 +124,16 @@ const deleteVersion = async () => {
 
 onMounted(fetchVersion);
 </script>
+
+<style scoped>
+.version-setting-shell {
+  margin: 0;
+  max-width: none;
+  padding: 0;
+}
+
+.version-setting-panel {
+  background-color: #f3f4f6;
+  box-shadow: none;
+}
+</style>

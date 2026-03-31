@@ -16,6 +16,7 @@
 import {ref, reactive, onMounted} from 'vue';
 import {useRoute, useRouter} from 'vue-router';
 import ApiService from '@/services/ApiService';
+import CheckboxSquareField from '@/components/BeansDesign/Checkbox/CheckboxSquareField.vue';
 import Node from '@/views/Nodes/Node.vue';
 
 const route = useRoute();
@@ -177,8 +178,7 @@ onMounted(() => {
 						/>
 					</div>
 					<div class="flex items-center">
-						<label class="mr-4 text-gray-700 text-sm font-medium" for="enabled">启用</label>
-						<input id="enabled" v-model="form.is_enabled" class="w-5 h-5" type="checkbox"/>
+						<CheckboxSquareField id="enabled" v-model="form.is_enabled">启用</CheckboxSquareField>
 					</div>
 					<div class="flex justify-end space-x-4 mt-4">
 						<button

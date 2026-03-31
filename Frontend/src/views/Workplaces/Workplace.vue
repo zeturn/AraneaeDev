@@ -5,7 +5,7 @@
 
 <!-- App.vue -->
 <template>
-  <div class="flex flex-col h-screen w-screen">
+  <div class="flex min-h-screen w-full flex-col overflow-x-hidden">
     <Header @toggleSidebar="toggleSidebar"/>
     <div class="flex flex-row flex-1">
       <Sidebar :isLargeScreen="isLargeScreen" :isSidebarCollapsed="!isSidebarOpen" :links="links"

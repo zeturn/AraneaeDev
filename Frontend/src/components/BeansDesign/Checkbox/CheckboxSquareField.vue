@@ -10,17 +10,26 @@
   -->
 
 <template>
-	<label :style="labelStyles">
-		<input :style="inputStyles" type="checkbox" @change="toggleCheck">
-		<div :style="checkboxStyles">
-			<svg :style="svgStyles" class="size-6" fill="currentColor" viewBox="0 0 24 24"
-				 xmlns="http://www.w3.org/2000/svg">
+	<label :for="resolvedId" :style="labelStyles">
+		<input
+			:id="resolvedId"
+			:name="name"
+			:disabled="disabled"
+			:checked="currentChecked"
+			:style="inputStyles"
+			type="checkbox"
+			@change="toggleCheck"
+		>
+		<div :style="checkboxStyles" aria-hidden="true">
+			<svg :style="svgStyles" class="size-6" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
 				<path clip-rule="evenodd"
 					  d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z"
 					  fill-rule="evenodd"/>
 			</svg>
 		</div>
-		<span :style="labelTextStyles">Checkbox</span>
+		<span v-if="!hideLabel && (label || $slots.default)" :style="labelTextStyles">
+			<slot>{{ label }}</slot>
+		</span>
 	</label>
 </template>
 
@@ -29,18 +38,69 @@ import colors from '@/config/colors';
 
 export default {
 	name: 'CheckboxSquareField',
+	props: {
+		modelValue: {
+			type: null,
+			default: undefined,
+		},
+		checked: {
+			type: null,
+			default: undefined,
+		},
+		label: {
+			type: String,
+			default: 'Checkbox',
+		},
+		id: {
+			type: String,
+			default: '',
+		},
+		name: {
+			type: String,
+			default: '',
+		},
+		disabled: {
+			type: Boolean,
+			default: false,
+		},
+		hideLabel: {
+			type: Boolean,
+			default: false,
+		},
+	},
+	emits: ['update:modelValue', 'change'],
 	data() {
 		return {
 			colors,
-			isChecked: false,
+			localChecked: false,
+			generatedId: `cb-square-${Math.random().toString(36).slice(2, 10)}`,
 		};
 	},
 	computed: {
+		hasModelValue() {
+			return this.modelValue !== undefined;
+		},
+		hasCheckedProp() {
+			return this.checked !== undefined;
+		},
+		currentChecked() {
+			if (this.hasModelValue) {
+				return !!this.modelValue;
+			}
+			if (this.hasCheckedProp) {
+				return !!this.checked;
+			}
+			return this.localChecked;
+		},
+		resolvedId() {
+			return this.id || this.generatedId;
+		},
 		labelStyles() {
 			return {
 				display: 'inline-flex',
 				alignItems: 'center',
-				cursor: 'pointer',
+				cursor: this.disabled ? 'not-allowed' : 'pointer',
+				opacity: this.disabled ? '0.65' : '1',
 			};
 		},
 		inputStyles() {
@@ -49,6 +109,7 @@ export default {
 				opacity: '0',
 				width: '0',
 				height: '0',
+				pointerEvents: 'none',
 			};
 		},
 		checkboxStyles() {
@@ -56,12 +117,13 @@ export default {
 				width: '24px',
 				height: '24px',
 				border: `2px solid ${this.colors.yellowGreen}`,
-				backgroundColor: this.isChecked ? this.colors.yellowGreen : 'transparent',
+				backgroundColor: this.currentChecked ? this.colors.yellowGreen : 'transparent',
 				borderRadius: '4px',
 				display: 'flex',
 				alignItems: 'center',
 				justifyContent: 'center',
-				transition: 'all 0.2s',
+				transition: 'all 0.2s ease',
+				boxSizing: 'border-box',
 			};
 		},
 		svgStyles() {
@@ -69,9 +131,9 @@ export default {
 				width: '16px',
 				height: '16px',
 				color: this.colors.white,
-				display: this.isChecked ? 'block' : 'none',
-				transform: this.isChecked ? 'scale(1)' : 'scale(0)',
-				transition: 'transform 0.2s',
+				display: this.currentChecked ? 'block' : 'none',
+				transform: this.currentChecked ? 'scale(1)' : 'scale(0)',
+				transition: 'transform 0.2s ease',
 			};
 		},
 		labelTextStyles() {
@@ -84,7 +146,13 @@ export default {
 	},
 	methods: {
 		toggleCheck(event) {
-			this.isChecked = event.target.checked;
+			if (this.disabled) {
+				return;
+			}
+			const nextValue = !!event.target.checked;
+			this.localChecked = nextValue;
+			this.$emit('update:modelValue', nextValue);
+			this.$emit('change', nextValue);
 		},
 	},
 };

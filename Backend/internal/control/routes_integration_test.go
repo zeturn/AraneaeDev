@@ -214,6 +214,108 @@ func createProjectVersionTask(t *testing.T, app *App, token, cronExpr string) (c
 	return project, version, task
 }
 
+func TestUserCreate_AutoCreatesPersonalTeam(t *testing.T) {
+	app := newTestControlApp(t)
+
+	hash, err := hashPassword("alice123")
+	if err != nil {
+		t.Fatalf("hash password: %v", err)
+	}
+	user := common.User{
+		ID:           uuid.NewString(),
+		Username:     "alice",
+		PasswordHash: hash,
+		Role:         "viewer",
+		CreatedAt:    time.Now(),
+	}
+	if err := app.db.Create(&user).Error; err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	var personalTeam common.Team
+	if err := app.db.Where("created_by = ? AND is_personal = ?", user.ID, true).First(&personalTeam).Error; err != nil {
+		t.Fatalf("personal team not created: %v", err)
+	}
+	if personalTeam.JoinAble {
+		t.Fatalf("personal team should not be joinable")
+	}
+
+	var owner common.TeamMember
+	if err := app.db.Where("team_id = ? AND user_id = ?", personalTeam.ID, user.ID).First(&owner).Error; err != nil {
+		t.Fatalf("personal team owner membership not created: %v", err)
+	}
+	if owner.Role != "owner" {
+		t.Fatalf("expected owner role, got %q", owner.Role)
+	}
+}
+
+func TestDeleteTeam_RejectsPersonalTeam(t *testing.T) {
+	app := newTestControlApp(t)
+	token := loginAndGetToken(t, app)
+
+	hash, err := hashPassword("bob123")
+	if err != nil {
+		t.Fatalf("hash password: %v", err)
+	}
+	user := common.User{
+		ID:           uuid.NewString(),
+		Username:     "bob",
+		PasswordHash: hash,
+		Role:         "viewer",
+		CreatedAt:    time.Now(),
+	}
+	if err := app.db.Create(&user).Error; err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	var personalTeam common.Team
+	if err := app.db.Where("created_by = ? AND is_personal = ?", user.ID, true).First(&personalTeam).Error; err != nil {
+		t.Fatalf("load personal team: %v", err)
+	}
+
+	deletePath := fmt.Sprintf("/api/v1/teams/%d", personalTeam.ID)
+	rec := doJSONRequest(t, app, http.MethodDelete, deletePath, token, nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 when deleting personal team, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var count int64
+	if err := app.db.Model(&common.Team{}).Where("id = ?", personalTeam.ID).Count(&count).Error; err != nil {
+		t.Fatalf("count team: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("personal team should still exist after delete attempt")
+	}
+}
+
+func TestDeleteTeam_AllowsRegularTeam(t *testing.T) {
+	app := newTestControlApp(t)
+	token := loginAndGetToken(t, app)
+
+	createRec := doJSONRequest(t, app, http.MethodPost, "/api/v1/teams", token, map[string]any{
+		"name":        "regular-team",
+		"description": "test",
+		"join_able":   false,
+	})
+	if createRec.Code != http.StatusOK {
+		t.Fatalf("create team failed: status=%d body=%s", createRec.Code, createRec.Body.String())
+	}
+
+	var created map[string]any
+	if err := json.Unmarshal(createRec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode team response: %v", err)
+	}
+	teamIDFloat, ok := created["id"].(float64)
+	if !ok {
+		t.Fatalf("missing team id in response: %s", createRec.Body.String())
+	}
+	deletePath := fmt.Sprintf("/api/v1/teams/%d", int(teamIDFloat))
+	deleteRec := doJSONRequest(t, app, http.MethodDelete, deletePath, token, nil)
+	if deleteRec.Code != http.StatusOK {
+		t.Fatalf("delete regular team failed: status=%d body=%s", deleteRec.Code, deleteRec.Body.String())
+	}
+}
+
 func TestControlRoutes_RequireAuth(t *testing.T) {
 	app := newTestControlApp(t)
 	rec := doJSONRequest(t, app, http.MethodGet, "/api/v1/projects", "", nil)

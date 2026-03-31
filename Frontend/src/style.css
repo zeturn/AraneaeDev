@@ -14,10 +14,16 @@
 		--accent-strong: #0b5d57;
 		--danger: #b42318;
 		--focus: #14b8a6;
-		--shadow-soft: 0 18px 45px -28px rgba(17, 24, 39, 0.35);
-		--shadow-card: 0 8px 24px -18px rgba(15, 23, 42, 0.35);
+		--shadow-soft: none;
+		--shadow-card: none;
 		--radius-xl: 24px;
 		--radius-lg: 16px;
+	}
+
+	*,
+	*::before,
+	*::after {
+		box-shadow: none !important;
 	}
 
 	body {

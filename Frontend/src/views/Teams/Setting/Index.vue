@@ -29,10 +29,7 @@
             <textarea v-model="form.description" class="field-input min-h-[120px] resize-none" placeholder="输入团队描述"></textarea>
           </div>
           <div class="md:col-span-2">
-            <label class="inline-flex items-center gap-2 text-sm text-slate-700">
-              <input v-model="form.join_able" type="checkbox" />
-              允许成员自由加入
-            </label>
+            <CheckboxSquareField v-model="form.join_able">允许成员自由加入</CheckboxSquareField>
           </div>
         </div>
 
@@ -56,6 +53,7 @@
 import {computed, onMounted, reactive, ref} from 'vue';
 import {useRoute, useRouter} from 'vue-router';
 import ApiService from '@/services/ApiService.js';
+import CheckboxSquareField from '@/components/BeansDesign/Checkbox/CheckboxSquareField.vue';
 import Team from '@/views/Teams/Team.vue';
 
 const route = useRoute();

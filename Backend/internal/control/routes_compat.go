@@ -574,6 +574,7 @@ func (a *App) listMyTeams(c *fiber.Ctx) error {
 			"name":        team.Name,
 			"description": team.Description,
 			"join_able":   team.JoinAble,
+			"is_personal": team.IsPersonal,
 			"role":        m.Role,
 			"created_at":  team.CreatedAt,
 			"updated_at":  team.UpdatedAt,
@@ -614,6 +615,7 @@ func (a *App) createTeam(c *fiber.Ctx) error {
 		"name":        team.Name,
 		"description": team.Description,
 		"join_able":   team.JoinAble,
+		"is_personal": team.IsPersonal,
 		"role":        "owner",
 		"created_at":  team.CreatedAt,
 		"updated_at":  team.UpdatedAt,
@@ -649,6 +651,7 @@ func (a *App) getTeam(c *fiber.Ctx) error {
 		"name":          team.Name,
 		"description":   team.Description,
 		"join_able":     team.JoinAble,
+		"is_personal":   team.IsPersonal,
 		"created_by":    team.CreatedBy,
 		"created_at":    team.CreatedAt,
 		"updated_at":    team.UpdatedAt,
@@ -691,6 +694,18 @@ func (a *App) deleteTeam(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid team id")
 	}
+
+	var team common.Team
+	if err := a.db.Where("id = ?", teamID).First(&team).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return fiber.NewError(fiber.StatusNotFound, "team not found")
+		}
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+	if team.IsPersonal {
+		return fiber.NewError(fiber.StatusBadRequest, "personal team cannot be deleted")
+	}
+
 	_ = a.db.Where("team_id = ?", teamID).Delete(&common.TeamMember{}).Error
 	_ = a.db.Where("team_id = ?", teamID).Delete(&common.WorkplaceTeam{}).Error
 	result := a.db.Delete(&common.Team{}, teamID)
