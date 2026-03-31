@@ -11,6 +11,7 @@ __pycache__/
 env/
 venv/
 ENV/
+.venv/
 build/
 develop-eggs/
 dist/
@@ -97,6 +98,7 @@ config.local.json
 # logs
 logs/
 *.log
+go_validation.log
 .araneae-dev/
 
 # python virtual envs in project

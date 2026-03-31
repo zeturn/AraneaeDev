@@ -1,3 +1,0 @@
-"""
-Araneae Manager
-"""
