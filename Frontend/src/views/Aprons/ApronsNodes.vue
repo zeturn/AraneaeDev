@@ -123,8 +123,14 @@ onMounted(fetchNodes);
 		<div class="flex items-center mb-6">
 			<h1 class="text-gray-500 text-3xl m-2">节点管理</h1>
 			<RouterLink
+				class="ml-auto rounded text-blue-600 hover:bg-gray-200 p-2"
+				to="/aprons/nodes/running"
+			>
+				进行中任务
+			</RouterLink>
+			<RouterLink
 				v-if="nodes.length"
-				class="ml-auto rounded text-green-600 hover:bg-gray-200 p-2"
+				class="rounded text-green-600 hover:bg-gray-200 p-2"
 				to="/aprons/node/create"
 			>
 				创建节点

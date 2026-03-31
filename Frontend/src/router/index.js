@@ -60,6 +60,12 @@ const routes = [
         meta: {requiresAuth: true}
     },
     {
+        name: 'apronsNodeLiveRuns',
+        path: '/aprons/nodes/running',
+        component: () => import('../views/Nodes/LiveRuns.vue'),
+        meta: {requiresAuth: true}
+    },
+    {
         name: 'node',
         path: '/aprons/nodes/:id',
         component: () => import('../views/Nodes/Index.vue'),

@@ -376,6 +376,67 @@ const ApiService = {
         // GET /api/nodes/{id}/install_status/{jobId}/ — 轮询安装进度
         return apiClient.get(`/nodes/${nodeId}/install_status/${jobId}/`);
     },
+    getLiveNodeRuns() {
+        if (!isGoApi) {
+            return Promise.reject(new Error('Live node runs is only supported in Go API mode.'));
+        }
+
+        return Promise.all([
+            apiClient.get('/runs'),
+            apiClient.get('/tasks'),
+            apiClient.get('/nodes/'),
+        ]).then(([runsResp, tasksResp, nodesResp]) => {
+            const runs = Array.isArray(runsResp?.data?.records) ? runsResp.data.records : [];
+            const tasks = Array.isArray(tasksResp?.data)
+                ? tasksResp.data
+                : (Array.isArray(tasksResp?.data?.results) ? tasksResp.data.results : []);
+            const nodes = Array.isArray(nodesResp?.data)
+                ? nodesResp.data
+                : (Array.isArray(nodesResp?.data?.results) ? nodesResp.data.results : []);
+
+            const taskMap = new Map(tasks.map(item => [item.id, item]));
+            const queueNodeMap = new Map();
+            nodes.forEach(node => {
+                const queue = (node?.celery_queue || node?.node_queue || '').trim();
+                if (!queue || queueNodeMap.has(queue)) {
+                    return;
+                }
+                queueNodeMap.set(queue, node);
+            });
+
+            const activeStatuses = new Set(['queued', 'running']);
+            const records = runs
+                .filter(run => activeStatuses.has(String(run?.status || '').toLowerCase()))
+                .map(run => {
+                    const task = taskMap.get(run.task_id);
+                    const nodeQueue = task?.node_queue || '';
+                    const node = queueNodeMap.get(nodeQueue);
+                    return {
+                        id: run.id || '',
+                        status: run.status || '-',
+                        task_id: run.task_id || '',
+                        task_name: task?.name || '',
+                        node_queue: nodeQueue || '-',
+                        node_id: node?.id || null,
+                        node_name: node?.name || nodeQueue || '-',
+                        trigger_source: run.trigger_source || '-',
+                        created_at: run.created_at || null,
+                        started_at: run.started_at || null,
+                        output: run.output || '',
+                        exit_code: run.exit_code,
+                    };
+                })
+                .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+
+            return {
+                ...runsResp,
+                data: {
+                    records,
+                    count: records.length,
+                },
+            };
+        });
+    },
     getWorkplaces() {
         return apiClient.get('/workplaces/');
     },
