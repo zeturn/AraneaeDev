@@ -42,10 +42,10 @@ export default {
 	},
 	methods: {
 		getBackgroundColor() {
-			return this.colors.yellowGreen;
+			return '#eaf6df';
 		},
 		getColor() {
-			return this.colors.white;
+			return '#365314';
 		},
 		getFontWeight() {
 			return '500';

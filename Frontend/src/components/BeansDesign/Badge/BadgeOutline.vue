@@ -29,6 +29,7 @@ export default {
 		badgeStyles() {
 			return {
 				border: this.getBorder(),
+				backgroundColor: this.getBackgroundColor(),
 				color: this.getColor(),
 				fontWeight: this.getFontWeight(),
 				padding: this.getPadding(),
@@ -42,10 +43,13 @@ export default {
 	},
 	methods: {
 		getBorder() {
-			return `2px solid ${this.colors.yellowGreen}`;
+			return '1px solid #84cc16';
+		},
+		getBackgroundColor() {
+			return '#f3fbe9';
 		},
 		getColor() {
-			return this.colors.yellowGreen;
+			return '#365314';
 		},
 		getFontWeight() {
 			return '500';

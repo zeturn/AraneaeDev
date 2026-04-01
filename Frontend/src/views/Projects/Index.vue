@@ -21,7 +21,7 @@
 					<div>
 						<h1 class="text-3xl font-bold text-gray-900">{{ name }}</h1>
 						<p class="text-sm text-gray-500 mt-1">
-			            <span class="inline-block bg-blue-100 text-blue-600 font-mono text-xs px-2 py-1 rounded-md">
+		            <span class="tag-pill">
 			              ID: {{ id }}
 			            </span>
 						</p>
@@ -36,10 +36,7 @@
 					<!-- Language -->
 					<div class="border border-gray-200 rounded-xl p-4 bg-gray-50">
 						<p class="font-semibold text-gray-700">Language:</p>
-						<span
-							:class="languageClass"
-							class="inline-block px-3 py-1 text-xs font-semibold"
-						>
+						<span class="tag-pill">
 			              {{ language }}
 			            </span>
 					</div>
@@ -106,21 +103,6 @@ export default {
 		  const options = {year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: 'numeric'};
 		  return new Date(dateString).toLocaleDateString(undefined, options);
 	  }
-	},
-	computed: {
-		languageClass() {
-			const language = (this.language || '').toLowerCase();
-			if (language.includes('python')) {
-				return 'inline-flex items-center rounded-md bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700';
-			}
-			if (language.includes('go')) {
-				return 'inline-flex items-center rounded-md bg-cyan-50 px-3 py-1 text-xs font-semibold text-cyan-700';
-			}
-			if (language.includes('javascript') || language.includes('typescript')) {
-				return 'inline-flex items-center rounded-md bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700';
-			}
-			return 'inline-flex items-center rounded-md bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700';
-		}
   }
 };
 </script>

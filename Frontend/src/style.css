@@ -346,9 +346,13 @@
 	}
 
 	.tag-pill {
-		@apply inline-flex items-center px-3 py-1 text-xs font-medium text-slate-700;
+		@apply inline-flex items-center px-3 py-1 text-xs font-medium;
 		border-radius: 9999px;
-		background: #e8edf4;
+		background: #eaf6df;
+		color: #365314;
+		min-width: 2rem;
+		justify-content: center;
+		text-align: center;
 	}
 
 	.team-panel {

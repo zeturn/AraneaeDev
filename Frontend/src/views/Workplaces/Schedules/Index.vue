@@ -36,14 +36,11 @@
 						<!-- Meta chips -->
 						<div class="mt-4 flex flex-wrap gap-2">
 							<!-- ID chip -->
-							<span class="rounded-lg bg-blue-100 px-3 py-1 text-xs font-mono font-semibold text-blue-600">
+							<span class="tag-pill">
               {{ schedule.id }}
             </span>
 							<!-- Enabled / Disabled chip -->
-							<span
-								class="rounded-lg px-3 py-1 text-xs font-mono font-semibold"
-								:class="schedule.enabled ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'"
-							>
+							<span class="tag-pill">
               {{ schedule.enabled ? 'Enabled' : 'Disabled' }}
             </span>
 						</div>

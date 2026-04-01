@@ -11,41 +11,67 @@
 
 <template>
 	<Workplace>
-		<div class="p-6 bg-white rounded-2xl workplace-logs space-y-4">
+		<div class="mx-auto w-full max-w-5xl px-4 pb-10">
+			<div class="bg-white rounded-2xl p-5 md:p-6 workplace-logs space-y-4 overflow-hidden">
 			<div class="flex flex-wrap items-center justify-between gap-3">
 				<h2 class="text-2xl font-semibold">工作区日志记录 Task Records</h2>
 				<div class="text-sm text-gray-500">共 {{ count }} 条</div>
 			</div>
-			<div class="overflow-y-auto">
-				<table class="min-w-full divide-gray-200 table-auto">
+			<div class="max-h-[68vh] overflow-auto rounded-xl border border-gray-200">
+				<table class="min-w-[1180px] w-full divide-gray-200 table-auto">
 					<thead class="bg-gray-50">
 					<tr>
-						<th class="px-4 py-2 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">运行ID / Run ID</th>
-						<th class="px-4 py-2 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">任务ID / Task ID</th>
-						<th class="px-4 py-2 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">任务状态 / Status</th>
-						<th class="px-4 py-2 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">任务结果 / Result</th>
-						<th class="px-4 py-2 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">创建时间 / Created At</th>
-						<th class="px-4 py-2 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">更新时间 / Updated At</th>
-						<th class="px-4 py-2 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">节点 / Node</th>
-						<th class="px-4 py-2 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">项目 / Project</th>
-						<th class="px-4 py-2 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">版本 / Version</th>
-						<th class="px-4 py-2 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">调度 / Schedule</th>
-						<th class="px-4 py-2 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">操作 / Actions</th>
+						<th class="px-4 py-2 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">Run ID</th>
+						<th class="px-4 py-2 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">Task ID</th>
+						<th class="px-4 py-2 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">Status</th>
+						<th class="px-4 py-2 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">Result</th>
+						<th class="px-4 py-2 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">Created At</th>
+						<th class="px-4 py-2 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">Updated At</th>
+						<th class="px-4 py-2 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">Node</th>
+						<th class="px-4 py-2 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">Project</th>
+						<th class="px-4 py-2 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">Version</th>
+						<th class="px-4 py-2 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">Schedule</th>
+						<th class="px-4 py-2 text-left text-sm font-medium text-gray-500 uppercase tracking-wider">Actions</th>
 					</tr>
 					</thead>
 					<tbody class="bg-white divide-y divide-gray-200">
 					<tr v-for="(record, idx) in records" :key="record.id || `${record.task_id}-${idx}`" class="hover:bg-gray-50">
-						<td class="px-4 py-3 text-sm text-gray-700">{{ record.id || '-' }}</td>
-						<td class="px-4 py-3 text-sm text-gray-700">{{ record.task_id || '-' }}</td>
-						<td class="px-4 py-3 text-sm text-gray-700">{{ record.task_status || '-' }}</td>
-						<td class="px-4 py-3 text-sm text-gray-700">{{ summarizeResult(record.task_result) }}</td>
-						<td class="px-4 py-3 text-sm text-gray-700">{{ formatDate(record.task_created_at) }}</td>
-						<td class="px-4 py-3 text-sm text-gray-700">{{ formatDate(record.task_updated_at) }}</td>
-						<td class="px-4 py-3 text-sm text-gray-700">{{ record.node || '-' }}</td>
-						<td class="px-4 py-3 text-sm text-gray-700">{{ record.project || '-' }}</td>
-						<td class="px-4 py-3 text-sm text-gray-700">{{ record.version || '-' }}</td>
-						<td class="px-4 py-3 text-sm text-gray-700">{{ record.schedule || '-' }}</td>
-						<td class="px-4 py-3 text-sm text-gray-700">
+						<td class="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
+							<ShortUuidLink
+								:value="record.id"
+								:to="buildRunLink(record)"
+							/>
+						</td>
+						<td class="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
+							<ShortUuidLink
+								:value="record.task_id"
+								:to="buildTaskLink(record.task_id)"
+							/>
+						</td>
+						<td class="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{{ record.task_status || '-' }}</td>
+						<td class="px-4 py-3 text-sm text-gray-700 max-w-[240px]">{{ summarizeResult(record.task_result) }}</td>
+						<td class="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{{ formatDate(record.task_created_at) }}</td>
+						<td class="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{{ formatDate(record.task_updated_at) }}</td>
+						<td class="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{{ record.node || '-' }}</td>
+						<td class="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
+							<ShortUuidLink
+								:value="record.project_id || record.project"
+								:to="buildProjectLink(record.project_id || record.project)"
+							/>
+						</td>
+						<td class="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
+							<ShortUuidLink
+								:value="record.version_id || record.version"
+								:to="buildVersionLink(record.version_id || record.version, record.project_id)"
+							/>
+						</td>
+						<td class="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
+							<ShortUuidLink
+								:value="record.schedule_id || record.schedule"
+								:to="buildScheduleLink(record.schedule_id || record.schedule)"
+							/>
+						</td>
+						<td class="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
 							<div class="flex flex-wrap gap-2">
 								<button class="rounded bg-slate-900 px-3 py-1 text-xs text-white" :disabled="!hasOutput(record)" @click="openOutput(record)">
 									查看输出
@@ -73,12 +99,14 @@
 				</div>
 				<pre class="max-h-[360px] overflow-auto rounded bg-slate-950 p-4 text-xs text-slate-100 whitespace-pre-wrap">{{ selectedOutput }}</pre>
 			</div>
+			</div>
 		</div>
 	</Workplace>
 </template>
 
 <script>
 import ApiService from '@/services/ApiService.js'; // 引入 ApiService
+import ShortUuidLink from '@/components/ShortUuidLink.vue';
 import Workplace from '@/views/Workplaces/Workplace.vue'; // 引入 Workplace 模板
 
 /**
@@ -87,7 +115,7 @@ import Workplace from '@/views/Workplaces/Workplace.vue'; // 引入 Workplace �
  */
 export default {
 	name: 'WorkplaceTaskRecords',
-	components: {Workplace},
+	components: {Workplace, ShortUuidLink},
 	data() {
 		return {
 			records: [], // 日志记录列表 / Task records list
@@ -156,6 +184,46 @@ export default {
 			}
 			const workplaceId = this.getWorkplaceIdFromURL();
 			this.$router.push(`/aprons/workplaces/${workplaceId}/tasks/${taskId}/runs`);
+		},
+		isUuid(value) {
+			if (!value) {
+				return false;
+			}
+			const text = String(value).trim();
+			return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(text)
+				|| /^[0-9a-f]{32}$/i.test(text);
+		},
+		buildTaskLink(taskId) {
+			if (!this.isUuid(taskId)) {
+				return '';
+			}
+			const workplaceId = this.getWorkplaceIdFromURL();
+			return `/aprons/workplaces/${workplaceId}/tasks/${taskId}/settings`;
+		},
+		buildRunLink(record) {
+			if (!this.isUuid(record?.id) || !this.isUuid(record?.task_id)) {
+				return '';
+			}
+			const workplaceId = this.getWorkplaceIdFromURL();
+			return `/aprons/workplaces/${workplaceId}/tasks/${record.task_id}/runs?runId=${record.id}`;
+		},
+		buildProjectLink(projectId) {
+			if (!this.isUuid(projectId)) {
+				return '';
+			}
+			return `/aprons/projects/${projectId}`;
+		},
+		buildVersionLink(versionId, projectId) {
+			if (!this.isUuid(versionId) || !this.isUuid(projectId)) {
+				return '';
+			}
+			return `/aprons/projects/${projectId}/versions/${versionId}/settings`;
+		},
+		buildScheduleLink(scheduleId) {
+			if (!this.isUuid(scheduleId)) {
+				return '';
+			}
+			return `/aprons/schedule/${scheduleId}`;
 		},
 
 		/**

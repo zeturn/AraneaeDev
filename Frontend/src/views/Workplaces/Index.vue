@@ -17,7 +17,7 @@
 				<div>
 					<h1 class="text-3xl font-bold text-gray-900">{{ name }}</h1>
 					<p class="text-sm text-gray-500 mt-1">
-            <span class="inline-block bg-blue-100 text-blue-600 font-mono text-xs px-2 py-1 rounded-md">
+		            <span class="tag-pill">
               ID: {{ id }}
             </span>
 					</p>
@@ -40,7 +40,7 @@
 				<!-- Status -->
 				<div>
 					<h2 class="text-lg font-semibold text-gray-700 mb-2">Status</h2>
-					<span :class="['inline-block font-mono text-xs px-2 py-1 rounded-md', statusClass]">
+					<span class="tag-pill">
 						{{ status }}
 					</span>
 				</div>
@@ -77,20 +77,6 @@ export default {
 			updatedAt: null,
 			teams: []
 		};
-	},
-	computed: {
-		statusClass() {
-			switch (this.status) {
-				case 'active':
-					return 'bg-green-100 text-green-600';
-				case 'inactive':
-					return 'bg-gray-100 text-gray-600';
-				case 'archived':
-					return 'bg-red-100 text-red-600';
-				default:
-					return 'bg-yellow-100 text-yellow-600';
-			}
-		}
 	},
 	created() {
 		this.fetchWorkplace();

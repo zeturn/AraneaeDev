@@ -50,8 +50,8 @@ export default {
 			return {
 				width: '24px',
 				height: '24px',
-				border: `2px solid ${this.colors.yellowGreen}`,
-				backgroundColor: this.isChecked ? this.colors.yellowGreen : 'transparent',
+				border: 'none',
+				backgroundColor: this.isChecked ? this.colors.yellowGreen : '#ecf7e8',
 				borderRadius: '50%',
 				display: 'flex',
 				alignItems: 'center',

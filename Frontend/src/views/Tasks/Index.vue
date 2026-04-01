@@ -52,12 +52,10 @@
 						<h3 class="font-bold text-lg text-gray-800">{{ task.name }}</h3>
 						<p class="text-sm text-gray-500 mt-1">{{ task.description }}</p>
 						<div class="mt-4 flex flex-wrap gap-2">
-							<span class="rounded-lg bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-600">
+							<span class="tag-pill">
 								模式: {{ task.mode }}
 							</span>
-							<span class="rounded-lg px-3 py-1 text-xs font-semibold"
-								:class="task.enabled ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'"
-							>
+							<span class="tag-pill">
 								{{ task.enabled ? '启用' : '禁用' }}
 							</span>
 						</div>

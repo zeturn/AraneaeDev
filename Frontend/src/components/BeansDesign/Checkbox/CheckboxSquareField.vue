@@ -116,9 +116,9 @@ export default {
 			return {
 				width: '24px',
 				height: '24px',
-				border: `2px solid ${this.colors.yellowGreen}`,
-				backgroundColor: this.currentChecked ? this.colors.yellowGreen : 'transparent',
-				borderRadius: '4px',
+				border: 'none',
+				backgroundColor: this.currentChecked ? this.colors.yellowGreen : '#ecf7e8',
+				borderRadius: '10px',
 				display: 'flex',
 				alignItems: 'center',
 				justifyContent: 'center',

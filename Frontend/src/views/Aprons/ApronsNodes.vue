@@ -146,14 +146,7 @@ onMounted(fetchNodes);
 				<RouterLink :to="`/aprons/nodes/${node.id}`" class="block p-6">
 					<div class="flex justify-between items-start">
 						<h2 class="text-xl font-semibold text-gray-800 truncate">{{ node.name }}</h2>
-						<span
-							:class="{
-                'bg-green-100 text-green-700': node.status === 'active',
-                'bg-red-100 text-red-700': node.status === 'inactive',
-                'bg-yellow-100 text-yellow-700': node.status === 'pending',
-              }"
-							class="inline-block px-2 py-1 text-xs font-mono font-semibold rounded-md"
-						>
+						<span class="tag-pill">
               {{ node.status }}
             </span>
 					</div>

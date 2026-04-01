@@ -153,13 +153,13 @@ onMounted(() => {
 							</span>
 							<span
 								v-if="candidate.already_registered"
-								class="rounded bg-amber-100 px-2 py-1 text-xs text-amber-700"
+								class="tag-pill"
 							>
 								已注册
 							</span>
 							<span
 								v-else
-								class="rounded bg-green-100 px-2 py-1 text-xs text-green-700"
+								class="tag-pill"
 							>
 								匹配
 							</span>

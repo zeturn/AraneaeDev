@@ -37,9 +37,7 @@
 					>
 						<div class="flex items-center justify-between gap-2">
 							<p class="text-sm font-medium text-slate-900">{{ run.node_name }}</p>
-							<span class="rounded px-2 py-0.5 text-xs font-semibold"
-								:class="run.status === 'running' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'"
-							>
+							<span class="tag-pill">
 								{{ run.status }}
 							</span>
 						</div>
