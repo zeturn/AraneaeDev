@@ -23,6 +23,22 @@ Run on your build host:
 
 Copy bin/araneae-control and bin/araneae-executor to deployment hosts.
 
+## 2.1 Docker Compose quick path (recommended for this repo)
+
+If you deploy directly from this repository with Docker:
+
+- Control machine:
+  - Copy `.env.control.example` to `.env.control` and set real addresses.
+  - Run:
+    - `docker compose -f docker-compose.control.yml --env-file .env.control up -d --build`
+
+- Executor machine:
+  - Copy `.env.executor.example` to `.env.executor` and set control/rabbit addresses.
+  - Run:
+    - `docker compose -f docker-compose.executor.yml --env-file .env.executor up -d --build`
+
+This model keeps control side and executor side independently scalable.
+
 ## 3. Configure control node
 
 Use template:

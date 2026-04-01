@@ -1,119 +1,131 @@
 # Araneae 部署说明
 
-本文档说明 Araneae 如何通过 `GHCR` 做镜像化部署，以及如何接入 `BasaltPass` 认证。
+本文档基于当前仓库结构（Backend + Frontend）提供可直接执行的 Docker 部署方法，覆盖以下两类场景：
 
-## 1. 部署目标
+- 单机一体化部署：前端 + 控制端 + 运行端 + RabbitMQ
+- 多机拆分部署：控制端机器（可含前端）与运行端机器分离
 
-- ControlNode API: `8107`
-- Frontend: `5109`
-- ExecutionNode: `4107`
-- RabbitMQ: `5672`, `15672`
-- 建议镜像:
-  - `ghcr.io/<owner>/araneae-controlnode:<tag>`
-  - `ghcr.io/<owner>/araneae-executionnode:<tag>`
-  - `ghcr.io/<owner>/araneae-front:<tag>`
+## 1. 端口与组件
 
-## 2. BasaltPass 接入方式
+- Frontend: 5109
+- Control HTTP: 8180
+- Control gRPC: 9190
+- Executor HTTP: 4280
+- RabbitMQ: 5672
+- RabbitMQ 管理台: 15672
 
-Araneae 的 BasaltPass 接入由仓库根目录 `.env` 控制，后端使用 discovery 自动发现端点。
+## 2. 部署方式总览
 
-关键变量见 `.env.example`:
+仓库根目录提供三份 Compose 文件：
 
-```env
-BASALTPASS_BASE_URL=https://auth.example.com
-BASALTPASS_OAUTH_ENABLED=true
-BASALTPASS_OAUTH_DISCOVERY_URL=https://auth.example.com/api/v1/.well-known/openid-configuration
-BASALTPASS_OAUTH_CLIENT_ID=<client-id>
-BASALTPASS_OAUTH_CLIENT_SECRET=<client-secret>
-BASALTPASS_OAUTH_REDIRECT_URI=https://api.example.com/api/auth/basaltpass/callback/
-BASALTPASS_OAUTH_SCOPE=openid profile email offline_access
-BASALTPASS_FRONTEND_CALLBACK_PATH=/oauth/callback
-```
+- docker-compose.yml: 单机一体化
+- docker-compose.control.yml: 控制端机器（controlnode + rabbitmq + front）
+- docker-compose.executor.yml: 运行端机器（executionnode）
 
-线上回调建议:
+## 3. 单机一体化部署
 
-- 后端回调: `https://api.example.com/api/auth/basaltpass/callback/`
-- 前端回跳页: `https://app.example.com/oauth/callback`
-
-## 3. 需要在 BasaltPass 中创建的客户端
-
-为 Araneae 创建 1 个 OAuth 客户端即可:
-
-- `grant_types`: `authorization_code`, `refresh_token`
-- `client_type`: `confidential`
-- `redirect_uris`:
-  - `https://api.example.com/api/auth/basaltpass/callback/`
-- `scopes`: `openid profile email offline_access`
-- `require_pkce`: `true`
-
-## 4. 生产环境变量
-
-从 `Araneae/.env.example` 复制 `.env`，至少填写:
-
-```env
-DJANGO_SECRET_KEY=<long-random-secret>
-DJANGO_DEBUG=False
-DJANGO_ALLOWED_HOSTS=api.example.com
-
-FRONTEND_BASE_URL=https://app.example.com
-CONTROLNODE_BASE_URL=https://api.example.com
-VITE_BACKEND_BASE_URL=https://api.example.com
-
-BASALTPASS_BASE_URL=https://auth.example.com
-BASALTPASS_OAUTH_DISCOVERY_URL=https://auth.example.com/api/v1/.well-known/openid-configuration
-BASALTPASS_OAUTH_CLIENT_ID=<client-id>
-BASALTPASS_OAUTH_CLIENT_SECRET=<client-secret>
-BASALTPASS_OAUTH_REDIRECT_URI=https://api.example.com/api/auth/basaltpass/callback/
-
-ARANEAE_CALLBACK_SHARED_SECRET=<long-random-secret>
-ARANEAE_NODE_API_TOKEN=<node-api-token>
-
-RABBITMQ_USERNAME=<username>
-RABBITMQ_PASSWORD=<password>
-```
-
-## 5. GHCR 自动部署建议
-
-当前仓库已有 CI，但没有现成的 GHCR deploy workflow。建议补充一个 deploy workflow，流程如下:
-
-1. 构建 `ControlNode`、`ExecutionNode`、`Front` 三个镜像并推送到 GHCR。
-2. 将服务器上的 `.env` 保存在固定目录，例如 `/opt/araneae/.env`。
-3. 服务器使用 compose 以预构建镜像启动。
-
-建议 compose 生产版结构:
-
-- `controlnode`
-- `controlnode-worker`
-- `controlnode-beat`
-- `executionnode`
-- `front`
-- `rabbitmq`
-
-注意:
-
-- `controlnode-worker` 和 `controlnode-beat` 可复用 `controlnode` 镜像
-- `front` 镜像需要在构建时注入前端 API 基础地址
-
-## 6. 服务器落地步骤
-
-1. 先确认 BasaltPass 已上线。
-2. 在 BasaltPass 注册 Araneae OAuth 客户端。
-3. 服务器准备 `/opt/araneae/.env`。
-4. 通过 GHCR 拉取镜像并执行:
+在仓库根目录执行：
 
 ```bash
-docker compose pull
-docker compose up -d --remove-orphans
+docker compose up -d --build
 ```
 
-5. 配置反向代理:
-  - `app.example.com` -> Front
-  - `api.example.com` -> ControlNode
+验活：
 
-## 7. 验收
+```bash
+curl http://127.0.0.1:5109
+curl http://127.0.0.1:8180/healthz
+curl http://127.0.0.1:4280/healthz
+```
 
-- 打开前端登录页后可跳转到 BasaltPass
-- BasaltPass 登录完成后可回到 `/oauth/callback`
-- `controlnode` 健康检查通过
-- `executionnode` 健康检查通过
-- `rabbitmq` 正常连接
+## 4. 多机拆分部署
+
+### 4.1 机器 A（控制端机器）
+
+1. 在仓库根目录复制环境模板：
+
+```bash
+cp .env.control.example .env.control
+```
+
+2. 编辑 .env.control，至少确认：
+
+- RABBITMQ_USERNAME
+- RABBITMQ_PASSWORD
+- EXECUTION_CALLBACK_KEY
+- FRONT_VITE_BACKEND_BASE_URL
+- CONTROL_CORS_ALLOW_ORIGINS
+
+3. 启动控制端机器服务：
+
+```bash
+docker compose -f docker-compose.control.yml --env-file .env.control up -d --build
+```
+
+### 4.2 机器 B（运行端机器）
+
+1. 在仓库根目录复制环境模板：
+
+```bash
+cp .env.executor.example .env.executor
+```
+
+2. 编辑 .env.executor，至少确认：
+
+- EXECUTOR_RABBITMQ_URL
+- EXECUTOR_CONTROL_GRPC_TARGET
+- EXECUTOR_CONTROL_HTTP_BASE
+- EXECUTION_CALLBACK_KEY
+- EXECUTOR_QUEUE
+
+3. 启动运行端：
+
+```bash
+docker compose -f docker-compose.executor.yml --env-file .env.executor up -d --build
+```
+
+## 5. 分机部署关键约束
+
+1. 所有运行端与控制端必须使用同一个 EXECUTION_CALLBACK_KEY。
+2. 运行端必须能访问控制端的 9190 和 8180。
+3. 运行端必须能访问共享 RabbitMQ 的 5672。
+4. 任务下发时 node_queue 需与运行端 EXECUTOR_QUEUE 对齐。
+5. 前端构建地址 FRONT_VITE_BACKEND_BASE_URL 应填写用户可访问的控制端地址，不建议在分机部署时使用 localhost。
+
+## 6. 推荐网络与安全策略
+
+- 控制端机器仅对必要网段开放 8180 与 9190。
+- RabbitMQ 5672 只对控制端与运行端网段开放。
+- EXECUTION_CALLBACK_KEY 使用高强度随机值并定期轮换。
+- 生产环境建议在控制端前放置反向代理与 HTTPS。
+
+## 7. 常用运维命令
+
+单机：
+
+```bash
+docker compose ps
+docker compose logs -f controlnode executionnode front rabbitmq
+docker compose down
+```
+
+控制端机器：
+
+```bash
+docker compose -f docker-compose.control.yml --env-file .env.control ps
+docker compose -f docker-compose.control.yml --env-file .env.control logs -f controlnode front rabbitmq
+```
+
+运行端机器：
+
+```bash
+docker compose -f docker-compose.executor.yml --env-file .env.executor ps
+docker compose -f docker-compose.executor.yml --env-file .env.executor logs -f executionnode
+```
+
+## 8. 验收清单
+
+- Frontend 可访问。
+- Control /healthz 返回 200。
+- Executor /healthz 返回 200。
+- 创建任务后可按预期路由到目标 queue 并完成回调。

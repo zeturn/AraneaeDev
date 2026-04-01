@@ -1,0 +1,20 @@
+services:
+  executionnode:
+    image: golang:1.25
+    working_dir: /app
+    command: sh -c "go mod download && go run ./cmd/executor"
+    restart: unless-stopped
+    volumes:
+      - ./Backend:/app
+      - ./Backend/data:/data
+    environment:
+      RABBITMQ_URL: ${EXECUTOR_RABBITMQ_URL:?set EXECUTOR_RABBITMQ_URL, e.g. amqp://user:pass@<rabbit-host>:5672/}
+      EXECUTOR_HTTP_ADDR: ${EXECUTOR_HTTP_ADDR:-:4280}
+      EXECUTOR_DB_PATH: ${EXECUTOR_DB_PATH:-/data/executor.db}
+      EXECUTOR_WORKDIR: ${EXECUTOR_WORKDIR:-/data/workdir}
+      EXECUTOR_QUEUE: ${EXECUTOR_QUEUE:-default}
+      CONTROL_GRPC_TARGET: ${EXECUTOR_CONTROL_GRPC_TARGET:?set EXECUTOR_CONTROL_GRPC_TARGET, e.g. 10.0.0.10:9190}
+      CONTROL_HTTP_BASE: ${EXECUTOR_CONTROL_HTTP_BASE:?set EXECUTOR_CONTROL_HTTP_BASE, e.g. http://10.0.0.10:8180}
+      EXECUTION_CALLBACK_KEY: ${EXECUTION_CALLBACK_KEY:?set EXECUTION_CALLBACK_KEY to match control side}
+    ports:
+      - "${EXECUTOR_HTTP_PORT:-4280}:4280"

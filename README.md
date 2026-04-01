@@ -1,112 +1,99 @@
 # Araneae
 
-分布式任务调度与执行平台，包含 ControlNode、ExecutionNode、前端与消息队列组件。
+分布式任务调度与执行平台，包含 Go 控制端、Go 运行端、前端与消息队列组件。
 
 ## Overview
 
-- **定位**：任务调度编排与执行系统
-- **核心组件**：`ControlNode`、`ExecutionNode`、`Front`、`RabbitMQ`
-- **运行形态**：单机 Docker 编排或本地多进程开发
+- 定位：任务调度编排与执行系统
+- 核心组件：Backend (Control + Executor)、Frontend、RabbitMQ
+- 运行形态：
+	- 单机 Docker 一体化部署
+	- 多机拆分部署（控制端在 A 机，运行端在 B 机）
 
 ## Repository Structure
 
 ```text
 Araneae/
-├─ ControlNode/             # Django 控制节点
-├─ ExecutionNode/           # 执行节点
-├─ Front/                   # 前端
-├─ scripts/                 # 开发脚本
-├─ docker-compose.yml       # Docker 编排
-├─ docs-site/               # Docusaurus 文档站（统一文档入口）
+├─ Backend/                     # Go 控制端 + 运行端
+├─ Frontend/                    # 前端
+├─ docker-compose.yml           # 单机一体化部署
+├─ docker-compose.control.yml   # 控制端机器部署（control + rabbitmq + front）
+├─ docker-compose.executor.yml  # 运行端机器部署（executor）
+├─ .env.control.example         # 控制端机器环境示例
+├─ .env.executor.example        # 运行端机器环境示例
 └─ README.md
 ```
 
 ## Quick Start
 
-### Docker
+### 单机一体化（前端 + 控制端 + 运行端）
 
 ```bash
 cd Araneae
 docker compose up -d --build
 ```
 
-- Front: `http://localhost:5109`
-- ControlNode API: `http://localhost:8107`
-- ExecutionNode: `http://localhost:4107`
-- RabbitMQ Console: `http://localhost:15672`
+- Front: http://localhost:5109
+- Control API: http://localhost:8180
+- Executor: http://localhost:4280
+- RabbitMQ Console: http://localhost:15672
 
-### Local Development
+## Multi Machine Deployment
 
-```bash
-cd ControlNode
-python -m venv .venv
-.\.venv\Scripts\activate
-pip install -r requirements.txt
-python manage.py migrate
-python manage.py runserver 0.0.0.0:8107
-```
+适用于控制端在一台机器、运行端在另一台机器的场景。
+
+### 机器 A（控制端机器）
+
+1. 准备环境文件：复制 .env.control.example 为 .env.control，并按实际 IP/域名修改。
+2. 启动：
 
 ```bash
-cd ../ExecutionNode
-python -m venv .venv
-.\.venv\Scripts\activate
-pip install -r requirements.txt
-python app.py
+cd Araneae
+docker compose -f docker-compose.control.yml --env-file .env.control up -d --build
 ```
+
+### 机器 B（运行端机器）
+
+1. 准备环境文件：复制 .env.executor.example 为 .env.executor，并填写控制端机器地址。
+2. 启动：
 
 ```bash
-cd ../Front
-npm install
-npm run dev -- --port 5109
+cd Araneae
+docker compose -f docker-compose.executor.yml --env-file .env.executor up -d --build
 ```
 
-## Configuration
+### 多机部署关键点
 
-优先使用仓库根目录 `.env`（由 `.env.example` 拷贝）：
+- EXECUTION_CALLBACK_KEY 必须在控制端和所有运行端一致。
+- 运行端必须能访问控制端：
+	- gRPC 端口 9190
+	- HTTP 端口 8180
+- 运行端必须能访问共享 RabbitMQ 5672。
+- 任务下发时 node_queue 需要和运行端 EXECUTOR_QUEUE 对齐。
 
-- `DJANGO_DB_PATH`
-- `EXECUTION_DB_PATH`
-- `RABBITMQ_USERNAME`
-- `RABBITMQ_PASSWORD`
-- `BASALTPASS_OAUTH_CLIENT_ID`
-- `BASALTPASS_OAUTH_CLIENT_SECRET`
-- `ARANEAE_CALLBACK_SHARED_SECRET`
-- `ARANEAE_NODE_API_TOKEN`
+## Frontend API Address
 
-## Persistence Mounts
+前端镜像构建时使用 FRONT_VITE_BACKEND_BASE_URL 作为 API 目标地址。
+在多机部署时，建议设置为用户可访问的控制端地址（例如 http://control.example.com:8180），不要默认使用 localhost。
 
-`docker-compose.yml` 当前已挂载：
-
-- `./data/controlnode -> /data`（ControlNode 数据，含 SQLite）
-- `./data/controlnode/media -> /app/media`（媒体目录）
-- `./data/controlnode/repo -> /app/Araneae_repo/repo`（仓库目录）
-- `./data/executionnode -> /data`（ExecutionNode 数据，含 SQLite）
-- `./data/executionnode/logs -> /app/logs`（执行日志）
-- `./data/rabbitmq -> /var/lib/rabbitmq`（RabbitMQ 数据）
-
-## Documentation
-
-项目文档统一入口：`docs-site/`（Docusaurus）。
+## Useful Commands
 
 ```bash
-cd docs-site
-npm install
-npm run start
+# 单机查看状态
+docker compose ps
+
+# 控制端机器查看状态
+docker compose -f docker-compose.control.yml --env-file .env.control ps
+
+# 运行端机器查看状态
+docker compose -f docker-compose.executor.yml --env-file .env.executor ps
 ```
 
-## Testing
+## Health Check
 
-- ControlNode：`python manage.py test`
-- ExecutionNode：按模块运行 pytest/自带测试脚本
+- Control: GET /healthz
+- Executor: GET /healthz
 
-## Deployment
+## More Docs
 
-生产建议：
-
-- 将 RabbitMQ 与数据库目录纳入备份策略
-- 对外接口启用反向代理与 HTTPS
-- 对节点通信密钥与 API Token 做轮换管理
-
----
-
-发布门禁与流程请见文档站对应章节。
+后端多节点部署细节：Backend/deploy/MULTI_NODE_DEPLOYMENT.md
