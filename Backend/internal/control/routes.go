@@ -1,6 +1,7 @@
 package control
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 	"araneae-go/internal/common"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
@@ -20,17 +22,21 @@ type loginRequest struct {
 }
 
 type createProjectRequest struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Language    string `json:"language"`
-	Command     string `json:"command"`
+	Name        string     `json:"name"`
+	Description string     `json:"description"`
+	Language    string     `json:"language"`
+	Command     string     `json:"command"`
+	WorkplaceID *laxString `json:"workplace_id"`
+	Workplace   *laxString `json:"workplace"`
 }
 
 type updateProjectRequest struct {
-	Name        *string `json:"name"`
-	Description *string `json:"description"`
-	Language    *string `json:"language"`
-	Command     *string `json:"command"`
+	Name        *string    `json:"name"`
+	Description *string    `json:"description"`
+	Language    *string    `json:"language"`
+	Command     *string    `json:"command"`
+	WorkplaceID *laxString `json:"workplace_id"`
+	Workplace   *laxString `json:"workplace"`
 }
 
 type updateArtifactVersionRequest struct {
@@ -93,30 +99,106 @@ func sanitizeNodeQueue(raw string) string {
 	return ""
 }
 
+func parseOptionalWorkplaceID(workplaceID *laxString, workplace *laxString) (*uint, error) {
+	value := ""
+	if workplaceID != nil {
+		value = strings.TrimSpace(string(*workplaceID))
+	}
+	if value == "" && workplace != nil {
+		value = strings.TrimSpace(string(*workplace))
+	}
+	if value == "" {
+		return nil, nil
+	}
+
+	parsed, err := strconv.ParseUint(value, 10, 64)
+	if err != nil || parsed == 0 {
+		return nil, errors.New("workplace_id must be a positive integer")
+	}
+	result := uint(parsed)
+	return &result, nil
+}
+
+func parseOptionalWorkplaceQueryID(c *fiber.Ctx) (*uint, error) {
+	raw := strings.TrimSpace(c.Query("workplace_id"))
+	if raw == "" {
+		return nil, nil
+	}
+	parsed, err := strconv.ParseUint(raw, 10, 64)
+	if err != nil || parsed == 0 {
+		return nil, errors.New("invalid workplace_id")
+	}
+	result := uint(parsed)
+	return &result, nil
+}
+
 type createScheduleRequest struct {
-	Name         string `json:"name"`
-	Description  string `json:"description"`
-	TaskID       string `json:"task_id"`
-	ProjectID    string `json:"project_id"`
-	VersionID    string `json:"version_id"`
-	EntryCommand string `json:"entry_command"`
-	CronExpr     string `json:"cron_expr"`
+	Name         string    `json:"name"`
+	Description  string    `json:"description"`
+	TaskID       string    `json:"task_id"`
+	ProjectID    string    `json:"project_id"`
+	VersionID    string    `json:"version_id"`
+	EntryCommand string    `json:"entry_command"`
+	CronExpr     string    `json:"cron_expr"`
 	NodeQueue    laxString `json:"node_queue"`
-	Enabled      *bool  `json:"enabled"`
-	Order        any    `json:"order"`
+	Enabled      *bool     `json:"enabled"`
+	Order        any       `json:"order"`
 }
 
 type updateScheduleRequest struct {
-	Name         *string `json:"name"`
-	Description  *string `json:"description"`
-	TaskID       *string `json:"task_id"`
-	ProjectID    *string `json:"project_id"`
-	VersionID    *string `json:"version_id"`
-	EntryCommand *string `json:"entry_command"`
-	CronExpr     *string `json:"cron_expr"`
+	Name         *string    `json:"name"`
+	Description  *string    `json:"description"`
+	TaskID       *string    `json:"task_id"`
+	ProjectID    *string    `json:"project_id"`
+	VersionID    *string    `json:"version_id"`
+	EntryCommand *string    `json:"entry_command"`
+	CronExpr     *string    `json:"cron_expr"`
 	NodeQueue    *laxString `json:"node_queue"`
-	Enabled      *bool   `json:"enabled"`
-	Order        any     `json:"order"`
+	Enabled      *bool      `json:"enabled"`
+	Order        any        `json:"order"`
+}
+
+const (
+	maxCallbackOutputBytes    = 1024 * 1024
+	maxManualTriggerPerMinute = 20
+	triggerDuplicateWindow    = 20 * time.Second
+)
+
+func isAllowedCallbackStatus(status string) bool {
+	switch status {
+	case "running", "success", "failed", "canceled", "cancelled":
+		return true
+	default:
+		return false
+	}
+}
+
+func isTerminalRunStatus(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "success", "failed", "canceled", "cancelled":
+		return true
+	default:
+		return false
+	}
+}
+
+func (a *App) hasRecentManualRun(taskID, scheduleID string) (bool, error) {
+	query := a.db.Model(&common.TaskRun{}).
+		Where("trigger_source = ?", "manual").
+		Where("status IN ?", []string{"queued", "running"}).
+		Where("created_at >= ?", time.Now().Add(-triggerDuplicateWindow))
+
+	if scheduleID != "" {
+		query = query.Where("schedule_id = ?", scheduleID)
+	} else {
+		query = query.Where("task_id = ? AND (schedule_id = '' OR schedule_id IS NULL)", taskID)
+	}
+
+	var count int64
+	if err := query.Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 type legacyScheduleOrder struct {
@@ -125,14 +207,14 @@ type legacyScheduleOrder struct {
 }
 
 type legacyScheduleStep struct {
-	TaskID    string   `json:"task_id"`
-	TaskStatus string  `json:"task_status"`
-	Name      string   `json:"name"`
-	ProjectID string   `json:"project_id"`
-	Node      []string `json:"node"`
-	Trigger   string   `json:"trigger"`
-	Crons     string   `json:"crons"`
-	Previous  string   `json:"previous"`
+	TaskID     string   `json:"task_id"`
+	TaskStatus string   `json:"task_status"`
+	Name       string   `json:"name"`
+	ProjectID  string   `json:"project_id"`
+	Node       []string `json:"node"`
+	Trigger    string   `json:"trigger"`
+	Crons      string   `json:"crons"`
+	Previous   string   `json:"previous"`
 }
 
 func (a *App) setupRoutes() {
@@ -140,7 +222,35 @@ func (a *App) setupRoutes() {
 		return c.JSON(fiber.Map{"status": "ok"})
 	})
 
-	a.http.Post("/api/v1/auth/login", a.login)
+	loginRateLimit := limiter.New(limiter.Config{
+		Max:        10,
+		Expiration: time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return c.IP()
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			a.recordSecurityEvent(c, "auth_login_rate_limited", "warning", "too many login attempts")
+			return fiber.NewError(fiber.StatusTooManyRequests, "too many login attempts")
+		},
+	})
+
+	manualTriggerRateLimit := limiter.New(limiter.Config{
+		Max:        maxManualTriggerPerMinute,
+		Expiration: time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			uid, _ := c.Locals("uid").(string)
+			if uid == "" {
+				uid = c.IP()
+			}
+			return uid + ":" + c.Path()
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			a.recordSecurityEvent(c, "manual_trigger_rate_limited", "warning", "too many trigger attempts")
+			return fiber.NewError(fiber.StatusTooManyRequests, "too many trigger attempts")
+		},
+	})
+
+	a.http.Post("/api/v1/auth/login", loginRateLimit, a.login)
 	a.http.Post("/api/v1/runs/:id/callback", a.runCallback)
 
 	api := a.http.Group("/api/v1", a.authMiddleware)
@@ -159,7 +269,7 @@ func (a *App) setupRoutes() {
 	api.Get("/tasks/:id", a.getTask)
 	api.Put("/tasks/:id", a.requireRoles("admin", "operator"), a.updateTask)
 	api.Delete("/tasks/:id", a.requireRoles("admin", "operator"), a.deleteTask)
-	api.Post("/tasks/:id/trigger", a.requireRoles("admin", "operator"), a.triggerTask)
+	api.Post("/tasks/:id/trigger", a.requireRoles("admin", "operator"), manualTriggerRateLimit, a.triggerTask)
 	api.Get("/tasks/:id/runs", a.listRuns)
 	api.Post("/schedules", a.requireRoles("admin", "operator"), a.createSchedule)
 	api.Get("/schedules", a.listSchedules)
@@ -168,7 +278,7 @@ func (a *App) setupRoutes() {
 	api.Delete("/schedules/:id", a.requireRoles("admin", "operator"), a.deleteSchedule)
 	api.Post("/schedules/:id/enable", a.requireRoles("admin", "operator"), a.enableSchedule)
 	api.Post("/schedules/:id/disable", a.requireRoles("admin", "operator"), a.disableSchedule)
-	api.Post("/schedules/:id/trigger", a.requireRoles("admin", "operator"), a.triggerSchedule)
+	api.Post("/schedules/:id/trigger", a.requireRoles("admin", "operator"), manualTriggerRateLimit, a.triggerSchedule)
 	api.Get("/schedules/:id/runs", a.listScheduleRuns)
 	api.Get("/runs", a.listRecentRuns)
 
@@ -177,28 +287,28 @@ func (a *App) setupRoutes() {
 	api.Get("/users/:id/", a.getUser)
 	api.Get("/users/:id", a.getUser)
 
-	api.Get("/nodes/discover/", a.discoverNodes)
+	api.Get("/nodes/discover/", a.requireRoles("admin", "operator"), a.discoverNodes)
 	api.Post("/nodes/register/", a.requireRoles("admin", "operator"), a.registerNode)
-	api.Get("/nodes/", a.listNodes)
-	api.Get("/nodes", a.listNodes)
-	api.Get("/nodes/:id/", a.getNode)
-	api.Get("/nodes/:id", a.getNode)
+	api.Get("/nodes/", a.requireRoles("admin", "operator"), a.listNodes)
+	api.Get("/nodes", a.requireRoles("admin", "operator"), a.listNodes)
+	api.Get("/nodes/:id/", a.requireRoles("admin", "operator"), a.getNode)
+	api.Get("/nodes/:id", a.requireRoles("admin", "operator"), a.getNode)
 	api.Put("/nodes/:id/", a.requireRoles("admin", "operator"), a.updateNode)
 	api.Put("/nodes/:id", a.requireRoles("admin", "operator"), a.updateNode)
 	api.Delete("/nodes/:id/", a.requireRoles("admin", "operator"), a.deleteNode)
 	api.Delete("/nodes/:id", a.requireRoles("admin", "operator"), a.deleteNode)
-	api.Get("/nodes/:id/status/", a.getNodeStatus)
-	api.Get("/nodes/:id/status", a.getNodeStatus)
-	api.Get("/nodes/:id/capabilities/", a.getNodeCapabilities)
-	api.Get("/nodes/:id/capabilities", a.getNodeCapabilities)
+	api.Get("/nodes/:id/status/", a.requireRoles("admin", "operator"), a.getNodeStatus)
+	api.Get("/nodes/:id/status", a.requireRoles("admin", "operator"), a.getNodeStatus)
+	api.Get("/nodes/:id/capabilities/", a.requireRoles("admin", "operator"), a.getNodeCapabilities)
+	api.Get("/nodes/:id/capabilities", a.requireRoles("admin", "operator"), a.getNodeCapabilities)
 	api.Post("/nodes/:id/refresh_capabilities/", a.requireRoles("admin", "operator"), a.refreshNodeCapabilities)
 	api.Post("/nodes/:id/refresh_capabilities", a.requireRoles("admin", "operator"), a.refreshNodeCapabilities)
-	api.Get("/nodes/:id/installers/", a.getNodeInstallers)
-	api.Get("/nodes/:id/installers", a.getNodeInstallers)
+	api.Get("/nodes/:id/installers/", a.requireRoles("admin", "operator"), a.getNodeInstallers)
+	api.Get("/nodes/:id/installers", a.requireRoles("admin", "operator"), a.getNodeInstallers)
 	api.Post("/nodes/:id/install_runtime/", a.requireRoles("admin", "operator"), a.installRuntime)
 	api.Post("/nodes/:id/install_runtime", a.requireRoles("admin", "operator"), a.installRuntime)
-	api.Get("/nodes/:id/install_status/:jobID/", a.getInstallStatus)
-	api.Get("/nodes/:id/install_status/:jobID", a.getInstallStatus)
+	api.Get("/nodes/:id/install_status/:jobID/", a.requireRoles("admin", "operator"), a.getInstallStatus)
+	api.Get("/nodes/:id/install_status/:jobID", a.requireRoles("admin", "operator"), a.getInstallStatus)
 
 	api.Get("/teams/my_teams/", a.listMyTeams)
 	api.Get("/teams/my_teams", a.listMyTeams)
@@ -240,17 +350,21 @@ func (a *App) login(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	}
+	username := strings.TrimSpace(req.Username)
 	var user common.User
 	if err := a.db.Where("username = ?", req.Username).First(&user).Error; err != nil {
+		a.recordSecurityEvent(c, "auth_login_failed", "warning", "invalid credentials for username="+username)
 		return fiber.NewError(fiber.StatusUnauthorized, "invalid credentials")
 	}
 	if !verifyPassword(req.Password, user.PasswordHash) {
+		a.recordSecurityEvent(c, "auth_login_failed", "warning", "invalid credentials for username="+username)
 		return fiber.NewError(fiber.StatusUnauthorized, "invalid credentials")
 	}
 	token, err := a.issueToken(user.ID, user.Role)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}
+	a.recordSecurityEventWithUser(c, user.ID, "auth_login_success", "info", "username="+username)
 	return c.JSON(fiber.Map{
 		"token": token,
 		"user":  fiber.Map{"id": user.ID, "username": user.Username, "role": user.Role},
@@ -265,6 +379,23 @@ func (a *App) createProject(c *fiber.Ctx) error {
 	if strings.TrimSpace(req.Name) == "" {
 		return fiber.NewError(fiber.StatusBadRequest, "project name is required")
 	}
+	workplaceID, err := parseOptionalWorkplaceID(req.WorkplaceID, req.Workplace)
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+	if workplaceID != nil {
+		var workplace common.Workplace
+		if err := a.db.Select("id").Where("id = ?", *workplaceID).First(&workplace).Error; err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "workplace not found")
+		}
+		allowed, accessErr := a.canBindWorkplace(c, *workplaceID)
+		if accessErr != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+		}
+		if !allowed {
+			return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
+		}
+	}
 	uid, _ := c.Locals("uid").(string)
 	now := time.Now()
 	p := common.Project{
@@ -273,6 +404,7 @@ func (a *App) createProject(c *fiber.Ctx) error {
 		Description: strings.TrimSpace(req.Description),
 		Language:    strings.TrimSpace(req.Language),
 		Command:     strings.TrimSpace(req.Command),
+		WorkplaceID: workplaceID,
 		CreatedBy:   uid,
 		CreatedAt:   now,
 		UpdatedAt:   now,
@@ -285,7 +417,38 @@ func (a *App) createProject(c *fiber.Ctx) error {
 
 func (a *App) listProjects(c *fiber.Ctx) error {
 	var projects []common.Project
-	if err := a.db.Order("created_at desc").Find(&projects).Error; err != nil {
+	role, _ := c.Locals("role").(string)
+	uid, _ := c.Locals("uid").(string)
+	workplaceID, err := parseOptionalWorkplaceQueryID(c)
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+	query := a.db.Order("created_at desc")
+	if workplaceID != nil {
+		query = query.Where("workplace_id = ?", *workplaceID)
+	}
+	if !isPrivilegedRole(role) {
+		if workplaceID != nil {
+			allowed, accessErr := a.userCanAccessWorkplace(uid, *workplaceID)
+			if accessErr != nil {
+				return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+			}
+			if !allowed {
+				return c.JSON([]common.Project{})
+			}
+		}
+
+		accessibleWorkplaceIDs, scopeErr := a.userAccessibleWorkplaceIDs(uid)
+		if scopeErr != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, scopeErr.Error())
+		}
+		if len(accessibleWorkplaceIDs) > 0 {
+			query = query.Where("created_by = ? OR workplace_id IN ?", uid, accessibleWorkplaceIDs)
+		} else {
+			query = query.Where("created_by = ?", uid)
+		}
+	}
+	if err := query.Find(&projects).Error; err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}
 	return c.JSON(projects)
@@ -295,6 +458,20 @@ func (a *App) getProject(c *fiber.Ctx) error {
 	projectID := c.Params("id")
 	var project common.Project
 	if err := a.db.Where("id = ?", projectID).First(&project).Error; err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "project not found")
+	}
+	canWrite, accessErr := a.canWriteProject(c, project)
+	if accessErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+	}
+	if !canWrite {
+		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
+	}
+	allowed, accessErr := a.canAccessProject(c, project)
+	if accessErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+	}
+	if !allowed {
 		return fiber.NewError(fiber.StatusNotFound, "project not found")
 	}
 	return c.JSON(project)
@@ -332,6 +509,27 @@ func (a *App) updateProject(c *fiber.Ctx) error {
 		project.Command = strings.TrimSpace(*req.Command)
 	}
 
+	if req.WorkplaceID != nil || req.Workplace != nil {
+		workplaceID, err := parseOptionalWorkplaceID(req.WorkplaceID, req.Workplace)
+		if err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, err.Error())
+		}
+		if workplaceID != nil {
+			var workplace common.Workplace
+			if err := a.db.Select("id").Where("id = ?", *workplaceID).First(&workplace).Error; err != nil {
+				return fiber.NewError(fiber.StatusBadRequest, "workplace not found")
+			}
+			allowed, accessErr := a.canBindWorkplace(c, *workplaceID)
+			if accessErr != nil {
+				return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+			}
+			if !allowed {
+				return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
+			}
+		}
+		project.WorkplaceID = workplaceID
+	}
+
 	project.UpdatedAt = time.Now()
 
 	if err := a.db.Save(&project).Error; err != nil {
@@ -345,6 +543,13 @@ func (a *App) deleteProject(c *fiber.Ctx) error {
 	var project common.Project
 	if err := a.db.Where("id = ?", projectID).First(&project).Error; err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "project not found")
+	}
+	canWrite, accessErr := a.canWriteProject(c, project)
+	if accessErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+	}
+	if !canWrite {
+		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
 	}
 
 	var taskIDs []string
@@ -405,6 +610,17 @@ func (a *App) deleteProject(c *fiber.Ctx) error {
 
 func (a *App) listProjectVersions(c *fiber.Ctx) error {
 	projectID := c.Params("id")
+	var project common.Project
+	if err := a.db.Where("id = ?", projectID).First(&project).Error; err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "project not found")
+	}
+	allowed, accessErr := a.canAccessProject(c, project)
+	if accessErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+	}
+	if !allowed {
+		return fiber.NewError(fiber.StatusNotFound, "project not found")
+	}
 	var versions []common.ArtifactVersion
 	if err := a.db.Where("project_id = ?", projectID).Order("created_at desc").Find(&versions).Error; err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
@@ -416,6 +632,18 @@ func (a *App) getProjectVersion(c *fiber.Ctx) error {
 	projectID := strings.TrimSpace(c.Params("projectID"))
 	versionID := strings.TrimSpace(c.Params("versionID"))
 
+	var project common.Project
+	if err := a.db.Where("id = ?", projectID).First(&project).Error; err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "project not found")
+	}
+	allowed, accessErr := a.canAccessProject(c, project)
+	if accessErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+	}
+	if !allowed {
+		return fiber.NewError(fiber.StatusNotFound, "project not found")
+	}
+
 	var version common.ArtifactVersion
 	if err := a.db.Where("id = ? AND project_id = ?", versionID, projectID).First(&version).Error; err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "version not found")
@@ -426,6 +654,17 @@ func (a *App) getProjectVersion(c *fiber.Ctx) error {
 func (a *App) updateProjectVersion(c *fiber.Ctx) error {
 	projectID := strings.TrimSpace(c.Params("projectID"))
 	versionID := strings.TrimSpace(c.Params("versionID"))
+	var project common.Project
+	if err := a.db.Where("id = ?", projectID).First(&project).Error; err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "project not found")
+	}
+	canWrite, accessErr := a.canWriteProject(c, project)
+	if accessErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+	}
+	if !canWrite {
+		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
+	}
 
 	var version common.ArtifactVersion
 	if err := a.db.Where("id = ? AND project_id = ?", versionID, projectID).First(&version).Error; err != nil {
@@ -453,6 +692,17 @@ func (a *App) updateProjectVersion(c *fiber.Ctx) error {
 func (a *App) deleteProjectVersion(c *fiber.Ctx) error {
 	projectID := strings.TrimSpace(c.Params("projectID"))
 	versionID := strings.TrimSpace(c.Params("versionID"))
+	var project common.Project
+	if err := a.db.Where("id = ?", projectID).First(&project).Error; err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "project not found")
+	}
+	canWrite, accessErr := a.canWriteProject(c, project)
+	if accessErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+	}
+	if !canWrite {
+		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
+	}
 
 	var version common.ArtifactVersion
 	if err := a.db.Where("id = ? AND project_id = ?", versionID, projectID).First(&version).Error; err != nil {
@@ -479,6 +729,13 @@ func (a *App) uploadArtifact(c *fiber.Ctx) error {
 	var p common.Project
 	if err := a.db.Where("id = ?", projectID).First(&p).Error; err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "project not found")
+	}
+	canWrite, accessErr := a.canWriteProject(c, p)
+	if accessErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+	}
+	if !canWrite {
+		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
 	}
 	content, fileName, err := loadUploadedFile(c, "file")
 	if err != nil {
@@ -518,6 +775,13 @@ func (a *App) createTask(c *fiber.Ctx) error {
 	if err := a.db.Where("id = ?", req.ProjectID).First(&project).Error; err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "project not found")
 	}
+	canWrite, accessErr := a.canWriteProject(c, project)
+	if accessErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+	}
+	if !canWrite {
+		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
+	}
 	var version common.ArtifactVersion
 	if err := a.db.Where("id = ? AND project_id = ?", req.VersionID, req.ProjectID).First(&version).Error; err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "version not found")
@@ -550,6 +814,21 @@ func (a *App) triggerTask(c *fiber.Ctx) error {
 	if err := a.db.Where("id = ?", taskID).First(&task).Error; err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "task not found")
 	}
+	canWrite, accessErr := a.canWriteTask(c, task)
+	if accessErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+	}
+	if !canWrite {
+		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
+	}
+	hasRecent, recentErr := a.hasRecentManualRun(task.ID, "")
+	if recentErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, recentErr.Error())
+	}
+	if hasRecent {
+		a.recordSecurityEvent(c, "task_trigger_duplicate_blocked", "warning", "task_id="+task.ID)
+		return fiber.NewError(fiber.StatusTooManyRequests, "task trigger is already in progress")
+	}
 	run, err := a.publishTaskRun(task, "manual", "")
 	if err != nil {
 		if errors.Is(err, errQueueUnavailable) {
@@ -564,6 +843,20 @@ func (a *App) getTask(c *fiber.Ctx) error {
 	taskID := strings.TrimSpace(c.Params("id"))
 	var task common.Task
 	if err := a.db.Where("id = ?", taskID).First(&task).Error; err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "task not found")
+	}
+	canWrite, accessErr := a.canWriteTask(c, task)
+	if accessErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+	}
+	if !canWrite {
+		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
+	}
+	allowed, accessErr := a.canAccessTask(c, task)
+	if accessErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+	}
+	if !allowed {
 		return fiber.NewError(fiber.StatusNotFound, "task not found")
 	}
 	return c.JSON(task)
@@ -625,6 +918,13 @@ func (a *App) updateTask(c *fiber.Ctx) error {
 	if err := a.db.Where("id = ?", task.ProjectID).First(&project).Error; err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "project not found")
 	}
+	canWriteProject, projectAccessErr := a.canWriteProject(c, project)
+	if projectAccessErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, projectAccessErr.Error())
+	}
+	if !canWriteProject {
+		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
+	}
 	var version common.ArtifactVersion
 	if err := a.db.Where("id = ? AND project_id = ?", task.VersionID, task.ProjectID).First(&version).Error; err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "version not found")
@@ -642,6 +942,13 @@ func (a *App) deleteTask(c *fiber.Ctx) error {
 	var task common.Task
 	if err := a.db.Where("id = ?", taskID).First(&task).Error; err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "task not found")
+	}
+	canWrite, accessErr := a.canWriteTask(c, task)
+	if accessErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+	}
+	if !canWrite {
+		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
 	}
 
 	a.unregisterCronTask(taskID)
@@ -667,7 +974,45 @@ func (a *App) deleteTask(c *fiber.Ctx) error {
 
 func (a *App) listTasks(c *fiber.Ctx) error {
 	var tasks []common.Task
-	if err := a.db.Order("created_at desc").Find(&tasks).Error; err != nil {
+	role, _ := c.Locals("role").(string)
+	uid, _ := c.Locals("uid").(string)
+	workplaceID, err := parseOptionalWorkplaceQueryID(c)
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+	query := a.db.Order("created_at desc")
+	if workplaceID != nil {
+		projectByWorkplace := a.db.Model(&common.Project{}).Select("id").Where("workplace_id = ?", *workplaceID)
+		query = query.Where("project_id IN (?)", projectByWorkplace)
+	}
+	if !isPrivilegedRole(role) {
+		if workplaceID != nil {
+			allowed, accessErr := a.userCanAccessWorkplace(uid, *workplaceID)
+			if accessErr != nil {
+				return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+			}
+			if !allowed {
+				return c.JSON([]common.Task{})
+			}
+		}
+
+		accessibleWorkplaceIDs, scopeErr := a.userAccessibleWorkplaceIDs(uid)
+		if scopeErr != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, scopeErr.Error())
+		}
+
+		projectScope := a.db.Model(&common.Project{}).Select("id")
+		if len(accessibleWorkplaceIDs) > 0 {
+			projectScope = projectScope.Where("created_by = ? OR workplace_id IN ?", uid, accessibleWorkplaceIDs)
+		} else {
+			projectScope = projectScope.Where("created_by = ?", uid)
+		}
+		if workplaceID != nil {
+			projectScope = projectScope.Where("workplace_id = ?", *workplaceID)
+		}
+		query = query.Where("project_id IN (?)", projectScope)
+	}
+	if err := query.Find(&tasks).Error; err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}
 	return c.JSON(tasks)
@@ -675,6 +1020,17 @@ func (a *App) listTasks(c *fiber.Ctx) error {
 
 func (a *App) listRuns(c *fiber.Ctx) error {
 	taskID := c.Params("id")
+	var task common.Task
+	if err := a.db.Where("id = ?", taskID).First(&task).Error; err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "task not found")
+	}
+	allowed, accessErr := a.canAccessTask(c, task)
+	if accessErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+	}
+	if !allowed {
+		return fiber.NewError(fiber.StatusNotFound, "task not found")
+	}
 	var runs []common.TaskRun
 	if err := a.db.Where("task_id = ?", taskID).Order("created_at desc").Find(&runs).Error; err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
@@ -724,6 +1080,12 @@ func (a *App) createSchedule(c *fiber.Ctx) error {
 		if err := a.db.Where("id = ?", req.TaskID).First(&task).Error; err != nil {
 			return fiber.NewError(fiber.StatusBadRequest, "task not found")
 		}
+		if req.ProjectID != "" && strings.TrimSpace(req.ProjectID) != task.ProjectID {
+			return fiber.NewError(fiber.StatusBadRequest, "task_id does not belong to project_id")
+		}
+		if req.VersionID != "" && strings.TrimSpace(req.VersionID) != task.VersionID {
+			return fiber.NewError(fiber.StatusBadRequest, "task_id does not belong to version_id")
+		}
 		if req.ProjectID == "" {
 			req.ProjectID = task.ProjectID
 		}
@@ -758,6 +1120,13 @@ func (a *App) createSchedule(c *fiber.Ctx) error {
 	var project common.Project
 	if err := a.db.Where("id = ?", req.ProjectID).First(&project).Error; err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "project not found")
+	}
+	canWrite, accessErr := a.canWriteProject(c, project)
+	if accessErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+	}
+	if !canWrite {
+		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
 	}
 	var version common.ArtifactVersion
 	if err := a.db.Where("id = ? AND project_id = ?", req.VersionID, req.ProjectID).First(&version).Error; err != nil {
@@ -795,13 +1164,13 @@ func (a *App) createSchedule(c *fiber.Ctx) error {
 		fallback := legacyScheduleOrder{
 			Name: req.Name,
 			Schedule: []legacyScheduleStep{{
-				TaskID:    req.TaskID,
+				TaskID:     req.TaskID,
 				TaskStatus: "exist",
-				Name:      req.Name,
-				ProjectID: req.ProjectID,
-				Node:      []string{string(req.NodeQueue)},
-				Trigger:   trigger,
-				Crons:     req.CronExpr,
+				Name:       req.Name,
+				ProjectID:  req.ProjectID,
+				Node:       []string{string(req.NodeQueue)},
+				Trigger:    trigger,
+				Crons:      req.CronExpr,
 			}},
 		}
 		if b, err := json.Marshal(fallback); err == nil {
@@ -840,8 +1209,49 @@ func (a *App) createSchedule(c *fiber.Ctx) error {
 }
 
 func (a *App) listSchedules(c *fiber.Ctx) error {
+	role, _ := c.Locals("role").(string)
+	uid, _ := c.Locals("uid").(string)
+	workplaceID, err := parseOptionalWorkplaceQueryID(c)
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+
 	var schedules []common.Schedule
-	if err := a.db.Order("created_at desc").Find(&schedules).Error; err != nil {
+	query := a.db.Order("created_at desc")
+	if workplaceID != nil {
+		projectByWorkplace := a.db.Model(&common.Project{}).Select("id").Where("workplace_id = ?", *workplaceID)
+		query = query.Where("project_id IN (?)", projectByWorkplace)
+	}
+
+	if !isPrivilegedRole(role) {
+		if workplaceID != nil {
+			allowed, accessErr := a.userCanAccessWorkplace(uid, *workplaceID)
+			if accessErr != nil {
+				return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+			}
+			if !allowed {
+				return c.JSON([]common.Schedule{})
+			}
+		}
+
+		accessibleWorkplaceIDs, scopeErr := a.userAccessibleWorkplaceIDs(uid)
+		if scopeErr != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, scopeErr.Error())
+		}
+
+		projectScope := a.db.Model(&common.Project{}).Select("id")
+		if len(accessibleWorkplaceIDs) > 0 {
+			projectScope = projectScope.Where("created_by = ? OR workplace_id IN ?", uid, accessibleWorkplaceIDs)
+		} else {
+			projectScope = projectScope.Where("created_by = ?", uid)
+		}
+		if workplaceID != nil {
+			projectScope = projectScope.Where("workplace_id = ?", *workplaceID)
+		}
+		query = query.Where("project_id IN (?)", projectScope)
+	}
+
+	if err := query.Find(&schedules).Error; err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}
 	return c.JSON(schedules)
@@ -851,6 +1261,20 @@ func (a *App) getSchedule(c *fiber.Ctx) error {
 	id := c.Params("id")
 	var schedule common.Schedule
 	if err := a.db.Where("id = ?", id).First(&schedule).Error; err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "schedule not found")
+	}
+	canWrite, accessErr := a.canWriteSchedule(c, schedule)
+	if accessErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+	}
+	if !canWrite {
+		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
+	}
+	allowed, accessErr := a.canAccessSchedule(c, schedule)
+	if accessErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+	}
+	if !allowed {
 		return fiber.NewError(fiber.StatusNotFound, "schedule not found")
 	}
 	return c.JSON(schedule)
@@ -910,6 +1334,12 @@ func (a *App) updateSchedule(c *fiber.Ctx) error {
 		if err := a.db.Where("id = ?", schedule.TaskID).First(&task).Error; err != nil {
 			return fiber.NewError(fiber.StatusBadRequest, "task not found")
 		}
+		if schedule.ProjectID != task.ProjectID {
+			return fiber.NewError(fiber.StatusBadRequest, "task_id does not belong to project_id")
+		}
+		if schedule.VersionID != task.VersionID {
+			return fiber.NewError(fiber.StatusBadRequest, "task_id does not belong to version_id")
+		}
 		if taskRebind {
 			if req.ProjectID == nil || schedule.ProjectID == "" {
 				schedule.ProjectID = task.ProjectID
@@ -940,6 +1370,13 @@ func (a *App) updateSchedule(c *fiber.Ctx) error {
 	if err := a.db.Where("id = ?", schedule.ProjectID).First(&project).Error; err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "project not found")
 	}
+	canWriteProject, projectAccessErr := a.canWriteProject(c, project)
+	if projectAccessErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, projectAccessErr.Error())
+	}
+	if !canWriteProject {
+		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
+	}
 	var version common.ArtifactVersion
 	if err := a.db.Where("id = ? AND project_id = ?", schedule.VersionID, schedule.ProjectID).First(&version).Error; err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "version not found")
@@ -966,6 +1403,13 @@ func (a *App) deleteSchedule(c *fiber.Ctx) error {
 	if err := a.db.Where("id = ?", id).First(&schedule).Error; err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "schedule not found")
 	}
+	canWrite, accessErr := a.canWriteSchedule(c, schedule)
+	if accessErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+	}
+	if !canWrite {
+		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
+	}
 
 	a.unregisterCronSchedule(schedule.ID)
 	if err := a.db.Delete(&common.Schedule{}, "id = ?", schedule.ID).Error; err != nil {
@@ -987,6 +1431,13 @@ func (a *App) setScheduleEnabled(c *fiber.Ctx, enabled bool) error {
 	var schedule common.Schedule
 	if err := a.db.Where("id = ?", id).First(&schedule).Error; err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "schedule not found")
+	}
+	canWrite, accessErr := a.canWriteSchedule(c, schedule)
+	if accessErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+	}
+	if !canWrite {
+		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
 	}
 
 	schedule.Enabled = enabled
@@ -1014,6 +1465,21 @@ func (a *App) triggerSchedule(c *fiber.Ctx) error {
 	if err := a.db.Where("id = ?", id).First(&schedule).Error; err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "schedule not found")
 	}
+	canWrite, accessErr := a.canWriteSchedule(c, schedule)
+	if accessErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+	}
+	if !canWrite {
+		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
+	}
+	hasRecent, recentErr := a.hasRecentManualRun("", schedule.ID)
+	if recentErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, recentErr.Error())
+	}
+	if hasRecent {
+		a.recordSecurityEvent(c, "schedule_trigger_duplicate_blocked", "warning", "schedule_id="+schedule.ID)
+		return fiber.NewError(fiber.StatusTooManyRequests, "schedule trigger is already in progress")
+	}
 	run, err := a.publishScheduleRun(schedule, "manual")
 	if err != nil {
 		if errors.Is(err, errQueueUnavailable) {
@@ -1026,6 +1492,18 @@ func (a *App) triggerSchedule(c *fiber.Ctx) error {
 
 func (a *App) listScheduleRuns(c *fiber.Ctx) error {
 	id := c.Params("id")
+	var schedule common.Schedule
+	if err := a.db.Where("id = ?", id).First(&schedule).Error; err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "schedule not found")
+	}
+	allowed, accessErr := a.canAccessSchedule(c, schedule)
+	if accessErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+	}
+	if !allowed {
+		return fiber.NewError(fiber.StatusNotFound, "schedule not found")
+	}
+
 	var runs []common.TaskRun
 	if err := a.db.Where("schedule_id = ?", id).Order("created_at desc").Find(&runs).Error; err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
@@ -1034,9 +1512,53 @@ func (a *App) listScheduleRuns(c *fiber.Ctx) error {
 }
 
 func (a *App) listRecentRuns(c *fiber.Ctx) error {
+	role, _ := c.Locals("role").(string)
+	uid, _ := c.Locals("uid").(string)
+	workplaceID, err := parseOptionalWorkplaceQueryID(c)
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
 	var runs []common.TaskRun
-	if err := a.db.Order("created_at desc").Limit(200).Find(&runs).Error; err != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	if isPrivilegedRole(role) {
+		query := a.db.Order("created_at desc").Limit(200)
+		if workplaceID != nil {
+			projectByWorkplace := a.db.Model(&common.Project{}).Select("id").Where("workplace_id = ?", *workplaceID)
+			taskByProject := a.db.Model(&common.Task{}).Select("id").Where("project_id IN (?)", projectByWorkplace)
+			query = query.Where("task_id IN (?)", taskByProject)
+		}
+		if err := query.Find(&runs).Error; err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+		}
+	} else {
+		if workplaceID != nil {
+			allowed, accessErr := a.userCanAccessWorkplace(uid, *workplaceID)
+			if accessErr != nil {
+				return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+			}
+			if !allowed {
+				return c.JSON(fiber.Map{"records": []common.TaskRun{}, "count": 0})
+			}
+		}
+
+		accessibleWorkplaceIDs, scopeErr := a.userAccessibleWorkplaceIDs(uid)
+		if scopeErr != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, scopeErr.Error())
+		}
+
+		projectScope := a.db.Model(&common.Project{}).Select("id")
+		if len(accessibleWorkplaceIDs) > 0 {
+			projectScope = projectScope.Where("created_by = ? OR workplace_id IN ?", uid, accessibleWorkplaceIDs)
+		} else {
+			projectScope = projectScope.Where("created_by = ?", uid)
+		}
+		if workplaceID != nil {
+			projectScope = projectScope.Where("workplace_id = ?", *workplaceID)
+		}
+
+		taskScope := a.db.Model(&common.Task{}).Select("id").Where("project_id IN (?)", projectScope)
+		if err := a.db.Where("task_id IN (?)", taskScope).Order("created_at desc").Limit(200).Find(&runs).Error; err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+		}
 	}
 	return c.JSON(fiber.Map{
 		"records": runs,
@@ -1045,17 +1567,39 @@ func (a *App) listRecentRuns(c *fiber.Ctx) error {
 }
 
 func (a *App) runCallback(c *fiber.Ctx) error {
-	if c.Get("X-Execution-Key") != a.cfg.ExecutionAPIKey {
+	runID := c.Params("id")
+	providedKey := strings.TrimSpace(c.Get("X-Execution-Key"))
+	expectedKey := strings.TrimSpace(a.cfg.ExecutionAPIKey)
+	if expectedKey == "" || subtle.ConstantTimeCompare([]byte(providedKey), []byte(expectedKey)) != 1 {
+		a.recordSecurityEvent(c, "callback_invalid_key", "critical", "run_id="+runID)
 		return fiber.NewError(fiber.StatusUnauthorized, "invalid execution key")
 	}
-	runID := c.Params("id")
+	var existingRun common.TaskRun
+	if err := a.db.Where("id = ?", runID).First(&existingRun).Error; err != nil {
+		a.recordSecurityEvent(c, "callback_run_not_found", "warning", "run_id="+runID)
+		return fiber.NewError(fiber.StatusNotFound, "run not found")
+	}
+	if isTerminalRunStatus(existingRun.Status) {
+		a.recordSecurityEvent(c, "callback_replay_ignored", "warning", "run_id="+runID)
+		return c.JSON(fiber.Map{"ok": true, "ignored": true})
+	}
+
 	var req runCallbackPayload
 	if err := c.BodyParser(&req); err != nil {
+		a.recordSecurityEvent(c, "callback_invalid_payload", "warning", "run_id="+runID)
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	}
-	status := strings.TrimSpace(req.Status)
+	status := strings.ToLower(strings.TrimSpace(req.Status))
 	if status == "" {
 		status = "failed"
+	}
+	if !isAllowedCallbackStatus(status) {
+		a.recordSecurityEvent(c, "callback_invalid_status", "warning", "run_id="+runID+" status="+status)
+		return fiber.NewError(fiber.StatusBadRequest, "invalid status")
+	}
+	if len(req.Output) > maxCallbackOutputBytes {
+		a.recordSecurityEvent(c, "callback_output_too_large", "warning", "run_id="+runID)
+		return fiber.NewError(fiber.StatusBadRequest, "output is too large")
 	}
 	updates := map[string]interface{}{
 		"status":      status,
@@ -1064,12 +1608,13 @@ func (a *App) runCallback(c *fiber.Ctx) error {
 		"started_at":  req.StartedAt,
 		"finished_at": req.FinishedAt,
 	}
-	result := a.db.Model(&common.TaskRun{}).Where("id = ?", runID).Updates(updates)
+	result := a.db.Model(&common.TaskRun{}).Where("id = ? AND status IN ?", runID, []string{"queued", "running"}).Updates(updates)
 	if result.Error != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, result.Error.Error())
 	}
 	if result.RowsAffected == 0 {
-		return fiber.NewError(fiber.StatusNotFound, "run not found")
+		a.recordSecurityEvent(c, "callback_update_ignored", "warning", "run_id="+runID)
+		return c.JSON(fiber.Map{"ok": true, "ignored": true})
 	}
 
 	if status == "success" {

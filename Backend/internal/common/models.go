@@ -22,6 +22,7 @@ type Project struct {
 	Description string    `gorm:"size:512" json:"description"`
 	Language    string    `gorm:"size:64" json:"language"`
 	Command     string    `gorm:"size:512" json:"command"`
+	WorkplaceID *uint     `gorm:"index" json:"workplace_id,omitempty"`
 	CreatedBy   string    `gorm:"size:36;not null" json:"created_by"`
 	CreatedAt   time.Time `gorm:"not null" json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
@@ -152,6 +153,18 @@ type WorkplaceTeam struct {
 	CreatedAt   time.Time `gorm:"not null" json:"created_at"`
 }
 
+type SecurityEvent struct {
+	ID        string    `gorm:"primaryKey;size:36" json:"id"`
+	EventType string    `gorm:"index;size:64;not null" json:"event_type"`
+	Severity  string    `gorm:"index;size:16;not null" json:"severity"`
+	UserID    string    `gorm:"index;size:36" json:"user_id"`
+	IPAddress string    `gorm:"size:64" json:"ip_address"`
+	Method    string    `gorm:"size:16" json:"method"`
+	Path      string    `gorm:"size:255" json:"path"`
+	Detail    string    `gorm:"size:1024" json:"detail"`
+	CreatedAt time.Time `gorm:"index;not null" json:"created_at"`
+}
+
 func personalTeamName(username string) string {
 	name := strings.TrimSpace(username)
 	if name == "" {
@@ -202,5 +215,6 @@ func AutoMigrateModels() []interface{} {
 		&TeamMember{},
 		&Workplace{},
 		&WorkplaceTeam{},
+		&SecurityEvent{},
 	}
 }

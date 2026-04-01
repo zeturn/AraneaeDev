@@ -544,8 +544,15 @@ func (a *App) getInstallStatus(c *fiber.Ctx) error {
 }
 
 func (a *App) listUsers(c *fiber.Ctx) error {
+	role, _ := c.Locals("role").(string)
+	uid, _ := c.Locals("uid").(string)
+	query := a.db.Order("created_at asc")
+	if !isPrivilegedRole(role) {
+		query = query.Where("id = ?", uid)
+	}
+
 	var users []common.User
-	if err := a.db.Order("created_at asc").Find(&users).Error; err != nil {
+	if err := query.Find(&users).Error; err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}
 
@@ -566,6 +573,11 @@ func (a *App) getUser(c *fiber.Ctx) error {
 	user, err := a.resolveUserIdentifier(identifier)
 	if err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "user not found")
+	}
+	role, _ := c.Locals("role").(string)
+	uid, _ := c.Locals("uid").(string)
+	if !isPrivilegedRole(role) && uid != user.ID {
+		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
 	}
 	return c.JSON(fiber.Map{
 		"id":         user.ID,
@@ -651,6 +663,17 @@ func (a *App) getTeam(c *fiber.Ctx) error {
 	}
 
 	uid, _ := c.Locals("uid").(string)
+	roleName, _ := c.Locals("role").(string)
+	if !isPrivilegedRole(roleName) {
+		var membershipCount int64
+		if err := a.db.Model(&common.TeamMember{}).Where("team_id = ? AND user_id = ?", teamID, uid).Count(&membershipCount).Error; err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+		}
+		if membershipCount == 0 {
+			return fiber.NewError(fiber.StatusNotFound, "team not found")
+		}
+	}
+
 	role := ""
 	if uid != "" {
 		var member common.TeamMember
@@ -741,6 +764,24 @@ func (a *App) getTeamMembers(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid team id")
 	}
+
+	var team common.Team
+	if err := a.db.Where("id = ?", teamID).First(&team).Error; err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "team not found")
+	}
+
+	uid, _ := c.Locals("uid").(string)
+	roleName, _ := c.Locals("role").(string)
+	if !isPrivilegedRole(roleName) {
+		var membershipCount int64
+		if err := a.db.Model(&common.TeamMember{}).Where("team_id = ? AND user_id = ?", teamID, uid).Count(&membershipCount).Error; err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+		}
+		if membershipCount == 0 {
+			return fiber.NewError(fiber.StatusNotFound, "team not found")
+		}
+	}
+
 	var members []common.TeamMember
 	if err := a.db.Where("team_id = ?", teamID).Find(&members).Error; err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
@@ -837,6 +878,11 @@ func (a *App) removeTeamMember(c *fiber.Ctx) error {
 }
 
 func (a *App) listWorkplaces(c *fiber.Ctx) error {
+	role, _ := c.Locals("role").(string)
+	if !isPrivilegedRole(role) {
+		return a.listMyWorkplaces(c)
+	}
+
 	var workplaces []common.Workplace
 	if err := a.db.Order("id asc").Find(&workplaces).Error; err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
@@ -853,6 +899,42 @@ func (a *App) listWorkplaces(c *fiber.Ctx) error {
 		})
 	}
 	return c.JSON(fiber.Map{"results": results, "count": len(results)})
+}
+
+func (a *App) userCanAccessWorkplace(uid string, workplaceID uint) (bool, error) {
+	if uid == "" {
+		return false, nil
+	}
+
+	var workplace common.Workplace
+	if err := a.db.Select("id", "created_by").Where("id = ?", workplaceID).First(&workplace).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	if workplace.CreatedBy == uid {
+		return true, nil
+	}
+
+	var links []common.WorkplaceTeam
+	if err := a.db.Where("workplace_id = ?", workplaceID).Find(&links).Error; err != nil {
+		return false, err
+	}
+	if len(links) == 0 {
+		return false, nil
+	}
+
+	teamIDs := make([]uint, 0, len(links))
+	for _, link := range links {
+		teamIDs = append(teamIDs, link.TeamID)
+	}
+
+	var count int64
+	if err := a.db.Model(&common.TeamMember{}).Where("user_id = ? AND team_id IN ?", uid, teamIDs).Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 func (a *App) listMyWorkplaces(c *fiber.Ctx) error {
@@ -958,6 +1040,17 @@ func (a *App) getWorkplace(c *fiber.Ctx) error {
 	workplaceID, err := parseUintParam(c, "id")
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid workplace id")
+	}
+	role, _ := c.Locals("role").(string)
+	uid, _ := c.Locals("uid").(string)
+	if !isPrivilegedRole(role) {
+		allowed, accessErr := a.userCanAccessWorkplace(uid, workplaceID)
+		if accessErr != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+		}
+		if !allowed {
+			return fiber.NewError(fiber.StatusNotFound, "workplace not found")
+		}
 	}
 	var workplace common.Workplace
 	if err := a.db.Where("id = ?", workplaceID).First(&workplace).Error; err != nil {

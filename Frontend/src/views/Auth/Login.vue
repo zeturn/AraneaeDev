@@ -70,13 +70,17 @@ export default {
     };
   },
   methods: {
+    resolveNextRoute() {
+      const rawNext = typeof this.$route.query.next === 'string' ? this.$route.query.next : '';
+      return rawNext.startsWith('/') ? rawNext : '/aprons/workplaces';
+    },
     loginWithBasaltPass() {
       if ((import.meta.env.VITE_API_FLAVOR || 'django').toLowerCase() === 'go') {
         this.loginError = 'Go API 模式暂不支持 BasaltPass 登录，请使用本地账号登录。';
         return;
       }
       const backendBase = import.meta.env.VITE_BACKEND_BASE_URL || 'http://localhost:8107';
-      const next = encodeURIComponent('/aprons/workplaces');
+      const next = encodeURIComponent(this.resolveNextRoute());
       window.location.href = `${backendBase}/api/auth/basaltpass/login/?next=${next}`;
     },
     validateInputs() {
@@ -112,7 +116,7 @@ export default {
             localStorage.setItem('refresh_token', response.data.refresh);
           }
           localStorage.setItem('csrf_token', response.data.csrf || '');
-          this.$router.push('/aprons/workplaces');
+          this.$router.push(this.resolveNextRoute());
         })
         .catch(error => {
           if (error.response && error.response.status === 401) {

@@ -80,7 +80,6 @@ func NewApp(cfg common.ExecutorConfig) (*App, error) {
 		httpClient: &http.Client{Timeout: 20 * time.Second},
 	}
 	a.log.Info("executor node auth key ready",
-		zap.String("node_key", cfg.NodeAuthKey),
 		zap.String("node_key_file", cfg.NodeAuthKeyFile),
 	)
 	a.setupRoutes()

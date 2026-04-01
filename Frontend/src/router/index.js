@@ -277,9 +277,16 @@ function isAuthenticated() {
 
 router.beforeEach((to, from, next) => {
     if (to.meta.requiresAuth && !isAuthenticated()) {
-        next('/login');
+        next({
+            path: '/login',
+            query: {
+                next: to.fullPath,
+            },
+        });
     } else if (to.path === '/login' && isAuthenticated()) {
-        next('/');
+        const requestedNext = typeof to.query.next === 'string' ? to.query.next : '';
+        const safeNext = requestedNext.startsWith('/') ? requestedNext : '/';
+        next(safeNext);
     } else {
         next();
     }

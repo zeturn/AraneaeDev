@@ -128,9 +128,15 @@ func doJSONRequest(t *testing.T, app *App, method, path, token string, body any)
 func loginAndGetToken(t *testing.T, app *App) string {
 	t.Helper()
 
+	return loginAndGetTokenFor(t, app, "admin", "admin123")
+}
+
+func loginAndGetTokenFor(t *testing.T, app *App, username, password string) string {
+	t.Helper()
+
 	rec := doJSONRequest(t, app, http.MethodPost, "/api/v1/auth/login", "", map[string]string{
-		"username": "admin",
-		"password": "admin123",
+		"username": username,
+		"password": password,
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("login failed: status=%d body=%s", rec.Code, rec.Body.String())
@@ -144,6 +150,15 @@ func loginAndGetToken(t *testing.T, app *App) string {
 		t.Fatalf("missing token in login response: %s", rec.Body.String())
 	}
 	return tok
+}
+
+func countSecurityEvents(t *testing.T, app *App, eventType string) int64 {
+	t.Helper()
+	var count int64
+	if err := app.db.Model(&common.SecurityEvent{}).Where("event_type = ?", eventType).Count(&count).Error; err != nil {
+		t.Fatalf("count security events failed: %v", err)
+	}
+	return count
 }
 
 func createProjectVersionTask(t *testing.T, app *App, token, cronExpr string) (common.Project, common.ArtifactVersion, common.Task) {
@@ -325,6 +340,337 @@ func TestControlRoutes_RequireAuth(t *testing.T) {
 	}
 }
 
+func TestControlRoutes_ViewerSeesOnlySelfInUsersList(t *testing.T) {
+	app := newTestControlApp(t)
+
+	hash, err := hashPassword("alice123")
+	if err != nil {
+		t.Fatalf("hash password: %v", err)
+	}
+	user := common.User{
+		ID:           uuid.NewString(),
+		Username:     "alice",
+		PasswordHash: hash,
+		Role:         "viewer",
+		CreatedAt:    time.Now(),
+	}
+	if err := app.db.Create(&user).Error; err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	viewerToken := loginAndGetTokenFor(t, app, "alice", "alice123")
+	usersRec := doJSONRequest(t, app, http.MethodGet, "/api/v1/users", viewerToken, nil)
+	if usersRec.Code != http.StatusOK {
+		t.Fatalf("list users failed: status=%d body=%s", usersRec.Code, usersRec.Body.String())
+	}
+
+	var payload struct {
+		Results []map[string]any `json:"results"`
+		Count   int              `json:"count"`
+	}
+	if err := json.Unmarshal(usersRec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode users response: %v", err)
+	}
+	if payload.Count != 1 || len(payload.Results) != 1 {
+		t.Fatalf("viewer should only see one user record, got count=%d len=%d", payload.Count, len(payload.Results))
+	}
+	if payload.Results[0]["id"] != user.ID {
+		t.Fatalf("viewer should only see self, got %+v", payload.Results[0])
+	}
+}
+
+func TestControlRoutes_ViewerCannotReadOtherProject(t *testing.T) {
+	app := newTestControlApp(t)
+	adminToken := loginAndGetToken(t, app)
+
+	projectRec := doJSONRequest(t, app, http.MethodPost, "/api/v1/projects", adminToken, map[string]string{
+		"name": "admin-project",
+	})
+	if projectRec.Code != http.StatusOK {
+		t.Fatalf("create project failed: status=%d body=%s", projectRec.Code, projectRec.Body.String())
+	}
+	var project common.Project
+	if err := json.Unmarshal(projectRec.Body.Bytes(), &project); err != nil {
+		t.Fatalf("decode project: %v", err)
+	}
+
+	hash, err := hashPassword("viewer123")
+	if err != nil {
+		t.Fatalf("hash password: %v", err)
+	}
+	viewer := common.User{
+		ID:           uuid.NewString(),
+		Username:     "viewer_a",
+		PasswordHash: hash,
+		Role:         "viewer",
+		CreatedAt:    time.Now(),
+	}
+	if err := app.db.Create(&viewer).Error; err != nil {
+		t.Fatalf("create viewer: %v", err)
+	}
+
+	viewerToken := loginAndGetTokenFor(t, app, "viewer_a", "viewer123")
+
+	listRec := doJSONRequest(t, app, http.MethodGet, "/api/v1/projects", viewerToken, nil)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("list projects failed: status=%d body=%s", listRec.Code, listRec.Body.String())
+	}
+	var projects []common.Project
+	if err := json.Unmarshal(listRec.Body.Bytes(), &projects); err != nil {
+		t.Fatalf("decode project list: %v", err)
+	}
+	if len(projects) != 0 {
+		t.Fatalf("viewer should not see admin project list, got %d records", len(projects))
+	}
+
+	getRec := doJSONRequest(t, app, http.MethodGet, "/api/v1/projects/"+project.ID, viewerToken, nil)
+	if getRec.Code != http.StatusNotFound && getRec.Code != http.StatusForbidden {
+		t.Fatalf("viewer should not read other project, got %d body=%s", getRec.Code, getRec.Body.String())
+	}
+}
+
+func TestControlRoutes_ViewerCanReadOwnTeamButNotOthers(t *testing.T) {
+	app := newTestControlApp(t)
+	adminToken := loginAndGetToken(t, app)
+
+	createTeamRec := doJSONRequest(t, app, http.MethodPost, "/api/v1/teams", adminToken, map[string]any{
+		"name":        "admin-private-team",
+		"description": "private",
+		"join_able":   false,
+	})
+	if createTeamRec.Code != http.StatusOK {
+		t.Fatalf("create admin team failed: status=%d body=%s", createTeamRec.Code, createTeamRec.Body.String())
+	}
+	var created map[string]any
+	if err := json.Unmarshal(createTeamRec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode created team: %v", err)
+	}
+	otherTeamID := int(created["id"].(float64))
+
+	hash, err := hashPassword("teamviewer123")
+	if err != nil {
+		t.Fatalf("hash password: %v", err)
+	}
+	viewer := common.User{
+		ID:           uuid.NewString(),
+		Username:     "team_viewer",
+		PasswordHash: hash,
+		Role:         "viewer",
+		CreatedAt:    time.Now(),
+	}
+	if err := app.db.Create(&viewer).Error; err != nil {
+		t.Fatalf("create viewer: %v", err)
+	}
+
+	var ownPersonalTeam common.Team
+	if err := app.db.Where("created_by = ? AND is_personal = ?", viewer.ID, true).First(&ownPersonalTeam).Error; err != nil {
+		t.Fatalf("load own personal team: %v", err)
+	}
+
+	viewerToken := loginAndGetTokenFor(t, app, "team_viewer", "teamviewer123")
+
+	ownRec := doJSONRequest(t, app, http.MethodGet, fmt.Sprintf("/api/v1/teams/%d", ownPersonalTeam.ID), viewerToken, nil)
+	if ownRec.Code != http.StatusOK {
+		t.Fatalf("viewer should read own team, got %d body=%s", ownRec.Code, ownRec.Body.String())
+	}
+
+	otherRec := doJSONRequest(t, app, http.MethodGet, fmt.Sprintf("/api/v1/teams/%d", otherTeamID), viewerToken, nil)
+	if otherRec.Code != http.StatusNotFound {
+		t.Fatalf("viewer should not read foreign team, got %d body=%s", otherRec.Code, otherRec.Body.String())
+	}
+
+	membersRec := doJSONRequest(t, app, http.MethodGet, fmt.Sprintf("/api/v1/teams/%d/members", otherTeamID), viewerToken, nil)
+	if membersRec.Code != http.StatusNotFound {
+		t.Fatalf("viewer should not read foreign team members, got %d body=%s", membersRec.Code, membersRec.Body.String())
+	}
+}
+
+func TestControlRoutes_WorkplaceMemberCanReadBoundProjectTaskAndSchedule(t *testing.T) {
+	app := newTestControlApp(t)
+	adminToken := loginAndGetToken(t, app)
+
+	hash, err := hashPassword("workviewer123")
+	if err != nil {
+		t.Fatalf("hash password: %v", err)
+	}
+	viewer := common.User{
+		ID:           uuid.NewString(),
+		Username:     "work_viewer",
+		PasswordHash: hash,
+		Role:         "viewer",
+		CreatedAt:    time.Now(),
+	}
+	if err := app.db.Create(&viewer).Error; err != nil {
+		t.Fatalf("create viewer: %v", err)
+	}
+
+	var personalTeam common.Team
+	if err := app.db.Where("created_by = ? AND is_personal = ?", viewer.ID, true).First(&personalTeam).Error; err != nil {
+		t.Fatalf("load viewer personal team: %v", err)
+	}
+
+	workplaceRec := doJSONRequest(t, app, http.MethodPost, "/api/v1/workplaces", adminToken, map[string]any{
+		"name":        "viewer-workplace",
+		"description": "for visibility test",
+		"status":      "active",
+		"team_id":     personalTeam.ID,
+	})
+	if workplaceRec.Code != http.StatusOK {
+		t.Fatalf("create workplace failed: status=%d body=%s", workplaceRec.Code, workplaceRec.Body.String())
+	}
+	var workplace map[string]any
+	if err := json.Unmarshal(workplaceRec.Body.Bytes(), &workplace); err != nil {
+		t.Fatalf("decode workplace response: %v", err)
+	}
+	workplaceID := uint(workplace["id"].(float64))
+
+	project, version, task := createProjectVersionTask(t, app, adminToken, "")
+	if err := app.db.Model(&common.Project{}).Where("id = ?", project.ID).Update("workplace_id", workplaceID).Error; err != nil {
+		t.Fatalf("bind project to workplace: %v", err)
+	}
+
+	scheduleRec := doJSONRequest(t, app, http.MethodPost, "/api/v1/schedules", adminToken, map[string]any{
+		"name":          "viewer-schedule",
+		"description":   "for workplace visibility",
+		"task_id":       task.ID,
+		"project_id":    project.ID,
+		"version_id":    version.ID,
+		"entry_command": "bash run.sh",
+		"node_queue":    "default",
+		"enabled":       false,
+	})
+	if scheduleRec.Code != http.StatusOK {
+		t.Fatalf("create schedule failed: status=%d body=%s", scheduleRec.Code, scheduleRec.Body.String())
+	}
+	var schedule common.Schedule
+	if err := json.Unmarshal(scheduleRec.Body.Bytes(), &schedule); err != nil {
+		t.Fatalf("decode schedule response: %v", err)
+	}
+
+	viewerToken := loginAndGetTokenFor(t, app, "work_viewer", "workviewer123")
+
+	projectsRec := doJSONRequest(t, app, http.MethodGet, fmt.Sprintf("/api/v1/projects?workplace_id=%d", workplaceID), viewerToken, nil)
+	if projectsRec.Code != http.StatusOK {
+		t.Fatalf("list projects by workplace failed: status=%d body=%s", projectsRec.Code, projectsRec.Body.String())
+	}
+	var projects []common.Project
+	if err := json.Unmarshal(projectsRec.Body.Bytes(), &projects); err != nil {
+		t.Fatalf("decode projects response: %v", err)
+	}
+	if len(projects) != 1 || projects[0].ID != project.ID {
+		t.Fatalf("expected one bound project, got %+v", projects)
+	}
+
+	tasksRec := doJSONRequest(t, app, http.MethodGet, fmt.Sprintf("/api/v1/tasks?workplace_id=%d", workplaceID), viewerToken, nil)
+	if tasksRec.Code != http.StatusOK {
+		t.Fatalf("list tasks by workplace failed: status=%d body=%s", tasksRec.Code, tasksRec.Body.String())
+	}
+	var tasks []common.Task
+	if err := json.Unmarshal(tasksRec.Body.Bytes(), &tasks); err != nil {
+		t.Fatalf("decode tasks response: %v", err)
+	}
+	if len(tasks) != 1 || tasks[0].ID != task.ID {
+		t.Fatalf("expected one bound task, got %+v", tasks)
+	}
+
+	schedulesRec := doJSONRequest(t, app, http.MethodGet, fmt.Sprintf("/api/v1/schedules?workplace_id=%d", workplaceID), viewerToken, nil)
+	if schedulesRec.Code != http.StatusOK {
+		t.Fatalf("list schedules by workplace failed: status=%d body=%s", schedulesRec.Code, schedulesRec.Body.String())
+	}
+	var schedules []common.Schedule
+	if err := json.Unmarshal(schedulesRec.Body.Bytes(), &schedules); err != nil {
+		t.Fatalf("decode schedules response: %v", err)
+	}
+	if len(schedules) != 1 || schedules[0].ID != schedule.ID {
+		t.Fatalf("expected one bound schedule, got %+v", schedules)
+	}
+}
+
+func TestControlRoutes_OperatorCannotCreateProjectInForeignWorkplace(t *testing.T) {
+	app := newTestControlApp(t)
+	adminToken := loginAndGetToken(t, app)
+
+	opHash, err := hashPassword("operator123")
+	if err != nil {
+		t.Fatalf("hash operator password: %v", err)
+	}
+	operator := common.User{
+		ID:           uuid.NewString(),
+		Username:     "operator_a",
+		PasswordHash: opHash,
+		Role:         "operator",
+		CreatedAt:    time.Now(),
+	}
+	if err := app.db.Create(&operator).Error; err != nil {
+		t.Fatalf("create operator: %v", err)
+	}
+	opToken := loginAndGetTokenFor(t, app, "operator_a", "operator123")
+
+	ownerHash, err := hashPassword("owner123")
+	if err != nil {
+		t.Fatalf("hash owner password: %v", err)
+	}
+	owner := common.User{
+		ID:           uuid.NewString(),
+		Username:     "work_owner",
+		PasswordHash: ownerHash,
+		Role:         "viewer",
+		CreatedAt:    time.Now(),
+	}
+	if err := app.db.Create(&owner).Error; err != nil {
+		t.Fatalf("create owner: %v", err)
+	}
+
+	var ownerTeam common.Team
+	if err := app.db.Where("created_by = ? AND is_personal = ?", owner.ID, true).First(&ownerTeam).Error; err != nil {
+		t.Fatalf("load owner personal team: %v", err)
+	}
+
+	workplaceRec := doJSONRequest(t, app, http.MethodPost, "/api/v1/workplaces", adminToken, map[string]any{
+		"name":        "foreign-workplace",
+		"description": "operator should not bind here",
+		"status":      "active",
+		"team_id":     ownerTeam.ID,
+	})
+	if workplaceRec.Code != http.StatusOK {
+		t.Fatalf("create workplace failed: status=%d body=%s", workplaceRec.Code, workplaceRec.Body.String())
+	}
+	var workplace map[string]any
+	if err := json.Unmarshal(workplaceRec.Body.Bytes(), &workplace); err != nil {
+		t.Fatalf("decode workplace response: %v", err)
+	}
+	workplaceID := uint(workplace["id"].(float64))
+
+	projectRec := doJSONRequest(t, app, http.MethodPost, "/api/v1/projects", opToken, map[string]any{
+		"name":         "cross-workplace-project",
+		"workplace_id": workplaceID,
+	})
+	if projectRec.Code != http.StatusForbidden {
+		t.Fatalf("operator should not create project in foreign workplace: status=%d body=%s", projectRec.Code, projectRec.Body.String())
+	}
+}
+
+func TestControlRoutes_CreateScheduleRejectsTaskProjectVersionMismatch(t *testing.T) {
+	app := newTestControlApp(t)
+	adminToken := loginAndGetToken(t, app)
+
+	_, _, taskA := createProjectVersionTask(t, app, adminToken, "")
+	projectB, versionB, _ := createProjectVersionTask(t, app, adminToken, "")
+
+	scheduleRec := doJSONRequest(t, app, http.MethodPost, "/api/v1/schedules", adminToken, map[string]any{
+		"name":          "mismatch-schedule",
+		"task_id":       taskA.ID,
+		"project_id":    projectB.ID,
+		"version_id":    versionB.ID,
+		"entry_command": "bash run.sh",
+		"node_queue":    "default",
+		"enabled":       false,
+	})
+	if scheduleRec.Code != http.StatusBadRequest {
+		t.Fatalf("schedule with mismatched task/project/version should fail: status=%d body=%s", scheduleRec.Code, scheduleRec.Body.String())
+	}
+}
+
 func TestControlRoutes_RegisterNodeRequiresPairKey(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -408,6 +754,9 @@ func TestControlRoutes_CallbackBypassesJWTGroup(t *testing.T) {
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401 without callback key, got %d", rec.Code)
 	}
+	if got := countSecurityEvents(t, app, "callback_invalid_key"); got == 0 {
+		t.Fatalf("expected callback_invalid_key security event")
+	}
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/runs/fake-run-id/callback", bytes.NewReader([]byte(`{"status":"success"}`)))
 	req.Header.Set("Content-Type", "application/json")
@@ -462,6 +811,83 @@ func TestControlRoutes_CallbackUpdatesRun(t *testing.T) {
 	}
 }
 
+func TestControlRoutes_CallbackIsIdempotentAfterTerminalState(t *testing.T) {
+	app := newTestControlApp(t)
+
+	run := common.TaskRun{
+		ID:            uuid.NewString(),
+		TaskID:        uuid.NewString(),
+		TriggerSource: "manual",
+		Status:        "queued",
+		CreatedAt:     time.Now(),
+		CorrelationID: uuid.NewString(),
+	}
+	if err := app.db.Create(&run).Error; err != nil {
+		t.Fatalf("seed task run failed: %v", err)
+	}
+
+	first := httptest.NewRequest(http.MethodPost, "/api/v1/runs/"+run.ID+"/callback", bytes.NewReader([]byte(`{"status":"success","output":"done","exit_code":0}`)))
+	first.Header.Set("Content-Type", "application/json")
+	first.Header.Set("X-Execution-Key", app.cfg.ExecutionAPIKey)
+	firstResp, err := app.http.Test(first, -1)
+	if err != nil {
+		t.Fatalf("first callback request failed: %v", err)
+	}
+	if firstResp.StatusCode != http.StatusOK {
+		b := bytes.NewBuffer(nil)
+		_, _ = b.ReadFrom(firstResp.Body)
+		t.Fatalf("expected 200 for first callback, got %d body=%s", firstResp.StatusCode, b.String())
+	}
+	_ = firstResp.Body.Close()
+
+	second := httptest.NewRequest(http.MethodPost, "/api/v1/runs/"+run.ID+"/callback", bytes.NewReader([]byte(`{"status":"failed","output":"tampered","exit_code":1}`)))
+	second.Header.Set("Content-Type", "application/json")
+	second.Header.Set("X-Execution-Key", app.cfg.ExecutionAPIKey)
+	secondResp, err := app.http.Test(second, -1)
+	if err != nil {
+		t.Fatalf("second callback request failed: %v", err)
+	}
+	if secondResp.StatusCode != http.StatusOK {
+		b := bytes.NewBuffer(nil)
+		_, _ = b.ReadFrom(secondResp.Body)
+		t.Fatalf("expected 200 for replay callback, got %d body=%s", secondResp.StatusCode, b.String())
+	}
+	_ = secondResp.Body.Close()
+
+	var updated common.TaskRun
+	if err := app.db.Where("id = ?", run.ID).First(&updated).Error; err != nil {
+		t.Fatalf("load updated run failed: %v", err)
+	}
+	if updated.Status != "success" || updated.ExitCode != 0 || updated.Output != "done" {
+		t.Fatalf("replay callback should not overwrite terminal result: status=%s code=%d output=%q", updated.Status, updated.ExitCode, updated.Output)
+	}
+}
+
+func TestControlRoutes_ViewerCannotListNodes(t *testing.T) {
+	app := newTestControlApp(t)
+
+	hash, err := hashPassword("viewer-node-123")
+	if err != nil {
+		t.Fatalf("hash password: %v", err)
+	}
+	viewer := common.User{
+		ID:           uuid.NewString(),
+		Username:     "viewer_nodes",
+		PasswordHash: hash,
+		Role:         "viewer",
+		CreatedAt:    time.Now(),
+	}
+	if err := app.db.Create(&viewer).Error; err != nil {
+		t.Fatalf("create viewer: %v", err)
+	}
+
+	viewerToken := loginAndGetTokenFor(t, app, "viewer_nodes", "viewer-node-123")
+	rec := doJSONRequest(t, app, http.MethodGet, "/api/v1/nodes", viewerToken, nil)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("viewer should not list nodes: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestControlRoutes_ProjectUploadAndTaskFlow(t *testing.T) {
 	app := newTestControlApp(t)
 	token := loginAndGetToken(t, app)
@@ -503,6 +929,73 @@ func TestControlRoutes_TriggerReturns503WhenQueueUnavailable(t *testing.T) {
 	rec := doJSONRequest(t, app, http.MethodPost, "/api/v1/tasks/"+task.ID+"/trigger", token, nil)
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("expected 503 when queue unavailable, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestControlRoutes_TriggerTaskRejectsRecentManualDuplicate(t *testing.T) {
+	app := newTestControlApp(t)
+	token := loginAndGetToken(t, app)
+	_, _, task := createProjectVersionTask(t, app, token, "")
+
+	existing := common.TaskRun{
+		ID:            uuid.NewString(),
+		TaskID:        task.ID,
+		TriggerSource: "manual",
+		Status:        "running",
+		CreatedAt:     time.Now(),
+		CorrelationID: uuid.NewString(),
+	}
+	if err := app.db.Create(&existing).Error; err != nil {
+		t.Fatalf("seed existing run failed: %v", err)
+	}
+
+	rec := doJSONRequest(t, app, http.MethodPost, "/api/v1/tasks/"+task.ID+"/trigger", token, nil)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 for duplicate task trigger, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if got := countSecurityEvents(t, app, "task_trigger_duplicate_blocked"); got == 0 {
+		t.Fatalf("expected task_trigger_duplicate_blocked security event")
+	}
+}
+
+func TestControlRoutes_TriggerScheduleRejectsRecentManualDuplicate(t *testing.T) {
+	app := newTestControlApp(t)
+	token := loginAndGetToken(t, app)
+	_, _, task := createProjectVersionTask(t, app, token, "")
+
+	scheduleRec := doJSONRequest(t, app, http.MethodPost, "/api/v1/schedules", token, map[string]any{
+		"name":      "dedup-schedule",
+		"task_id":   task.ID,
+		"cron_expr": "",
+		"enabled":   false,
+	})
+	if scheduleRec.Code != http.StatusOK {
+		t.Fatalf("create schedule failed: status=%d body=%s", scheduleRec.Code, scheduleRec.Body.String())
+	}
+	var schedule common.Schedule
+	if err := json.Unmarshal(scheduleRec.Body.Bytes(), &schedule); err != nil {
+		t.Fatalf("decode schedule: %v", err)
+	}
+
+	existing := common.TaskRun{
+		ID:            uuid.NewString(),
+		TaskID:        task.ID,
+		ScheduleID:    schedule.ID,
+		TriggerSource: "manual",
+		Status:        "queued",
+		CreatedAt:     time.Now(),
+		CorrelationID: uuid.NewString(),
+	}
+	if err := app.db.Create(&existing).Error; err != nil {
+		t.Fatalf("seed existing schedule run failed: %v", err)
+	}
+
+	rec := doJSONRequest(t, app, http.MethodPost, "/api/v1/schedules/"+schedule.ID+"/trigger", token, nil)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 for duplicate schedule trigger, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if got := countSecurityEvents(t, app, "schedule_trigger_duplicate_blocked"); got == 0 {
+		t.Fatalf("expected schedule_trigger_duplicate_blocked security event")
 	}
 }
 

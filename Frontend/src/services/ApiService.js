@@ -39,7 +39,6 @@ const setCsrfToken = async () => {
         const csrf_token = response.data.csrfToken;
         localStorage.setItem('csrf_token', csrf_token);
         document.cookie = `csrftoken=${csrf_token}; path=/; SameSite=Strict`;
-        console.info('CSRF token set:', csrf_token);
         return csrf_token; // 返回新的 CSRF 令牌
     } catch (error) {
         console.error('Error fetching CSRF token:', error);
@@ -67,19 +66,12 @@ apiClient.interceptors.request.use(async config => {
 });
 
 
-apiClient.interceptors.request.use(config => {
-    const token = localStorage.getItem('token');
-    if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-});
-
 let hasTriggeredSessionLogout = false;
 
 const clearAuthState = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('refresh_token');
+    localStorage.removeItem('refresh');
     localStorage.removeItem('csrf_token');
 
     if (typeof document !== 'undefined') {
@@ -454,17 +446,21 @@ const ApiService = {
     },
     getWorkplaceProjects(workplaceId) {
         if (isGoApi) {
-            return apiClient.get('/projects');
+            return apiClient.get('/projects', {
+                params: {
+                    workplace_id: workplaceId,
+                },
+            });
         }
         return apiClient.get(`/workplaces/${workplaceId}/workplaces_projects/`);
     },
     getWorkplaceTaskRecords(workplaceId) {
         if (isGoApi) {
             return Promise.all([
-                apiClient.get('/runs'),
-                apiClient.get('/tasks'),
-                apiClient.get('/projects'),
-                apiClient.get('/schedules'),
+                apiClient.get('/runs', {params: {workplace_id: workplaceId}}),
+                apiClient.get('/tasks', {params: {workplace_id: workplaceId}}),
+                apiClient.get('/projects', {params: {workplace_id: workplaceId}}),
+                apiClient.get('/schedules', {params: {workplace_id: workplaceId}}),
             ]).then(([runsResp, tasksResp, projectsResp, schedulesResp]) => {
                 const runRecords = Array.isArray(runsResp?.data?.records) ? runsResp.data.records : [];
                 const tasks = Array.isArray(tasksResp?.data) ? tasksResp.data : [];
@@ -514,7 +510,11 @@ const ApiService = {
     },
     getWorkplaceSchedules(workplaceId) {
         if (isGoApi) {
-            return apiClient.get('/schedules').then(resp => ({
+            return apiClient.get('/schedules', {
+                params: {
+                    workplace_id: workplaceId,
+                },
+            }).then(resp => ({
                 ...resp,
                 data: Array.isArray(resp.data)
                     ? resp.data.map(item => normalizeGoSchedule(item, workplaceId))
@@ -525,7 +525,11 @@ const ApiService = {
     },
     getWorkplaceTasks(workplaceId) {
         if (isGoApi) {
-            return apiClient.get('/tasks').then(resp => ({
+            return apiClient.get('/tasks', {
+                params: {
+                    workplace_id: workplaceId,
+                },
+            }).then(resp => ({
                 ...resp,
                 data: {
                     tasks: Array.isArray(resp.data) ? resp.data : [],
@@ -569,6 +573,7 @@ const ApiService = {
                 description: project?.description || '',
                 language: project?.language || '',
                 command: project?.command || '',
+                workplace_id: project?.workplace_id || project?.workplace || undefined,
             });
         }
         return apiClient.post(`/projects/`, project);
@@ -869,6 +874,7 @@ const ApiService = {
         if (isGoApi) {
             localStorage.removeItem('token');
             localStorage.removeItem('refresh_token');
+            localStorage.removeItem('refresh');
             localStorage.removeItem('csrf_token');
             return Promise.resolve({ data: { ok: true } });
         }

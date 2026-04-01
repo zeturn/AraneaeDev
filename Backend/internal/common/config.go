@@ -6,15 +6,17 @@ import (
 )
 
 type ControlConfig struct {
-	HTTPAddr         string
-	GRPCAddr         string
-	DBPath           string
-	RabbitURL        string
-	RabbitExchange   string
-	JWTSecret        string
-	ArtifactRoot     string
-	ExecutionAPIKey  string
-	CORSAllowOrigins string
+	Environment       string
+	HTTPAddr          string
+	GRPCAddr          string
+	DBPath            string
+	RabbitURL         string
+	RabbitExchange    string
+	InitAdminPassword string
+	JWTSecret         string
+	ArtifactRoot      string
+	ExecutionAPIKey   string
+	CORSAllowOrigins  string
 }
 
 type ExecutorConfig struct {
@@ -53,15 +55,17 @@ func GetEnvInt(key string, fallback int) int {
 
 func LoadControlConfig() ControlConfig {
 	return ControlConfig{
-		HTTPAddr:         GetEnv("CONTROL_HTTP_ADDR", ":8180"),
-		GRPCAddr:         GetEnv("CONTROL_GRPC_ADDR", ":9190"),
-		DBPath:           GetEnv("CONTROL_DB_PATH", "./data/control.db"),
-		RabbitURL:        GetEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
-		RabbitExchange:   GetEnv("RABBITMQ_EXCHANGE", "tasks.direct"),
-		JWTSecret:        GetEnv("CONTROL_JWT_SECRET", "change-me"),
-		ArtifactRoot:     GetEnv("ARTIFACT_ROOT", "./data/artifacts"),
-		ExecutionAPIKey:  GetEnv("EXECUTION_CALLBACK_KEY", "change-me-callback"),
-		CORSAllowOrigins: GetEnv("CONTROL_CORS_ALLOW_ORIGINS", "http://localhost:5109,http://127.0.0.1:5109"),
+		Environment:       GetEnv("ARANEAE_ENV", "development"),
+		HTTPAddr:          GetEnv("CONTROL_HTTP_ADDR", ":8180"),
+		GRPCAddr:          GetEnv("CONTROL_GRPC_ADDR", ":9190"),
+		DBPath:            GetEnv("CONTROL_DB_PATH", "./data/control.db"),
+		RabbitURL:         GetEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
+		RabbitExchange:    GetEnv("RABBITMQ_EXCHANGE", "tasks.direct"),
+		InitAdminPassword: GetEnv("INIT_ADMIN_PASSWORD", "admin123"),
+		JWTSecret:         GetEnv("CONTROL_JWT_SECRET", "change-me"),
+		ArtifactRoot:      GetEnv("ARTIFACT_ROOT", "./data/artifacts"),
+		ExecutionAPIKey:   GetEnv("EXECUTION_CALLBACK_KEY", "change-me-callback"),
+		CORSAllowOrigins:  GetEnv("CONTROL_CORS_ALLOW_ORIGINS", "http://localhost:5109,http://127.0.0.1:5109"),
 	}
 }
 

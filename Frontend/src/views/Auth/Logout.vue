@@ -41,7 +41,8 @@ export default {
         // 无论请求成功与否，都清理本地存储
         localStorage.removeItem("token");
         localStorage.removeItem("csrf_token");
-        // localStorage.removeItem("refresh_token");
+        localStorage.removeItem("refresh_token");
+        localStorage.removeItem("refresh");
         this.loading = false; // 停止加载
         setTimeout(() => {
           this.$router.push("/login");

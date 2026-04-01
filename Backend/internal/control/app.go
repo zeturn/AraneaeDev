@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -51,9 +52,39 @@ type chainRunMeta struct {
 
 var errQueueUnavailable = errors.New("task queue publisher unavailable")
 
+const maxArtifactUploadBytes = 50 * 1024 * 1024
+
+func validateSecurityConfig(cfg common.ControlConfig) error {
+	isProd := strings.EqualFold(strings.TrimSpace(cfg.Environment), "production")
+	if !isProd {
+		return nil
+	}
+
+	jwtSecret := strings.TrimSpace(cfg.JWTSecret)
+	if jwtSecret == "" || jwtSecret == "change-me" || len(jwtSecret) < 24 {
+		return errors.New("CONTROL_JWT_SECRET is missing or too weak for production")
+	}
+
+	callbackKey := strings.TrimSpace(cfg.ExecutionAPIKey)
+	if callbackKey == "" || callbackKey == "change-me-callback" || len(callbackKey) < 24 {
+		return errors.New("EXECUTION_CALLBACK_KEY is missing or too weak for production")
+	}
+
+	adminPassword := strings.TrimSpace(cfg.InitAdminPassword)
+	if adminPassword == "" || adminPassword == "admin123" || len(adminPassword) < 12 {
+		return errors.New("INIT_ADMIN_PASSWORD is missing or too weak for production")
+	}
+
+	return nil
+}
+
 func NewApp(cfg common.ControlConfig) (*App, error) {
 	log, err := zap.NewProduction()
 	if err != nil {
+		return nil, err
+	}
+
+	if err := validateSecurityConfig(cfg); err != nil {
 		return nil, err
 	}
 
@@ -156,7 +187,11 @@ func (a *App) seedAdmin() error {
 	if count > 0 {
 		return nil
 	}
-	hash, err := hashPassword("admin123")
+	adminPassword := strings.TrimSpace(a.cfg.InitAdminPassword)
+	if adminPassword == "" {
+		return errors.New("INIT_ADMIN_PASSWORD is required when seeding admin user")
+	}
+	hash, err := hashPassword(adminPassword)
 	if err != nil {
 		return err
 	}
@@ -320,14 +355,20 @@ func loadUploadedFile(c *fiber.Ctx, fieldName string) ([]byte, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
+	if h.Size > maxArtifactUploadBytes {
+		return nil, "", fmt.Errorf("uploaded file is too large (max %d bytes)", maxArtifactUploadBytes)
+	}
 	f, err := h.Open()
 	if err != nil {
 		return nil, "", err
 	}
 	defer f.Close()
-	b, err := io.ReadAll(f)
+	b, err := io.ReadAll(io.LimitReader(f, maxArtifactUploadBytes+1))
 	if err != nil {
 		return nil, "", err
+	}
+	if int64(len(b)) > maxArtifactUploadBytes {
+		return nil, "", fmt.Errorf("uploaded file is too large (max %d bytes)", maxArtifactUploadBytes)
 	}
 	if len(b) == 0 {
 		return nil, "", errors.New("uploaded file is empty")

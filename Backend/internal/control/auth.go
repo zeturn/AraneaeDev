@@ -4,6 +4,8 @@ import (
 	"errors"
 	"time"
 
+	"araneae-go/internal/common"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -70,4 +72,188 @@ func (a *App) requireRoles(roles ...string) fiber.Handler {
 		}
 		return c.Next()
 	}
+}
+
+func isPrivilegedRole(role string) bool {
+	return role == "admin" || role == "operator"
+}
+
+func isAdminRole(role string) bool {
+	return role == "admin"
+}
+
+func (a *App) userAccessibleWorkplaceIDs(uid string) ([]uint, error) {
+	if uid == "" {
+		return nil, nil
+	}
+
+	idSet := map[uint]struct{}{}
+
+	var ownedWorkplaceIDs []uint
+	if err := a.db.Model(&common.Workplace{}).Where("created_by = ?", uid).Pluck("id", &ownedWorkplaceIDs).Error; err != nil {
+		return nil, err
+	}
+	for _, id := range ownedWorkplaceIDs {
+		idSet[id] = struct{}{}
+	}
+
+	var teamIDs []uint
+	if err := a.db.Model(&common.TeamMember{}).Where("user_id = ?", uid).Pluck("team_id", &teamIDs).Error; err != nil {
+		return nil, err
+	}
+	if len(teamIDs) > 0 {
+		var linkedWorkplaceIDs []uint
+		if err := a.db.Model(&common.WorkplaceTeam{}).Where("team_id IN ?", teamIDs).Pluck("workplace_id", &linkedWorkplaceIDs).Error; err != nil {
+			return nil, err
+		}
+		for _, id := range linkedWorkplaceIDs {
+			idSet[id] = struct{}{}
+		}
+	}
+
+	if len(idSet) == 0 {
+		return nil, nil
+	}
+
+	ids := make([]uint, 0, len(idSet))
+	for id := range idSet {
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+func (a *App) canAccessProjectForUser(uid, role string, project common.Project) (bool, error) {
+	if isPrivilegedRole(role) {
+		return true, nil
+	}
+	if uid == "" {
+		return false, nil
+	}
+	if uid == project.CreatedBy {
+		return true, nil
+	}
+	if project.WorkplaceID == nil {
+		return false, nil
+	}
+	return a.userCanAccessWorkplace(uid, *project.WorkplaceID)
+}
+
+func (a *App) canAccessProject(c *fiber.Ctx, project common.Project) (bool, error) {
+	uid, _ := c.Locals("uid").(string)
+	role, _ := c.Locals("role").(string)
+	return a.canAccessProjectForUser(uid, role, project)
+}
+
+func (a *App) canWriteProjectForUser(uid, role string, project common.Project) (bool, error) {
+	if isAdminRole(role) {
+		return true, nil
+	}
+	if uid == "" {
+		return false, nil
+	}
+	if uid == project.CreatedBy {
+		return true, nil
+	}
+	if project.WorkplaceID == nil {
+		return false, nil
+	}
+	return a.userCanAccessWorkplace(uid, *project.WorkplaceID)
+}
+
+func (a *App) canWriteProject(c *fiber.Ctx, project common.Project) (bool, error) {
+	uid, _ := c.Locals("uid").(string)
+	role, _ := c.Locals("role").(string)
+	return a.canWriteProjectForUser(uid, role, project)
+}
+
+func (a *App) canBindWorkplace(c *fiber.Ctx, workplaceID uint) (bool, error) {
+	uid, _ := c.Locals("uid").(string)
+	role, _ := c.Locals("role").(string)
+	if isAdminRole(role) {
+		return true, nil
+	}
+	if uid == "" {
+		return false, nil
+	}
+	return a.userCanAccessWorkplace(uid, workplaceID)
+}
+
+func (a *App) canAccessTask(c *fiber.Ctx, task common.Task) (bool, error) {
+	uid, _ := c.Locals("uid").(string)
+	role, _ := c.Locals("role").(string)
+	if isPrivilegedRole(role) {
+		return true, nil
+	}
+	if uid == "" {
+		return false, nil
+	}
+	if uid == task.CreatedBy {
+		return true, nil
+	}
+
+	var project common.Project
+	if err := a.db.Where("id = ?", task.ProjectID).First(&project).Error; err != nil {
+		return false, nil
+	}
+	return a.canAccessProjectForUser(uid, role, project)
+}
+
+func (a *App) canWriteTask(c *fiber.Ctx, task common.Task) (bool, error) {
+	uid, _ := c.Locals("uid").(string)
+	role, _ := c.Locals("role").(string)
+	if isAdminRole(role) {
+		return true, nil
+	}
+	if uid == "" {
+		return false, nil
+	}
+	if uid == task.CreatedBy {
+		return true, nil
+	}
+
+	var project common.Project
+	if err := a.db.Where("id = ?", task.ProjectID).First(&project).Error; err != nil {
+		return false, nil
+	}
+	return a.canWriteProjectForUser(uid, role, project)
+}
+
+func (a *App) canAccessSchedule(c *fiber.Ctx, schedule common.Schedule) (bool, error) {
+	uid, _ := c.Locals("uid").(string)
+	role, _ := c.Locals("role").(string)
+	if isPrivilegedRole(role) {
+		return true, nil
+	}
+	if uid == "" {
+		return false, nil
+	}
+	if uid == schedule.CreatedBy {
+		return true, nil
+	}
+
+	var project common.Project
+	if err := a.db.Where("id = ?", schedule.ProjectID).First(&project).Error; err != nil {
+		return false, nil
+	}
+	return a.canAccessProjectForUser(uid, role, project)
+}
+
+func (a *App) canWriteSchedule(c *fiber.Ctx, schedule common.Schedule) (bool, error) {
+	uid, _ := c.Locals("uid").(string)
+	role, _ := c.Locals("role").(string)
+	if isAdminRole(role) {
+		return true, nil
+	}
+	if uid == "" {
+		return false, nil
+	}
+	if uid == schedule.CreatedBy {
+		return true, nil
+	}
+
+	var project common.Project
+	if err := a.db.Where("id = ?", schedule.ProjectID).First(&project).Error; err != nil {
+		return false, nil
+	}
+	return a.canWriteProjectForUser(uid, role, project)
 }

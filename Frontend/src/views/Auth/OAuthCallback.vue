@@ -21,6 +21,7 @@ export default {
     const access = params.get('access');
     const refresh = params.get('refresh');
     const next = params.get('next') || '/aprons/workplaces';
+    const safeNext = next.startsWith('/') ? next : '/aprons/workplaces';
     const error = params.get('error');
 
     if (error) {
@@ -37,9 +38,9 @@ export default {
 
     localStorage.setItem('token', access);
     if (refresh) {
-      localStorage.setItem('refresh', refresh);
+      localStorage.setItem('refresh_token', refresh);
     }
-    this.$router.replace(next);
+    this.$router.replace(safeNext);
   },
 };
 </script>

@@ -48,7 +48,7 @@ const links = computed(() => {
 	return [
 		{name: '返回', url: `/aprons/workplaces`},
 		{name: '概览', url: `/aprons/workplaces/${id}`},
-		{name: '分析与日志', url: `/aprons/workplaces/${id}/AnalyticsandLogging`},
+    {name: '分析与日志', url: `/aprons/workplaces/${id}/AnalyticsAndLogging`},
 		{name: '程序项目', url: `/aprons/workplaces/${id}/projects`},
     {name: '运行任务', url: `/aprons/workplaces/${id}/tasks`},
 		{name: '运行计划', url: `/aprons/workplaces/${id}/schedules`},
