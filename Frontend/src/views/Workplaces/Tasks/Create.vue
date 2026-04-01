@@ -12,7 +12,7 @@
 <template>
 	<Workplace>
 		<Task>
-			<div class="container max-w-lg mx-auto p-6 bg-white rounded-2xl my-8">
+			<div class="mx-auto my-6 w-full max-w-xl overflow-x-hidden rounded-2xl bg-white p-4 sm:p-6">
 				<form @submit.prevent="submitForm" class="space-y-5">
 					<!-- 名称 -->
 					<div>

@@ -67,7 +67,6 @@ const links = computed(() => {
 		{name: '返回', url: `/aprons/workplaces/${workplaceId.value}/schedules`},
 		{name: '概览', url: `/aprons/schedule/${id}`},
 		{name: '编辑', url: `/aprons/schedule/${id}/edit`},
-		{name: '计划设置', url: `/aprons/schedule/${id}/settings`},
 	];
 });
 

@@ -7,10 +7,10 @@
 <template>
   <div class="flex min-h-screen w-full flex-col overflow-x-hidden">
     <Header @toggleSidebar="toggleSidebar"/>
-    <div class="flex flex-row flex-1">
+    <div class="flex flex-row flex-1 overflow-x-hidden">
       <Sidebar :isLargeScreen="isLargeScreen" :isSidebarCollapsed="!isSidebarOpen" :links="links"
                @toggleSidebar="toggleSidebar"/>
-      <main class="flex-1 p-4">
+      <main class="min-w-0 flex-1 overflow-x-hidden p-4">
         <slot></slot>
       </main>
       <RightSidebar :isLargeScreen="isLargeScreen" :isRightSidebarCollapsed="!isSidebarOpen" :links="right_links"
@@ -50,8 +50,8 @@ const links = computed(() => {
 		{name: '概览', url: `/aprons/workplaces/${id}`},
 		{name: '分析与日志', url: `/aprons/workplaces/${id}/AnalyticsandLogging`},
 		{name: '程序项目', url: `/aprons/workplaces/${id}/projects`},
-		{name: '计划任务', url: `/aprons/workplaces/${id}/schedules`},
-		{name: '运行任务', url: `/aprons/workplaces/${id}/tasks`},
+    {name: '运行任务', url: `/aprons/workplaces/${id}/tasks`},
+		{name: '运行计划', url: `/aprons/workplaces/${id}/schedules`},
 		{name: '工作区设置', url: `/aprons/workplaces/${id}/settings`},
 	];
 });

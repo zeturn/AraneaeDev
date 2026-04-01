@@ -24,13 +24,15 @@ const tabsList = computed(() => {
 
 
 <template>
-	<h1 class="text-gray-500 text-3xl m-4">
-		任务
-	</h1>
-	<p class="text-gray-500 text-sm m-4">
-		任务是一次性的实时自动化操作，如果需要定时或链式操作，请使用计划。
-	</p>
-	<Tabs :tabs="tabsList" class="m-4"/>
-	<slot>
-	</slot>
+	<section class="w-full min-w-0 overflow-x-hidden px-4">
+		<h1 class="text-gray-500 text-3xl py-2">
+			任务
+		</h1>
+		<p class="text-gray-500 text-sm py-2">
+			任务是一次性的实时自动化操作，如果需要定时或链式操作，请使用计划。
+		</p>
+		<Tabs :tabs="tabsList" class="py-2"/>
+		<slot>
+		</slot>
+	</section>
 </template>

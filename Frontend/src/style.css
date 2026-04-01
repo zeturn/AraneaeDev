@@ -200,7 +200,7 @@
 @layer components {
 	.surface-panel {
 		@apply bg-white p-6 md:p-8;
-		border-radius: var(--radius-xl);
+		border-radius: 0;
 		box-shadow: var(--shadow-soft);
 	}
 

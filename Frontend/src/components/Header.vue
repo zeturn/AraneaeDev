@@ -35,8 +35,8 @@
         </div>
       </div>
 
-      <div>
-        <AvatarToggle class="h-12 w-12"/>
+      <div class="relative">
+        <AvatarToggle/>
       </div>
     </div>
   </header>

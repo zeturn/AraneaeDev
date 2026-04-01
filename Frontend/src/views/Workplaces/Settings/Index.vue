@@ -22,15 +22,12 @@
 						<label class="mb-2 block text-sm font-medium text-slate-700">描述</label>
 						<textarea v-model="form.description" rows="4" class="field-input" placeholder="输入工作区描述"></textarea>
 					</div>
-					<div>
+					<div class="md:col-span-2">
 						<label class="mb-2 block text-sm font-medium text-slate-700">状态</label>
 						<select v-model="form.status" class="field-input">
 							<option value="active">active</option>
 							<option value="inactive">inactive</option>
 						</select>
-					</div>
-					<div class="flex items-end">
-						<CheckboxSquareField v-model="form.enabled">启用</CheckboxSquareField>
 					</div>
 				</div>
 
@@ -57,7 +54,6 @@
 import {onMounted, reactive, ref} from 'vue';
 import {useRoute, useRouter} from 'vue-router';
 import ApiService from '@/services/ApiService.js';
-import CheckboxSquareField from '@/components/BeansDesign/Checkbox/CheckboxSquareField.vue';
 import Workplace from '@/views/Workplaces/Workplace.vue';
 
 const route = useRoute();
@@ -72,7 +68,6 @@ const form = reactive({
 	name: '',
 	description: '',
 	status: 'active',
-	enabled: true,
 });
 
 const formatDate = (value) => {
@@ -90,8 +85,11 @@ const fetchWorkplace = async () => {
 		form.id = data.id;
 		form.name = data.name || '';
 		form.description = data.description || '';
-		form.status = data.status || 'active';
-		form.enabled = data.enabled !== false;
+		if (data.status) {
+			form.status = data.status;
+		} else {
+			form.status = data.enabled === false ? 'inactive' : 'active';
+		}
 		createdAt.value = data.created_at || '';
 		updatedAt.value = data.updated_at || '';
 	} catch (error) {
@@ -109,11 +107,12 @@ const saveWorkplace = async () => {
 	loading.value = true;
 	notice.value = '';
 	try {
+		const enabled = form.status === 'active';
 		await ApiService.updateWorkplace(form.id || route.params.id, {
 			name,
 			description: form.description,
 			status: form.status,
-			enabled: form.enabled,
+			enabled,
 		});
 		notice.value = '工作区设置已保存';
 		updatedAt.value = new Date().toISOString();

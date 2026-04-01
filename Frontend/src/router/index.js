@@ -257,6 +257,12 @@ const routes = [
         component: () => import('../views/Schedules/Edit/Index.vue'),
         meta: {requiresAuth: true}
     },
+    {
+        name: 'schedulesSettings',
+        path: '/aprons/schedule/:id/settings',
+        redirect: to => `/aprons/schedule/${to.params.id}/edit`,
+        meta: {requiresAuth: true}
+    },
 ];
 
 const router = createRouter({

@@ -49,7 +49,9 @@
 							/>
 						</td>
 						<td class="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{{ record.task_status || '-' }}</td>
-						<td class="px-4 py-3 text-sm text-gray-700 max-w-[240px]">{{ summarizeResult(record.task_result) }}</td>
+						<td class="px-4 py-3 text-sm text-gray-700 max-w-[240px]" :title="getResultTooltip(record.task_result)">
+							{{ summarizeResult(record.task_result) }}
+						</td>
 						<td class="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{{ formatDate(record.task_created_at) }}</td>
 						<td class="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{{ formatDate(record.task_updated_at) }}</td>
 						<td class="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">{{ record.node || '-' }}</td>
@@ -121,6 +123,7 @@ export default {
 			records: [], // 日志记录列表 / Task records list
 			count: 0, // 日志总数 / Total count of records
 			selectedRecord: null,
+			resultPreviewMaxChars: 120,
 		};
 	},
 	computed: {
@@ -162,15 +165,38 @@ export default {
 			const out = record?.run_output || record?.task_result || '';
 			return typeof out === 'string' && out.trim() !== '';
 		},
+		normalizeResultText(result) {
+			if (result === null || result === undefined || result === '') {
+				return '';
+			}
+			let raw = '';
+			if (typeof result === 'string') {
+				raw = result;
+			} else {
+				try {
+					raw = JSON.stringify(result);
+				} catch (_) {
+					raw = String(result);
+				}
+			}
+			return raw.replace(/\s+/g, ' ').trim();
+		},
 		summarizeResult(result) {
-			if (!result) {
+			const text = this.normalizeResultText(result);
+			if (!text) {
 				return '-';
 			}
-			const text = String(result).replace(/\s+/g, ' ').trim();
-			if (text.length <= 80) {
+			if (text.length <= this.resultPreviewMaxChars) {
 				return text;
 			}
-			return `${text.slice(0, 80)}...`;
+			return `${text.slice(0, this.resultPreviewMaxChars)}...`;
+		},
+		getResultTooltip(result) {
+			const text = this.normalizeResultText(result);
+			if (!text || text.length <= this.resultPreviewMaxChars) {
+				return '';
+			}
+			return text;
 		},
 		openOutput(record) {
 			this.selectedRecord = record;
