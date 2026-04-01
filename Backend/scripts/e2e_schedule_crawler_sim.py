@@ -27,6 +27,7 @@ import uuid
 import zipfile
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
+from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -38,6 +39,43 @@ CONTROL_BASE = f"http://127.0.0.1:{CONTROL_PORT}"
 API_BASE = f"{CONTROL_BASE}/api/v1"
 CALLBACK_KEY = "e2e-callback-key"
 TERMINAL = {"success", "failed"}
+
+
+def load_repo_env() -> Dict[str, str]:
+    env_file = ROOT.parent / ".env"
+    if not env_file.exists():
+        return {}
+    parsed: Dict[str, str] = {}
+    for raw in env_file.read_text(encoding="utf-8", errors="ignore").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        parsed[key.strip()] = value.strip().strip('"').strip("'")
+    return parsed
+
+
+REPO_ENV = load_repo_env()
+
+
+def env_or_repo_env(key: str, default: str) -> str:
+    value = os.getenv(key, "").strip()
+    if value:
+        return value
+    repo_value = REPO_ENV.get(key, "").strip()
+    if repo_value:
+        return repo_value
+    return default
+
+
+def rabbitmq_url() -> str:
+    explicit = env_or_repo_env("RABBITMQ_URL", "")
+    if explicit:
+        return explicit
+    user = quote(env_or_repo_env("RABBITMQ_USERNAME", "guest"), safe="")
+    password = quote(env_or_repo_env("RABBITMQ_PASSWORD", "guest"), safe="")
+    port = env_or_repo_env("RABBITMQ_PORT", "5672")
+    return f"amqp://{user}:{password}@127.0.0.1:{port}/"
 
 
 def is_port_open(host: str, port: int, timeout: float = 0.5) -> bool:
@@ -252,7 +290,7 @@ def start_control(runtime_dir: Path) -> Tuple[subprocess.Popen, Any]:
             "CONTROL_DB_PATH": str(runtime_dir / "control.db"),
             "ARTIFACT_ROOT": str(runtime_dir / "artifacts"),
             "EXECUTION_CALLBACK_KEY": CALLBACK_KEY,
-            "RABBITMQ_URL": "amqp://guest:guest@127.0.0.1:5672/",
+            "RABBITMQ_URL": rabbitmq_url(),
         }
     )
 

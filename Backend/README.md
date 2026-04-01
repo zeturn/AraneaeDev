@@ -59,6 +59,8 @@
 - 控制节点 HTTP（默认 8180）需可被工作节点回调访问。
 - 所有节点共享同一个 RabbitMQ。
 - 通过任务里的 node_queue 字段，把任务路由到对应 EXECUTOR_QUEUE。
+- 工作节点启动会生成并输出节点密钥（或从 EXECUTOR_NODE_KEY/EXECUTOR_NODE_KEY_FILE 读取）。
+- 控制节点注册工作节点时必须填写该节点密钥；注册成功后，Control gRPC 仅接受已注册节点密钥请求。
 
 ## 前端接入（Front）
 
@@ -107,6 +109,8 @@
 - 角色控制：admin/operator/viewer
 - 默认管理员：admin / admin123（建议首次登录后修改）
 - 执行端回调 Control 使用 X-Execution-Key
+- 工作节点 HTTP 端口请求需要携带 X-Node-Key
+- Control gRPC 拉制品请求需要携带节点密钥元数据（x-node-key）
 
 ## 一键闭环验证
 

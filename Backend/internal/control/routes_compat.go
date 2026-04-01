@@ -39,6 +39,7 @@ type registerNodeRequest struct {
 	Description string `json:"description"`
 	Port        int    `json:"port"`
 	GRPCPort    int    `json:"grpc_port"`
+	PairKey     string `json:"pair_key"`
 }
 
 type updateNodeRequest struct {
@@ -229,8 +230,12 @@ func (a *App) registerNode(c *fiber.Ctx) error {
 	req.IP = strings.TrimSpace(req.IP)
 	req.Name = strings.TrimSpace(req.Name)
 	req.Description = strings.TrimSpace(req.Description)
+	req.PairKey = strings.TrimSpace(req.PairKey)
 	if req.IP == "" {
 		return fiber.NewError(fiber.StatusBadRequest, "ip is required")
+	}
+	if req.PairKey == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "pair_key is required")
 	}
 	if req.Name == "" {
 		req.Name = "node-" + strings.ReplaceAll(req.IP, ".", "-")
@@ -242,11 +247,16 @@ func (a *App) registerNode(c *fiber.Ctx) error {
 		req.GRPCPort = 9190
 	}
 
+	verified, err := a.verifyExecutorNodeKey(req.IP, req.Port, req.PairKey)
+	if err != nil {
+		return fiber.NewError(fiber.StatusUnauthorized, err.Error())
+	}
+
 	uid, _ := c.Locals("uid").(string)
 	now := time.Now()
 
 	var node common.Node
-	err := a.db.Where("ip_address = ? AND port = ?", req.IP, req.Port).First(&node).Error
+	err = a.db.Where("ip_address = ? AND port = ?", req.IP, req.Port).First(&node).Error
 	if err == nil {
 		node.Name = req.Name
 		if req.Description != "" {
@@ -254,6 +264,10 @@ func (a *App) registerNode(c *fiber.Ctx) error {
 		}
 		node.Status = "active"
 		node.GRPCPort = req.GRPCPort
+		node.AuthTokenHash = hashNodeKey(req.PairKey)
+		if queue := strings.TrimSpace(verified.Queue); queue != "" {
+			node.CeleryQueue = queue
+		}
 		node.LastActiveTime = now
 		node.UpdatedAt = now
 		if err := a.db.Save(&node).Error; err != nil {
@@ -274,6 +288,7 @@ func (a *App) registerNode(c *fiber.Ctx) error {
 		GRPCPort:         req.GRPCPort,
 		RPCURL:           fmt.Sprintf("http://%s:%d", req.IP, req.Port),
 		CeleryQueue:      "default",
+		AuthTokenHash:    hashNodeKey(req.PairKey),
 		IsEnabled:        true,
 		LastActiveTime:   now,
 		HDID:             strings.ToUpper(strings.ReplaceAll(uuid.NewString()[:12], "-", "")),
@@ -283,6 +298,9 @@ func (a *App) registerNode(c *fiber.Ctx) error {
 		CreatedBy:        uid,
 		CreatedAt:        now,
 		UpdatedAt:        now,
+	}
+	if queue := strings.TrimSpace(verified.Queue); queue != "" {
+		node.CeleryQueue = queue
 	}
 	if err := a.db.Create(&node).Error; err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())

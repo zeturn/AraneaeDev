@@ -111,7 +111,7 @@ func (a *App) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	a.grpcSrv = grpc.NewServer()
+	a.grpcSrv = grpc.NewServer(grpc.UnaryInterceptor(a.nodeAuthUnaryInterceptor))
 	pb.RegisterArtifactServiceServer(a.grpcSrv, a)
 	go func() {
 		a.log.Info("control grpc started", zap.String("addr", a.cfg.GRPCAddr))

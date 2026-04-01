@@ -24,6 +24,7 @@ import uuid
 import zipfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -36,6 +37,43 @@ CONTROL_BASE = f"http://127.0.0.1:{CONTROL_PORT}"
 API_BASE = f"{CONTROL_BASE}/api/v1"
 
 TERMINAL_STATUSES = {"success", "failed"}
+
+
+def load_repo_env() -> Dict[str, str]:
+    env_file = ROOT.parent / ".env"
+    if not env_file.exists():
+        return {}
+    parsed: Dict[str, str] = {}
+    for raw in env_file.read_text(encoding="utf-8", errors="ignore").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        parsed[key.strip()] = value.strip().strip('"').strip("'")
+    return parsed
+
+
+REPO_ENV = load_repo_env()
+
+
+def env_or_repo_env(key: str, default: str) -> str:
+    value = os.getenv(key, "").strip()
+    if value:
+        return value
+    repo_value = REPO_ENV.get(key, "").strip()
+    if repo_value:
+        return repo_value
+    return default
+
+
+def rabbitmq_url() -> str:
+    explicit = env_or_repo_env("RABBITMQ_URL", "")
+    if explicit:
+        return explicit
+    user = quote(env_or_repo_env("RABBITMQ_USERNAME", "guest"), safe="")
+    password = quote(env_or_repo_env("RABBITMQ_PASSWORD", "guest"), safe="")
+    port = env_or_repo_env("RABBITMQ_PORT", "5672")
+    return f"amqp://{user}:{password}@127.0.0.1:{port}/"
 
 
 def is_port_open(host: str, port: int, timeout: float = 0.5) -> bool:
@@ -73,11 +111,11 @@ def ensure_rabbitmq() -> None:
     raise RuntimeError("RabbitMQ did not become ready on port 5672")
 
 
-def wait_http_ok(url: str, timeout_seconds: int = 60) -> None:
+def wait_http_ok(url: str, timeout_seconds: int = 60, headers: Optional[Dict[str, str]] = None) -> None:
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
         try:
-            req = urllib.request.Request(url=url, method="GET")
+            req = urllib.request.Request(url=url, method="GET", headers=headers or {})
             with urllib.request.urlopen(req, timeout=2) as resp:
                 if resp.status == 200:
                     return
@@ -195,6 +233,24 @@ def api_multipart_upload(
         raise RuntimeError(f"POST {path} upload failed: HTTP {exc.code} {detail}") from exc
 
 
+def register_executor_node(token: str, node_key: str, queue_name: str) -> Dict[str, Any]:
+    node = api_json(
+        "POST",
+        "/nodes/register/",
+        token=token,
+        payload={
+            "ip": "127.0.0.1",
+            "name": f"e2e-executor-{queue_name}",
+            "port": EXECUTOR_PORT,
+            "grpc_port": 9190,
+            "pair_key": node_key,
+        },
+    )
+    if not node.get("id"):
+        raise RuntimeError(f"Node registration returned invalid payload: {node}")
+    return node
+
+
 def create_test_zip() -> Tuple[str, bytes]:
     readme = "Araneae E2E artifact package for API crawler test.\n"
     with tempfile.TemporaryDirectory(prefix="araneae-e2e-zip-") as tmp:
@@ -233,7 +289,11 @@ def wait_for_schedule_runs(
     )
 
 
-def start_services(workdir: Path, queue_name: str) -> Tuple[subprocess.Popen, subprocess.Popen, Any, Any]:
+def start_services(
+    workdir: Path,
+    queue_name: str,
+    node_key: str,
+) -> Tuple[subprocess.Popen, subprocess.Popen, Any, Any]:
     logs_dir = workdir / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
     control_log = (logs_dir / "control.log").open("w", encoding="utf-8")
@@ -249,7 +309,7 @@ def start_services(workdir: Path, queue_name: str) -> Tuple[subprocess.Popen, su
             "CONTROL_DB_PATH": str(workdir / "control.db"),
             "ARTIFACT_ROOT": str(workdir / "artifacts"),
             "EXECUTION_CALLBACK_KEY": callback_key,
-            "RABBITMQ_URL": "amqp://guest:guest@127.0.0.1:5672/",
+            "RABBITMQ_URL": rabbitmq_url(),
         }
     )
 
@@ -260,10 +320,12 @@ def start_services(workdir: Path, queue_name: str) -> Tuple[subprocess.Popen, su
             "EXECUTOR_DB_PATH": str(workdir / "executor.db"),
             "EXECUTOR_WORKDIR": str(workdir / "workdir"),
             "EXECUTOR_QUEUE": queue_name,
+            "EXECUTOR_NODE_KEY": node_key,
+            "EXECUTOR_NODE_KEY_FILE": str(workdir / "executor.node.key"),
             "CONTROL_GRPC_TARGET": f"127.0.0.1:{GRPC_PORT}",
             "CONTROL_HTTP_BASE": CONTROL_BASE,
             "EXECUTION_CALLBACK_KEY": callback_key,
-            "RABBITMQ_URL": "amqp://guest:guest@127.0.0.1:5672/",
+            "RABBITMQ_URL": rabbitmq_url(),
         }
     )
 
@@ -316,10 +378,15 @@ def run_e2e() -> Dict[str, Any]:
 
     runtime_dir = Path(tempfile.mkdtemp(prefix="araneae-go-e2e-"))
     queue_name = f"e2e-{uuid.uuid4().hex[:8]}"
-    control_proc, executor_proc, control_log, executor_log = start_services(runtime_dir, queue_name)
+    node_key = f"e2e-node-key-{uuid.uuid4().hex}"
+    control_proc, executor_proc, control_log, executor_log = start_services(runtime_dir, queue_name, node_key)
     try:
         wait_http_ok(f"{CONTROL_BASE}/healthz", timeout_seconds=90)
-        wait_http_ok(f"http://127.0.0.1:{EXECUTOR_PORT}/healthz", timeout_seconds=90)
+        wait_http_ok(
+            f"http://127.0.0.1:{EXECUTOR_PORT}/healthz",
+            timeout_seconds=90,
+            headers={"X-Node-Key": node_key},
+        )
         wait_port_open("127.0.0.1", GRPC_PORT, timeout_seconds=60)
         time.sleep(1.5)
 
@@ -327,6 +394,9 @@ def run_e2e() -> Dict[str, Any]:
         token = login.get("token")
         if not token:
             raise RuntimeError("Login did not return token")
+
+        node = register_executor_node(token, node_key, queue_name)
+        node_queue = node.get("celery_queue") or queue_name
 
         project = api_json("POST", "/projects", token=token, payload={"name": f"e2e-project-{uuid.uuid4().hex[:8]}"})
         project_id = project["id"]
@@ -351,7 +421,7 @@ def run_e2e() -> Dict[str, Any]:
                 "version_id": version_id,
                 "entry_command": "echo RUN_MARKER:manual",
                 "cron_expr": "",
-                "node_queue": queue_name,
+                "node_queue": node_queue,
             },
         )
 
@@ -365,7 +435,7 @@ def run_e2e() -> Dict[str, Any]:
                 "version_id": version_id,
                 "entry_command": "echo RUN_MARKER:chain-1",
                 "cron_expr": "",
-                "node_queue": queue_name,
+                "node_queue": node_queue,
             },
         )
 
@@ -379,7 +449,7 @@ def run_e2e() -> Dict[str, Any]:
                 "version_id": version_id,
                 "entry_command": "echo RUN_MARKER:chain-2",
                 "cron_expr": "",
-                "node_queue": queue_name,
+                "node_queue": node_queue,
             },
         )
 
@@ -401,7 +471,7 @@ def run_e2e() -> Dict[str, Any]:
                             "task_id": chain_task_1["id"],
                             "trigger": "crons",
                             "crons": "*/8 * * * * *",
-                            "node": [queue_name],
+                            "node": [node_queue],
                         }
                     ],
                 },
@@ -425,12 +495,12 @@ def run_e2e() -> Dict[str, Any]:
                         {
                             "task_id": chain_task_1["id"],
                             "trigger": "api",
-                            "node": [queue_name],
+                            "node": [node_queue],
                         },
                         {
                             "task_id": chain_task_2["id"],
                             "trigger": "previous",
-                            "node": [queue_name],
+                            "node": [node_queue],
                         },
                     ],
                 },
@@ -446,7 +516,8 @@ def run_e2e() -> Dict[str, Any]:
 
         summary = {
             "runtime_dir": str(runtime_dir),
-            "queue": queue_name,
+            "queue": node_queue,
+            "node_id": node.get("id"),
             "project_id": project_id,
             "version_id": version_id,
             "manual_task": {

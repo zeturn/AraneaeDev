@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -14,8 +15,8 @@ import (
 
 	"araneae-go/internal/common"
 
-	"github.com/gofiber/fiber/v2"
 	"github.com/glebarez/sqlite"
+	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/robfig/cron/v3"
 	"gorm.io/gorm"
@@ -321,6 +322,78 @@ func TestControlRoutes_RequireAuth(t *testing.T) {
 	rec := doJSONRequest(t, app, http.MethodGet, "/api/v1/projects", "", nil)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestControlRoutes_RegisterNodeRequiresPairKey(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen failed: %v", err)
+	}
+
+	fakeExecutor := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/node/verify" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Header.Get(nodeAuthHeader) != "pair-ok" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"invalid node key"}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok","queue":"node-a"}`))
+	}))
+	fakeExecutor.Listener = listener
+	fakeExecutor.Start()
+	defer fakeExecutor.Close()
+
+	host, portRaw, err := net.SplitHostPort(listener.Addr().String())
+	if err != nil {
+		t.Fatalf("split host port failed: %v", err)
+	}
+	port, err := net.LookupPort("tcp", portRaw)
+	if err != nil {
+		t.Fatalf("lookup port failed: %v", err)
+	}
+
+	app := newTestControlApp(t)
+	token := loginAndGetToken(t, app)
+
+	missingKeyRec := doJSONRequest(t, app, http.MethodPost, "/api/v1/nodes/register/", token, map[string]any{
+		"ip":   host,
+		"name": "executor-a",
+		"port": port,
+	})
+	if missingKeyRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 when pair_key missing, got %d body=%s", missingKeyRec.Code, missingKeyRec.Body.String())
+	}
+
+	rec := doJSONRequest(t, app, http.MethodPost, "/api/v1/nodes/register/", token, map[string]any{
+		"ip":        host,
+		"name":      "executor-a",
+		"port":      port,
+		"grpc_port": 9190,
+		"pair_key":  "pair-ok",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200 register node, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var node common.Node
+	if err := json.Unmarshal(rec.Body.Bytes(), &node); err != nil {
+		t.Fatalf("decode node response failed: %v", err)
+	}
+	if node.CeleryQueue != "node-a" {
+		t.Fatalf("expected queue node-a from executor verify, got %q", node.CeleryQueue)
+	}
+
+	var persisted common.Node
+	if err := app.db.Where("id = ?", node.ID).First(&persisted).Error; err != nil {
+		t.Fatalf("load persisted node failed: %v", err)
+	}
+	if persisted.AuthTokenHash != hashNodeKey("pair-ok") {
+		t.Fatalf("expected persisted auth hash %q, got %q", hashNodeKey("pair-ok"), persisted.AuthTokenHash)
 	}
 }
 

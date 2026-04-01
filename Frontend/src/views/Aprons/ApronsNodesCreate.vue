@@ -30,6 +30,7 @@ interface DiscoveredNode {
 // 定义输入框绑定的变量
 const nodeName = ref("");
 const nodeIp = ref("");
+const nodePairKey = ref("");
 const discoverLoading = ref(false);
 const discoverError = ref("");
 const discoveredNodes = ref<DiscoveredNode[]>([]);
@@ -67,13 +68,13 @@ const discoverNodes = async (scope: 'local' | 'custom' = 'local') => {
 
 // 处理节点创建
 const createNode = async () => {
-	if (!nodeIp.value || !nodeName.value) {
+	if (!nodeIp.value || !nodeName.value || !nodePairKey.value.trim()) {
 		alert("请填写完整的节点信息！");
 		return;
 	}
 
 	try {
-		const response = await ApiService.registerNodes(nodeIp.value, nodeName.value);
+		const response = await ApiService.registerNodes(nodeIp.value, nodeName.value, nodePairKey.value.trim());
 		console.log("Node created:", response);
 		const newId = response.data.id; // 假设返回的数据中包含新节点的 ID
 		EventBus.emit('notify', {
@@ -187,6 +188,17 @@ onMounted(() => {
 						class="field-input"
 						placeholder="请输入节点 IP"
 						type="text"
+						required
+					/>
+				</div>
+
+				<div class="mb-5">
+					<label class="block mb-2 text-gray-700 text-sm font-medium">节点密钥</label>
+					<input
+						v-model="nodePairKey"
+						class="field-input"
+						placeholder="请输入工作节点启动日志中的密钥"
+						type="password"
 						required
 					/>
 				</div>

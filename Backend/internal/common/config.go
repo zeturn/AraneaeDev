@@ -23,6 +23,8 @@ type ExecutorConfig struct {
 	RabbitURL          string
 	RabbitExchange     string
 	RabbitQueue        string
+	NodeAuthKey        string
+	NodeAuthKeyFile    string
 	ControlGRPCAddr    string
 	ControlHTTPBase    string
 	ControlCallbackKey string
@@ -70,6 +72,8 @@ func LoadExecutorConfig() ExecutorConfig {
 		RabbitURL:          GetEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
 		RabbitExchange:     GetEnv("RABBITMQ_EXCHANGE", "tasks.direct"),
 		RabbitQueue:        GetEnv("EXECUTOR_QUEUE", "default"),
+		NodeAuthKey:        GetEnv("EXECUTOR_NODE_KEY", ""),
+		NodeAuthKeyFile:    GetEnv("EXECUTOR_NODE_KEY_FILE", "./data/executor.node.key"),
 		ControlGRPCAddr:    GetEnv("CONTROL_GRPC_TARGET", "localhost:9190"),
 		ControlHTTPBase:    GetEnv("CONTROL_HTTP_BASE", "http://localhost:8180"),
 		ControlCallbackKey: GetEnv("EXECUTION_CALLBACK_KEY", "change-me-callback"),

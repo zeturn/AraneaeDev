@@ -94,6 +94,7 @@ type Node struct {
 	GRPCPort         int       `gorm:"not null;default:9190" json:"grpc_port"`
 	RPCURL           string    `gorm:"size:255" json:"rpc_url"`
 	CeleryQueue      string    `gorm:"size:64;not null;default:default" json:"celery_queue"`
+	AuthTokenHash    string    `gorm:"size:64;index" json:"-"`
 	IsEnabled        bool      `gorm:"not null;default:true" json:"is_enabled"`
 	LastActiveTime   time.Time `gorm:"not null" json:"last_active_time"`
 	HDID             string    `gorm:"size:64" json:"HDID"`

@@ -27,6 +27,7 @@ import zipfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -39,6 +40,43 @@ CONTROL_BASE = f"http://127.0.0.1:{CONTROL_PORT}"
 API_BASE = f"{CONTROL_BASE}/api/v1"
 CALLBACK_KEY = "suite-callback-key"
 TERMINAL_STATUSES = {"success", "failed"}
+
+
+def load_repo_env() -> Dict[str, str]:
+    env_file = ROOT.parent / ".env"
+    if not env_file.exists():
+        return {}
+    parsed: Dict[str, str] = {}
+    for raw in env_file.read_text(encoding="utf-8", errors="ignore").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        parsed[key.strip()] = value.strip().strip('"').strip("'")
+    return parsed
+
+
+REPO_ENV = load_repo_env()
+
+
+def env_or_repo_env(key: str, default: str) -> str:
+    value = os.getenv(key, "").strip()
+    if value:
+        return value
+    repo_value = REPO_ENV.get(key, "").strip()
+    if repo_value:
+        return repo_value
+    return default
+
+
+def rabbitmq_url() -> str:
+    explicit = env_or_repo_env("RABBITMQ_URL", "")
+    if explicit:
+        return explicit
+    user = quote(env_or_repo_env("RABBITMQ_USERNAME", "guest"), safe="")
+    password = quote(env_or_repo_env("RABBITMQ_PASSWORD", "guest"), safe="")
+    port = env_or_repo_env("RABBITMQ_PORT", "5672")
+    return f"amqp://{user}:{password}@127.0.0.1:{port}/"
 
 
 class SuiteError(RuntimeError):
@@ -113,11 +151,11 @@ def kill_port_listener(port: int) -> None:
         return
 
 
-def wait_http_ok(url: str, timeout_seconds: int = 80) -> None:
+def wait_http_ok(url: str, timeout_seconds: int = 80, headers: Optional[Dict[str, str]] = None) -> None:
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
         try:
-            req = urllib.request.Request(url=url, method="GET")
+            req = urllib.request.Request(url=url, method="GET", headers=headers or {})
             with urllib.request.urlopen(req, timeout=2) as resp:
                 if resp.status == 200:
                     return
@@ -195,6 +233,24 @@ def api_multipart_upload(path: str, token: str, file_name: str, file_bytes: byte
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")
         raise SuiteError(f"POST {path} upload failed: HTTP {exc.code} {detail}") from exc
+
+
+def register_executor_node(token: str, node_key: str, queue_name: str) -> Dict[str, Any]:
+    node = api_json(
+        "POST",
+        "/nodes/register/",
+        token=token,
+        payload={
+            "ip": "127.0.0.1",
+            "name": f"suite-executor-{queue_name}",
+            "port": EXECUTOR_PORT,
+            "grpc_port": 9190,
+            "pair_key": node_key,
+        },
+    )
+    if not node.get("id"):
+        raise SuiteError(f"node registration returned invalid payload: {node}")
+    return node
 
 
 def create_crawler_zip() -> Tuple[str, bytes]:
@@ -290,7 +346,11 @@ def wait_for_schedule_terminal_runs(
     )
 
 
-def start_services(workdir: Path, queue_name: str) -> Tuple[subprocess.Popen, subprocess.Popen, Any, Any]:
+def start_services(
+    workdir: Path,
+    queue_name: str,
+    node_key: str,
+) -> Tuple[subprocess.Popen, subprocess.Popen, Any, Any]:
     logs_dir = workdir / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
     control_log = (logs_dir / "control.log").open("w", encoding="utf-8")
@@ -304,7 +364,7 @@ def start_services(workdir: Path, queue_name: str) -> Tuple[subprocess.Popen, su
             "CONTROL_DB_PATH": str(workdir / "control.db"),
             "ARTIFACT_ROOT": str(workdir / "artifacts"),
             "EXECUTION_CALLBACK_KEY": CALLBACK_KEY,
-            "RABBITMQ_URL": "amqp://guest:guest@127.0.0.1:5672/",
+            "RABBITMQ_URL": rabbitmq_url(),
         }
     )
 
@@ -315,10 +375,12 @@ def start_services(workdir: Path, queue_name: str) -> Tuple[subprocess.Popen, su
             "EXECUTOR_DB_PATH": str(workdir / "executor.db"),
             "EXECUTOR_WORKDIR": str(workdir / "workdir"),
             "EXECUTOR_QUEUE": queue_name,
+            "EXECUTOR_NODE_KEY": node_key,
+            "EXECUTOR_NODE_KEY_FILE": str(workdir / "executor.node.key"),
             "CONTROL_GRPC_TARGET": f"127.0.0.1:{GRPC_PORT}",
             "CONTROL_HTTP_BASE": CONTROL_BASE,
             "EXECUTION_CALLBACK_KEY": CALLBACK_KEY,
-            "RABBITMQ_URL": "amqp://guest:guest@127.0.0.1:5672/",
+            "RABBITMQ_URL": rabbitmq_url(),
         }
     )
 
@@ -388,11 +450,16 @@ def run_suite() -> Dict[str, Any]:
 
     runtime_dir = Path(tempfile.mkdtemp(prefix="araneae-go-schedule-suite-"))
     queue_name = f"suite-{uuid.uuid4().hex[:8]}"
+    node_key = f"suite-node-key-{uuid.uuid4().hex}"
 
-    control_proc, executor_proc, control_log, executor_log = start_services(runtime_dir, queue_name)
+    control_proc, executor_proc, control_log, executor_log = start_services(runtime_dir, queue_name, node_key)
     try:
         wait_http_ok(f"{CONTROL_BASE}/healthz", timeout_seconds=100)
-        wait_http_ok(f"http://127.0.0.1:{EXECUTOR_PORT}/healthz", timeout_seconds=100)
+        wait_http_ok(
+            f"http://127.0.0.1:{EXECUTOR_PORT}/healthz",
+            timeout_seconds=100,
+            headers={"X-Node-Key": node_key},
+        )
         wait_port_open("127.0.0.1", GRPC_PORT, timeout_seconds=90)
         time.sleep(1.5)
 
@@ -401,6 +468,9 @@ def run_suite() -> Dict[str, Any]:
         if not token:
             raise SuiteError("Login did not return token")
 
+        node = register_executor_node(token, node_key, queue_name)
+        node_queue = node.get("celery_queue") or queue_name
+
         project = api_json("POST", "/projects", token=token, payload={"name": f"suite-project-{uuid.uuid4().hex[:8]}"})
         project_id = project["id"]
 
@@ -408,10 +478,10 @@ def run_suite() -> Dict[str, Any]:
         version = api_multipart_upload(path=f"/projects/{project_id}/upload", token=token, file_name=zip_name, file_bytes=zip_data)
         version_id = version["id"]
 
-        task_single = create_task(token, project_id, version_id, queue_name, "suite-single-task", "single")
-        task_chain_1 = create_task(token, project_id, version_id, queue_name, "suite-chain-task-1", "chain1")
-        task_chain_2 = create_task(token, project_id, version_id, queue_name, "suite-chain-task-2", "chain2")
-        task_cron = create_task(token, project_id, version_id, queue_name, "suite-cron-task", "cron")
+        task_single = create_task(token, project_id, version_id, node_queue, "suite-single-task", "single")
+        task_chain_1 = create_task(token, project_id, version_id, node_queue, "suite-chain-task-1", "chain1")
+        task_chain_2 = create_task(token, project_id, version_id, node_queue, "suite-chain-task-2", "chain2")
+        task_cron = create_task(token, project_id, version_id, node_queue, "suite-cron-task", "cron")
 
         # 1) Single-task schedule create + update + trigger
         single_schedule = api_json(
@@ -428,7 +498,7 @@ def run_suite() -> Dict[str, Any]:
                         {
                             "task_id": task_single["id"],
                             "trigger": "api",
-                            "node": [queue_name],
+                            "node": [node_queue],
                         }
                     ],
                 },
@@ -472,12 +542,12 @@ def run_suite() -> Dict[str, Any]:
                         {
                             "task_id": task_chain_1["id"],
                             "trigger": "api",
-                            "node": [queue_name],
+                            "node": [node_queue],
                         },
                         {
                             "task_id": task_chain_2["id"],
                             "trigger": "previous",
-                            "node": [queue_name],
+                            "node": [node_queue],
                         },
                     ],
                 },
@@ -516,7 +586,7 @@ def run_suite() -> Dict[str, Any]:
                             "task_id": task_cron["id"],
                             "trigger": "crons",
                             "crons": "*/8 * * * * *",
-                            "node": [queue_name],
+                            "node": [node_queue],
                         }
                     ],
                 },
@@ -546,7 +616,8 @@ def run_suite() -> Dict[str, Any]:
         return {
             "ok": True,
             "runtime_dir": str(runtime_dir),
-            "queue": queue_name,
+            "queue": node_queue,
+            "node_id": node.get("id"),
             "checks": {
                 "single_schedule_create": "PASS",
                 "single_schedule_update": "PASS",

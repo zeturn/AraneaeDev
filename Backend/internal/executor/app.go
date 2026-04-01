@@ -13,8 +13,8 @@ import (
 	"araneae-go/gen/pb"
 	"araneae-go/internal/common"
 
-	"github.com/gofiber/fiber/v2"
 	"github.com/glebarez/sqlite"
+	"github.com/gofiber/fiber/v2"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -37,6 +37,9 @@ type App struct {
 func NewApp(cfg common.ExecutorConfig) (*App, error) {
 	log, err := zap.NewProduction()
 	if err != nil {
+		return nil, err
+	}
+	if err := ensureNodeAuthKey(&cfg); err != nil {
 		return nil, err
 	}
 	if err := os.MkdirAll(filepath.Dir(cfg.DBPath), 0o755); err != nil {
@@ -76,6 +79,10 @@ func NewApp(cfg common.ExecutorConfig) (*App, error) {
 		grpcClient: pb.NewArtifactServiceClient(grpcConn),
 		httpClient: &http.Client{Timeout: 20 * time.Second},
 	}
+	a.log.Info("executor node auth key ready",
+		zap.String("node_key", cfg.NodeAuthKey),
+		zap.String("node_key_file", cfg.NodeAuthKeyFile),
+	)
 	a.setupRoutes()
 	return a, nil
 }
@@ -111,8 +118,20 @@ func initRabbit(cfg common.ExecutorConfig) (*amqp.Connection, *amqp.Channel, err
 }
 
 func (a *App) setupRoutes() {
+	a.http.Use(a.nodeAuthMiddleware)
+
 	a.http.Get("/healthz", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{"status": "ok"})
+		return c.JSON(fiber.Map{
+			"status": "ok",
+			"queue":  a.cfg.RabbitQueue,
+		})
+	})
+
+	a.http.Get("/node/verify", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{
+			"status": "ok",
+			"queue":  a.cfg.RabbitQueue,
+		})
 	})
 }
 
@@ -216,7 +235,7 @@ func (a *App) processMessage(ctx context.Context, raw []byte) error {
 }
 
 func (a *App) executeTask(ctx context.Context, msg queueTaskMessage) (string, int, error) {
-	resp, err := a.grpcClient.GetArtifact(ctx, &pb.GetArtifactRequest{ProjectId: msg.ProjectID, VersionId: msg.VersionID})
+	resp, err := a.grpcClient.GetArtifact(a.withControlNodeAuth(ctx), &pb.GetArtifactRequest{ProjectId: msg.ProjectID, VersionId: msg.VersionID})
 	if err != nil {
 		return "", 1, err
 	}

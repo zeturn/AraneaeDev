@@ -335,8 +335,8 @@ const ApiService = {
         return apiClient.delete(`/teams/${teamId}/members/${userId}/`);
     },
     // Node
-    registerNodes(ip, name) {
-        return apiClient.post('/nodes/register/', {ip, name});
+    registerNodes(ip, name, pairKey) {
+        return apiClient.post('/nodes/register/', { ip, name, pair_key: pairKey });
     },
     discoverNodes(params = {}) {
         return apiClient.get('/nodes/discover/', {params});
