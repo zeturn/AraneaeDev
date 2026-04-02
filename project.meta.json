@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0.0",
+  "metadata_type": "project_meta",
+  "source_of_truth": "/workspaces/WorkPlace/PORT_CONVENTION.md",
+  "project": {
+    "number": "07",
+    "name": "Araneae",
+    "root_path": "/workspaces/WorkPlace/Araneae"
+  },
+  "features": {
+    "basaltpass_integration": {
+      "record_name": "Araneae OAuth Client",
+      "callback_url": "http://localhost:8107/api/auth/basaltpass/callback/"
+    }
+  },
+  "service_ports": [
+    {
+      "service": "controlnode_api",
+      "port": 8107,
+      "protocol": "http"
+    },
+    {
+      "service": "frontend_dev",
+      "port": 5109,
+      "protocol": "http"
+    },
+    {
+      "service": "execution_node",
+      "port": 4107,
+      "protocol": "http"
+    }
+  ]
+}
