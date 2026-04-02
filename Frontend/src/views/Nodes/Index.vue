@@ -144,9 +144,14 @@
 <script lang="ts" setup>
 import {ref, onMounted, onUnmounted, nextTick} from 'vue'
 import {useRoute} from 'vue-router'
-import * as echarts from 'echarts'
+import { PieChart } from 'echarts/charts'
+import { TooltipComponent } from 'echarts/components'
+import { use, init, type ECharts } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'
 import ApiService from '@/services/ApiService'
 import Node from '@/views/Nodes/Node.vue'
+
+use([PieChart, TooltipComponent, CanvasRenderer])
 
 const route = useRoute()
 const nodeId = route.params.id as string
@@ -154,9 +159,13 @@ const node = ref<any>(null)
 
 const cpuChartRef = ref<HTMLElement | null>(null)
 const memChartRef = ref<HTMLElement | null>(null)
-let cpuChart: echarts.ECharts | null = null
-let memChart: echarts.ECharts | null = null
+let cpuChart: ECharts | null = null
+let memChart: ECharts | null = null
 let poller: number | null = null
+const onWindowResize = () => {
+	cpuChart?.resize()
+	memChart?.resize()
+}
 
 // 运行时能力
 const capabilities = ref<any[]>([])
@@ -176,7 +185,7 @@ const fetchNode = async () => {
 // 初始化环形图：让 “Used” 扇区在中心显示，隐藏 “Free” 的标签
 const initCharts = () => {
 	if (cpuChartRef.value) {
-		cpuChart = echarts.init(cpuChartRef.value)
+		cpuChart = init(cpuChartRef.value)
 		cpuChart.setOption({
 			tooltip: {trigger: 'item'},
 			series: [{
@@ -207,7 +216,7 @@ const initCharts = () => {
 	}
 
 	if (memChartRef.value) {
-		memChart = echarts.init(memChartRef.value)
+		memChart = init(memChartRef.value)
 		memChart.setOption({
 			tooltip: {trigger: 'item'},
 			series: [{
@@ -243,23 +252,26 @@ const fetchResourceStatus = async () => {
 	try {
 		const res = await ApiService.getNodeStatus(nodeId)
 		const {cpu_percent, memory_used, memory_total} = res.data
-		const memPercent = Number(((memory_used / memory_total) * 100).toFixed(1))
+		const safeMemoryTotal = Number(memory_total) > 0 ? Number(memory_total) : 0
+		const rawMemPercent = safeMemoryTotal > 0 ? (Number(memory_used) / safeMemoryTotal) * 100 : 0
+		const memPercent = Number(Math.max(0, Math.min(100, rawMemPercent)).toFixed(1))
+		const safeCpuPercent = Number(Math.max(0, Math.min(100, Number(cpu_percent) || 0)).toFixed(1))
 
 		cpuChart?.setOption({
 			series: [{
 				data: [
 					{
-						value: cpu_percent,
+						value: safeCpuPercent,
 						name: 'Used',
 						label: {
 							show: true,
 							position: 'center',
-							formatter: `${cpu_percent}%`,
+							formatter: `${safeCpuPercent}%`,
 							fontSize: 20,
 							fontWeight: 'bold'
 						}
 					},
-					{value: 100 - cpu_percent, name: 'Free', label: {show: false}}
+					{value: 100 - safeCpuPercent, name: 'Free', label: {show: false}}
 				]
 			}]
 		})
@@ -358,6 +370,12 @@ const pollInstallJobs = async () => {
 			console.error('Error polling install status:', err)
 		}
 	}
+
+	const hasActiveJobs = Object.keys(installJobs.value).some(k => isInstalling(k))
+	if (!hasActiveJobs && installPoller !== null) {
+		clearInterval(installPoller)
+		installPoller = null
+	}
 }
 
 /**
@@ -408,15 +426,13 @@ onMounted(async () => {
 	// 加载已存储的运行时列表（不会主动探测节点）
 	await fetchCapabilities()
 	poller = window.setInterval(fetchResourceStatus, 5000)
-	window.addEventListener('resize', () => {
-		cpuChart?.resize()
-		memChart?.resize()
-	})
+	window.addEventListener('resize', onWindowResize)
 })
 
 onUnmounted(() => {
 	if (poller !== null) clearInterval(poller)
 	if (installPoller !== null) clearInterval(installPoller)
+	window.removeEventListener('resize', onWindowResize)
 	cpuChart?.dispose()
 	memChart?.dispose()
 })

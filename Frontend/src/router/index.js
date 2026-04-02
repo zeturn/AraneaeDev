@@ -139,11 +139,6 @@ const routes = [
         meta: {requiresAuth: true}
     },
     {
-        path: '/aprons/workplaces/:id/tasks',
-        component: () => import('../views/Workplaces/Tasks/Index.vue'),
-        meta: {requiresAuth: true}
-    },
-    {
         path: '/aprons/workplaces/:id/tasks/create',
         component: () => import('../views/Workplaces/Tasks/Create.vue'),
         meta: {requiresAuth: true}

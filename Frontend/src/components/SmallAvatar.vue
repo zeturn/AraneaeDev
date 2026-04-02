@@ -23,7 +23,7 @@
 
 <script>
 import ApiService from "@/services/ApiService.js"; // 引入ApiService
-import defaultAvatar from "@/assets/default_avatar.jpg";
+import defaultAvatar from "@/assets/default_avatar.svg";
 
 export default {
 	name: "SmallAvatar",

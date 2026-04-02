@@ -16,7 +16,15 @@ export default defineConfig({
           if (!id.includes('node_modules')) {
             return;
           }
-          if (id.includes('echarts')) {
+
+          const [, subPath = ''] = id.split('node_modules/');
+          const cleanSubPath = subPath.replace(/\\/g, '/');
+          const parts = cleanSubPath.split('/');
+          const packageName = parts[0].startsWith('@')
+            ? `${parts[0]}/${parts[1] || ''}`
+            : parts[0];
+
+          if (id.includes('echarts') || id.includes('zrender')) {
             return 'vendor-echarts';
           }
           if (id.includes('element-plus')) {
@@ -28,6 +36,16 @@ export default defineConfig({
           if (id.includes('axios')) {
             return 'vendor-axios';
           }
+          if (packageName === '@popperjs/core') {
+            return 'vendor-popper';
+          }
+          if (packageName === 'lodash-es') {
+            return 'vendor-lodash';
+          }
+          if (packageName === '@ctrl/tinycolor') {
+            return 'vendor-tinycolor';
+          }
+
           return 'vendor-misc';
         },
       },

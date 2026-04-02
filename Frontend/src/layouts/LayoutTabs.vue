@@ -34,7 +34,7 @@ import {
   RouteLocationNormalizedLoaded,
   RouteLocationMatched
 } from 'vue-router'
-import {TabsPaneContext} from 'element-plus'
+import type {TabsPaneContext} from 'element-plus'
 import {Refresh} from '@element-plus/icons-vue'
 import useRouteCache from '@/hooks/useRouteCache'
 import useLayoutStore from '@/store/layout'

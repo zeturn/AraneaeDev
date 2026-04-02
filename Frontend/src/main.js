@@ -6,8 +6,14 @@
 // src/main.js
 import { createApp } from 'vue'
 import {createPinia} from 'pinia'
-import ElementPlus from 'element-plus'
-import 'element-plus/dist/index.css'
+import { ElIcon, ElMenu, ElMenuItem, ElOption, ElSelect, ElTabPane, ElTabs } from 'element-plus'
+import 'element-plus/es/components/icon/style/css'
+import 'element-plus/es/components/menu/style/css'
+import 'element-plus/es/components/menu-item/style/css'
+import 'element-plus/es/components/option/style/css'
+import 'element-plus/es/components/select/style/css'
+import 'element-plus/es/components/tab-pane/style/css'
+import 'element-plus/es/components/tabs/style/css'
 import './style.css'
 import App from './App.vue'
 import Router from './router'
@@ -15,7 +21,13 @@ import {configKeepScroll} from '@/hooks/useKeepScroll'
 
 const app = createApp(App)
 app.use(createPinia())
-app.use(ElementPlus)
+app.use(ElIcon)
+app.use(ElMenu)
+app.use(ElMenuItem)
+app.use(ElOption)
+app.use(ElSelect)
+app.use(ElTabPane)
+app.use(ElTabs)
 app.use(Router)
 app.mount('#app')
 
