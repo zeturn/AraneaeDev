@@ -2,9 +2,11 @@ package control
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -18,6 +20,9 @@ import (
 
 	"araneae-go/gen/pb"
 	"araneae-go/internal/common"
+	"araneae-go/internal/control/contracts"
+	"araneae-go/internal/control/infra/netx"
+	"araneae-go/internal/control/security/password"
 
 	"github.com/glebarez/sqlite"
 	"github.com/gofiber/fiber/v2"
@@ -57,25 +62,79 @@ var errQueueUnavailable = errors.New("task queue publisher unavailable")
 
 const maxArtifactUploadBytes = 50 * 1024 * 1024
 
-func validateSecurityConfig(cfg common.ControlConfig) error {
+func randomSecret(byteLen int) (string, error) {
+	b := make([]byte, byteLen)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+func isWeakSecret(value string, minLen int, denyList ...string) bool {
+	v := strings.TrimSpace(value)
+	if len(v) < minLen {
+		return true
+	}
+	for _, denied := range denyList {
+		if v == denied {
+			return true
+		}
+	}
+	return false
+}
+
+func validateSecurityConfig(cfg *common.ControlConfig, log *zap.Logger) error {
+	cfg.JWTSecret = strings.TrimSpace(cfg.JWTSecret)
+	cfg.ExecutionAPIKey = strings.TrimSpace(cfg.ExecutionAPIKey)
+	cfg.InitAdminPassword = strings.TrimSpace(cfg.InitAdminPassword)
+	cfg.NodeVerifyScheme = strings.ToLower(strings.TrimSpace(cfg.NodeVerifyScheme))
+	if cfg.NodeVerifyScheme == "" {
+		cfg.NodeVerifyScheme = "http"
+	}
+
 	isProd := strings.EqualFold(strings.TrimSpace(cfg.Environment), "production")
+	if isWeakSecret(cfg.JWTSecret, 24, "change-me") {
+		if isProd {
+			return errors.New("CONTROL_JWT_SECRET is missing or too weak for production")
+		}
+		secret, err := randomSecret(32)
+		if err != nil {
+			return fmt.Errorf("generate development CONTROL_JWT_SECRET failed: %w", err)
+		}
+		cfg.JWTSecret = secret
+		log.Warn("CONTROL_JWT_SECRET is missing/weak; generated an ephemeral development secret")
+	}
+
+	if isWeakSecret(cfg.ExecutionAPIKey, 24, "change-me-callback") {
+		if isProd {
+			return errors.New("EXECUTION_CALLBACK_KEY is missing or too weak for production")
+		}
+		secret, err := randomSecret(32)
+		if err != nil {
+			return fmt.Errorf("generate development EXECUTION_CALLBACK_KEY failed: %w", err)
+		}
+		cfg.ExecutionAPIKey = secret
+		log.Warn("EXECUTION_CALLBACK_KEY is missing/weak; generated an ephemeral development key")
+	}
+
+	if isWeakSecret(cfg.InitAdminPassword, 12, "admin123") {
+		if isProd {
+			return errors.New("INIT_ADMIN_PASSWORD is missing or too weak for production")
+		}
+		password, err := randomSecret(18)
+		if err != nil {
+			return fmt.Errorf("generate development INIT_ADMIN_PASSWORD failed: %w", err)
+		}
+		cfg.InitAdminPassword = password
+		log.Warn("INIT_ADMIN_PASSWORD is missing/weak; generated an ephemeral development admin password", zap.String("generated_admin_password", password))
+	}
+
 	if !isProd {
 		return nil
 	}
 
-	jwtSecret := strings.TrimSpace(cfg.JWTSecret)
-	if jwtSecret == "" || jwtSecret == "change-me" || len(jwtSecret) < 24 {
-		return errors.New("CONTROL_JWT_SECRET is missing or too weak for production")
-	}
-
-	callbackKey := strings.TrimSpace(cfg.ExecutionAPIKey)
-	if callbackKey == "" || callbackKey == "change-me-callback" || len(callbackKey) < 24 {
-		return errors.New("EXECUTION_CALLBACK_KEY is missing or too weak for production")
-	}
-
-	adminPassword := strings.TrimSpace(cfg.InitAdminPassword)
-	if adminPassword == "" || adminPassword == "admin123" || len(adminPassword) < 12 {
-		return errors.New("INIT_ADMIN_PASSWORD is missing or too weak for production")
+	if cfg.NodeVerifyScheme != "https" {
+		return errors.New("CONTROL_NODE_VERIFY_SCHEME must be https for production")
 	}
 
 	if !cfg.GRPCTLSEnabled {
@@ -134,7 +193,7 @@ func NewApp(cfg common.ControlConfig) (*App, error) {
 		return nil, err
 	}
 
-	if err := validateSecurityConfig(cfg); err != nil {
+	if err := validateSecurityConfig(&cfg, log); err != nil {
 		return nil, err
 	}
 
@@ -188,7 +247,7 @@ func NewApp(cfg common.ControlConfig) (*App, error) {
 func (a *App) Run(ctx context.Context) error {
 	a.cron.Start()
 
-	grpcLis, err := netListen("tcp", a.cfg.GRPCAddr)
+	grpcLis, err := netx.Listen("tcp", a.cfg.GRPCAddr)
 	if err != nil {
 		return err
 	}
@@ -245,7 +304,7 @@ func (a *App) seedAdmin() error {
 	if adminPassword == "" {
 		return errors.New("INIT_ADMIN_PASSWORD is required when seeding admin user")
 	}
-	hash, err := hashPassword(adminPassword)
+	hash, err := password.Hash(adminPassword)
 	if err != nil {
 		return err
 	}
@@ -352,7 +411,7 @@ func (a *App) publishRun(taskID, scheduleID, source, projectID, versionID, entry
 		return nil, errQueueUnavailable
 	}
 
-	payload := queueTaskMessage{
+	payload := contracts.QueueTaskMessage{
 		RunID:        run.ID,
 		TaskID:       taskID,
 		ProjectID:    projectID,

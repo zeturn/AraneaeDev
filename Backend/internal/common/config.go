@@ -14,6 +14,7 @@ type ControlConfig struct {
 	GRPCTLSCertFile     string
 	GRPCTLSKeyFile      string
 	GRPCTLSClientCAFile string
+	NodeVerifyScheme    string
 	DBPath              string
 	RabbitURL           string
 	RabbitExchange      string
@@ -41,6 +42,7 @@ type ExecutorConfig struct {
 	ExecutorGRPCTLSKeyFile   string
 	ControlHTTPBase          string
 	ControlCallbackKey       string
+	TaskTimeoutSeconds       int
 	WorkDir                  string
 }
 
@@ -88,13 +90,14 @@ func LoadControlConfig() ControlConfig {
 		GRPCTLSCertFile:     GetEnv("CONTROL_GRPC_TLS_CERT_FILE", ""),
 		GRPCTLSKeyFile:      GetEnv("CONTROL_GRPC_TLS_KEY_FILE", ""),
 		GRPCTLSClientCAFile: GetEnv("CONTROL_GRPC_TLS_CLIENT_CA_FILE", ""),
+		NodeVerifyScheme:    GetEnv("CONTROL_NODE_VERIFY_SCHEME", "http"),
 		DBPath:              GetEnv("CONTROL_DB_PATH", "./data/control.db"),
 		RabbitURL:           GetEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
 		RabbitExchange:      GetEnv("RABBITMQ_EXCHANGE", "tasks.direct"),
-		InitAdminPassword:   GetEnv("INIT_ADMIN_PASSWORD", "admin123"),
-		JWTSecret:           GetEnv("CONTROL_JWT_SECRET", "change-me"),
+		InitAdminPassword:   GetEnv("INIT_ADMIN_PASSWORD", ""),
+		JWTSecret:           GetEnv("CONTROL_JWT_SECRET", ""),
 		ArtifactRoot:        GetEnv("ARTIFACT_ROOT", "./data/artifacts"),
-		ExecutionAPIKey:     GetEnv("EXECUTION_CALLBACK_KEY", "change-me-callback"),
+		ExecutionAPIKey:     GetEnv("EXECUTION_CALLBACK_KEY", ""),
 		CORSAllowOrigins:    GetEnv("CONTROL_CORS_ALLOW_ORIGINS", "http://localhost:5109,http://127.0.0.1:5109"),
 	}
 }
@@ -116,7 +119,8 @@ func LoadExecutorConfig() ExecutorConfig {
 		ExecutorGRPCTLSCertFile:  GetEnv("EXECUTOR_GRPC_TLS_CERT_FILE", ""),
 		ExecutorGRPCTLSKeyFile:   GetEnv("EXECUTOR_GRPC_TLS_KEY_FILE", ""),
 		ControlHTTPBase:          GetEnv("CONTROL_HTTP_BASE", "http://localhost:8180"),
-		ControlCallbackKey:       GetEnv("EXECUTION_CALLBACK_KEY", "change-me-callback"),
+		ControlCallbackKey:       GetEnv("EXECUTION_CALLBACK_KEY", ""),
+		TaskTimeoutSeconds:       GetEnvInt("EXECUTOR_TASK_TIMEOUT_SECONDS", 1800),
 		WorkDir:                  GetEnv("EXECUTOR_WORKDIR", "./data/workdir"),
 	}
 }

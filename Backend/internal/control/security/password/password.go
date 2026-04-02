@@ -1,8 +1,8 @@
-package control
+package password
 
 import "golang.org/x/crypto/bcrypt"
 
-func hashPassword(raw string) (string, error) {
+func Hash(raw string) (string, error) {
 	h, err := bcrypt.GenerateFromPassword([]byte(raw), bcrypt.DefaultCost)
 	if err != nil {
 		return "", err
@@ -10,6 +10,6 @@ func hashPassword(raw string) (string, error) {
 	return string(h), nil
 }
 
-func verifyPassword(raw, hashed string) bool {
+func Verify(raw, hashed string) bool {
 	return bcrypt.CompareHashAndPassword([]byte(hashed), []byte(raw)) == nil
 }

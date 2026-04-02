@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"araneae-go/internal/executor/runtimeexec"
 )
 
 func zipWithEntries(t *testing.T, entries map[string]string) []byte {
@@ -30,7 +32,7 @@ func zipWithEntries(t *testing.T, entries map[string]string) []byte {
 
 func TestUnzipBytesRejectsTraversal(t *testing.T) {
 	archive := zipWithEntries(t, map[string]string{"../evil.sh": "echo hacked"})
-	err := unzipBytes(archive, t.TempDir())
+	err := runtimeexec.UnzipBytes(archive, t.TempDir())
 	if err == nil {
 		t.Fatal("expected traversal error, got nil")
 	}
@@ -39,7 +41,7 @@ func TestUnzipBytesRejectsTraversal(t *testing.T) {
 func TestUnzipBytesExtractsFiles(t *testing.T) {
 	dir := t.TempDir()
 	archive := zipWithEntries(t, map[string]string{"run.sh": "echo ok"})
-	if err := unzipBytes(archive, dir); err != nil {
+	if err := runtimeexec.UnzipBytes(archive, dir); err != nil {
 		t.Fatalf("unzip failed: %v", err)
 	}
 	p := filepath.Join(dir, "run.sh")
@@ -50,7 +52,7 @@ func TestUnzipBytesExtractsFiles(t *testing.T) {
 
 func TestRunCommand(t *testing.T) {
 	dir := t.TempDir()
-	out, code, err := runCommand(context.Background(), dir, "echo test-run")
+	out, code, err := runtimeexec.RunCommand(context.Background(), dir, "echo test-run")
 	if err != nil {
 		t.Fatalf("runCommand failed: %v", err)
 	}

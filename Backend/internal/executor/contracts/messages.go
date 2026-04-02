@@ -1,8 +1,8 @@
-package executor
+package contracts
 
 import "time"
 
-type queueTaskMessage struct {
+type QueueTaskMessage struct {
 	RunID        string `json:"run_id"`
 	TaskID       string `json:"task_id"`
 	ProjectID    string `json:"project_id"`
@@ -11,7 +11,7 @@ type queueTaskMessage struct {
 	NodeQueue    string `json:"node_queue"`
 }
 
-type callbackPayload struct {
+type CallbackPayload struct {
 	Status     string     `json:"status"`
 	Output     string     `json:"output"`
 	ExitCode   int        `json:"exit_code"`

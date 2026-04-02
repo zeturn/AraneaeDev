@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"araneae-go/internal/common"
+	"araneae-go/internal/control/security/password"
 
 	"github.com/glebarez/sqlite"
 	"github.com/gofiber/fiber/v2"
@@ -48,7 +49,7 @@ func newTestControlApp(t *testing.T) *App {
 		t.Fatalf("auto migrate: %v", err)
 	}
 
-	hash, err := hashPassword("admin123")
+	hash, err := password.Hash("admin123")
 	if err != nil {
 		t.Fatalf("hash password: %v", err)
 	}
@@ -233,7 +234,7 @@ func createProjectVersionTask(t *testing.T, app *App, token, cronExpr string) (c
 func TestUserCreate_AutoCreatesPersonalTeam(t *testing.T) {
 	app := newTestControlApp(t)
 
-	hash, err := hashPassword("alice123")
+	hash, err := password.Hash("alice123")
 	if err != nil {
 		t.Fatalf("hash password: %v", err)
 	}
@@ -269,7 +270,7 @@ func TestDeleteTeam_RejectsPersonalTeam(t *testing.T) {
 	app := newTestControlApp(t)
 	token := loginAndGetToken(t, app)
 
-	hash, err := hashPassword("bob123")
+	hash, err := password.Hash("bob123")
 	if err != nil {
 		t.Fatalf("hash password: %v", err)
 	}
@@ -343,7 +344,7 @@ func TestControlRoutes_RequireAuth(t *testing.T) {
 func TestControlRoutes_ViewerSeesOnlySelfInUsersList(t *testing.T) {
 	app := newTestControlApp(t)
 
-	hash, err := hashPassword("alice123")
+	hash, err := password.Hash("alice123")
 	if err != nil {
 		t.Fatalf("hash password: %v", err)
 	}
@@ -394,7 +395,7 @@ func TestControlRoutes_ViewerCannotReadOtherProject(t *testing.T) {
 		t.Fatalf("decode project: %v", err)
 	}
 
-	hash, err := hashPassword("viewer123")
+	hash, err := password.Hash("viewer123")
 	if err != nil {
 		t.Fatalf("hash password: %v", err)
 	}
@@ -447,7 +448,7 @@ func TestControlRoutes_ViewerCanReadOwnTeamButNotOthers(t *testing.T) {
 	}
 	otherTeamID := int(created["id"].(float64))
 
-	hash, err := hashPassword("teamviewer123")
+	hash, err := password.Hash("teamviewer123")
 	if err != nil {
 		t.Fatalf("hash password: %v", err)
 	}
@@ -489,7 +490,7 @@ func TestControlRoutes_WorkplaceMemberCanReadBoundProjectTaskAndSchedule(t *test
 	app := newTestControlApp(t)
 	adminToken := loginAndGetToken(t, app)
 
-	hash, err := hashPassword("workviewer123")
+	hash, err := password.Hash("workviewer123")
 	if err != nil {
 		t.Fatalf("hash password: %v", err)
 	}
@@ -590,7 +591,7 @@ func TestControlRoutes_OperatorCannotCreateProjectInForeignWorkplace(t *testing.
 	app := newTestControlApp(t)
 	adminToken := loginAndGetToken(t, app)
 
-	opHash, err := hashPassword("operator123")
+	opHash, err := password.Hash("operator123")
 	if err != nil {
 		t.Fatalf("hash operator password: %v", err)
 	}
@@ -606,7 +607,7 @@ func TestControlRoutes_OperatorCannotCreateProjectInForeignWorkplace(t *testing.
 	}
 	opToken := loginAndGetTokenFor(t, app, "operator_a", "operator123")
 
-	ownerHash, err := hashPassword("owner123")
+	ownerHash, err := password.Hash("owner123")
 	if err != nil {
 		t.Fatalf("hash owner password: %v", err)
 	}
@@ -866,7 +867,7 @@ func TestControlRoutes_CallbackIsIdempotentAfterTerminalState(t *testing.T) {
 func TestControlRoutes_ViewerCannotListNodes(t *testing.T) {
 	app := newTestControlApp(t)
 
-	hash, err := hashPassword("viewer-node-123")
+	hash, err := password.Hash("viewer-node-123")
 	if err != nil {
 		t.Fatalf("hash password: %v", err)
 	}

@@ -7,6 +7,9 @@
       <div v-if="loginError" class="text-red-500 bg-red-100 p-3 rounded mb-4 text-center">
         {{ loginError }}
       </div>
+      <div v-if="loginNotice" class="text-amber-700 bg-amber-100 p-3 rounded mb-4 text-center">
+        {{ loginNotice }}
+      </div>
 
       <form @submit.prevent="login">
         <div class="relative">
@@ -68,7 +71,14 @@ export default {
       usernameError: '',
       passwordError: '',
       loginError: '',
+      loginNotice: '',
     };
+  },
+  mounted() {
+    const reason = typeof this.$route.query.reason === 'string' ? this.$route.query.reason : '';
+    if (reason === 'session_expired') {
+      this.loginNotice = 'Session expired. Please sign in again.';
+    }
   },
   methods: {
     resolveNextRoute() {

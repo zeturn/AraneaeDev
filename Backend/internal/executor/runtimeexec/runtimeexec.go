@@ -1,4 +1,4 @@
-package executor
+package runtimeexec
 
 import (
 	"archive/zip"
@@ -14,12 +14,12 @@ import (
 	"strings"
 )
 
-func computeSHA256(data []byte) string {
+func ComputeSHA256(data []byte) string {
 	s := sha256.Sum256(data)
 	return hex.EncodeToString(s[:])
 }
 
-func unzipBytes(data []byte, dest string) error {
+func UnzipBytes(data []byte, dest string) error {
 	r, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return err
@@ -61,7 +61,7 @@ func extractZipEntry(f *zip.File, dest string) error {
 	return err
 }
 
-func runCommand(ctx context.Context, workDir, command string) (string, int, error) {
+func RunCommand(ctx context.Context, workDir, command string) (string, int, error) {
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
 		cmd = exec.CommandContext(ctx, "cmd", "/C", command)

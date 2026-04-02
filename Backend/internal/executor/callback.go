@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+
+	"araneae-go/internal/executor/contracts"
 )
 
-func (a *App) reportCallback(runID string, payload callbackPayload) error {
+func (a *App) reportCallback(runID string, payload contracts.CallbackPayload) error {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return err

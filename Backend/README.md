@@ -75,7 +75,7 @@
 
 1. 登录
 - POST /api/v1/auth/login
-- body: {"username":"admin","password":"admin123"}
+- body: {"username":"admin","password":"<INIT_ADMIN_PASSWORD>"}
 
 2. 创建项目
 - POST /api/v1/projects
@@ -107,7 +107,7 @@
 
 - 内置 JWT 鉴权
 - 角色控制：admin/operator/viewer
-- 默认管理员：admin / admin123（建议首次登录后修改）
+- 初始管理员密码来自 INIT_ADMIN_PASSWORD（生产环境必须显式设置强密码）
 - 执行端回调 Control 使用 X-Execution-Key
 - 工作节点 HTTP 端口请求需要携带 X-Node-Key
 - Control gRPC 拉制品请求需要携带节点密钥元数据（x-node-key）

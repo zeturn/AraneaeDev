@@ -19,12 +19,17 @@ export default {
     };
   },
   mounted() {
-    const params = new URLSearchParams(window.location.search);
-    const access = params.get('access');
-    const refresh = params.get('refresh');
-    const next = params.get('next') || '/aprons/workplaces';
+    const queryParams = new URLSearchParams(window.location.search);
+    const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : '';
+    const hashParams = new URLSearchParams(hash);
+    const access = queryParams.get('access') || hashParams.get('access');
+    const refresh = queryParams.get('refresh') || hashParams.get('refresh');
+    const next = queryParams.get('next') || hashParams.get('next') || '/aprons/workplaces';
     const safeNext = next.startsWith('/') ? next : '/aprons/workplaces';
-    const error = params.get('error');
+    const error = queryParams.get('error') || hashParams.get('error');
+
+    // Scrub sensitive query/hash token fragments from browser history ASAP.
+    window.history.replaceState({}, document.title, window.location.pathname);
 
     if (error) {
       this.error = `登录失败: ${error}`;

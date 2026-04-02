@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"araneae-go/internal/common"
+	"araneae-go/internal/control/contracts"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -64,7 +65,7 @@ func TestControlIntegration_TriggerQueueCallbackFlow(t *testing.T) {
 
 	select {
 	case delivery := <-msgCh:
-		var queued queueTaskMessage
+		var queued contracts.QueueTaskMessage
 		if err := json.Unmarshal(delivery.Body, &queued); err != nil {
 			t.Fatalf("decode queued message: %v", err)
 		}

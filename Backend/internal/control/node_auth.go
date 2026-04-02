@@ -42,7 +42,15 @@ func (a *App) verifyExecutorNodeKey(ip string, port int, pairKey string) (*nodeV
 		return nil, errors.New("pair_key is required")
 	}
 
-	url := fmt.Sprintf("http://%s:%d/node/verify", ip, port)
+	scheme := strings.ToLower(strings.TrimSpace(a.cfg.NodeVerifyScheme))
+	if scheme == "" {
+		scheme = "http"
+	}
+	if scheme != "http" && scheme != "https" {
+		return nil, errors.New("invalid CONTROL_NODE_VERIFY_SCHEME")
+	}
+
+	url := fmt.Sprintf("%s://%s:%d/node/verify", scheme, ip, port)
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("build executor verify request failed: %w", err)

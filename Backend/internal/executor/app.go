@@ -15,6 +15,9 @@ import (
 
 	"araneae-go/gen/pb"
 	"araneae-go/internal/common"
+	"araneae-go/internal/executor/contracts"
+	"araneae-go/internal/executor/runtimeexec"
+	"araneae-go/internal/executor/store"
 
 	"github.com/glebarez/sqlite"
 	"github.com/gofiber/fiber/v2"
@@ -38,8 +41,23 @@ type App struct {
 	httpClient *http.Client
 }
 
+const maxExecutorOutputBytes = 900 * 1024
+
+func truncateOutput(raw string, maxBytes int) string {
+	if maxBytes <= 0 || len(raw) <= maxBytes {
+		return raw
+	}
+	return raw[:maxBytes]
+}
+
 func validateExecutorSecurityConfig(cfg common.ExecutorConfig) error {
 	isProd := strings.EqualFold(strings.TrimSpace(cfg.Environment), "production")
+	if strings.TrimSpace(cfg.ControlCallbackKey) == "" {
+		return errors.New("EXECUTION_CALLBACK_KEY is required")
+	}
+	if cfg.TaskTimeoutSeconds <= 0 {
+		return errors.New("EXECUTOR_TASK_TIMEOUT_SECONDS must be greater than 0")
+	}
 	if !isProd {
 		return nil
 	}
@@ -48,6 +66,13 @@ func validateExecutorSecurityConfig(cfg common.ExecutorConfig) error {
 	}
 	if strings.TrimSpace(cfg.ControlGRPCTLSServerName) == "" {
 		return errors.New("EXECUTOR_CONTROL_GRPC_TLS_SERVER_NAME is required for production")
+	}
+	if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(cfg.ControlHTTPBase)), "https://") {
+		return errors.New("CONTROL_HTTP_BASE must use https:// for production")
+	}
+	callbackKey := strings.TrimSpace(cfg.ControlCallbackKey)
+	if callbackKey == "change-me-callback" || len(callbackKey) < 24 {
+		return errors.New("EXECUTION_CALLBACK_KEY is missing or too weak for production")
 	}
 	return nil
 }
@@ -99,6 +124,9 @@ func NewApp(cfg common.ExecutorConfig) (*App, error) {
 	if err := validateExecutorSecurityConfig(cfg); err != nil {
 		return nil, err
 	}
+	if cfg.TaskTimeoutSeconds <= 0 {
+		cfg.TaskTimeoutSeconds = 1800
+	}
 	if err := ensureNodeAuthKey(&cfg); err != nil {
 		return nil, err
 	}
@@ -112,7 +140,7 @@ func NewApp(cfg common.ExecutorConfig) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := db.AutoMigrate(&ExecutionRecord{}); err != nil {
+	if err := db.AutoMigrate(&store.ExecutionRecord{}); err != nil {
 		return nil, err
 	}
 
@@ -259,12 +287,12 @@ func (a *App) startConsumer(ctx context.Context) error {
 }
 
 func (a *App) processMessage(ctx context.Context, raw []byte) error {
-	var m queueTaskMessage
+	var m contracts.QueueTaskMessage
 	if err := json.Unmarshal(raw, &m); err != nil {
 		return err
 	}
 	startedAt := time.Now()
-	rec := ExecutionRecord{
+	rec := store.ExecutionRecord{
 		RunID:     m.RunID,
 		TaskID:    m.TaskID,
 		Status:    "running",
@@ -275,14 +303,19 @@ func (a *App) processMessage(ctx context.Context, raw []byte) error {
 	}
 
 	output, exitCode, execErr := a.executeTask(ctx, m)
+	output = truncateOutput(output, maxExecutorOutputBytes)
 	finishedAt := time.Now()
 	status := "success"
 	if execErr != nil {
 		status = "failed"
+		if errors.Is(execErr, context.DeadlineExceeded) {
+			execErr = fmt.Errorf("task execution timed out after %ds", a.cfg.TaskTimeoutSeconds)
+		}
 		output = fmt.Sprintf("%s\nerror: %v", output, execErr)
+		output = truncateOutput(output, maxExecutorOutputBytes)
 	}
 
-	if err := a.db.Model(&ExecutionRecord{}).Where("run_id = ?", m.RunID).Updates(map[string]interface{}{
+	if err := a.db.Model(&store.ExecutionRecord{}).Where("run_id = ?", m.RunID).Updates(map[string]interface{}{
 		"status":      status,
 		"output":      output,
 		"exit_code":   exitCode,
@@ -291,7 +324,7 @@ func (a *App) processMessage(ctx context.Context, raw []byte) error {
 		return err
 	}
 
-	return a.reportCallback(m.RunID, callbackPayload{
+	return a.reportCallback(m.RunID, contracts.CallbackPayload{
 		Status:     status,
 		Output:     output,
 		ExitCode:   exitCode,
@@ -300,15 +333,18 @@ func (a *App) processMessage(ctx context.Context, raw []byte) error {
 	})
 }
 
-func (a *App) executeTask(ctx context.Context, msg queueTaskMessage) (string, int, error) {
-	resp, err := a.grpcClient.GetArtifact(a.withControlNodeAuth(ctx), &pb.GetArtifactRequest{ProjectId: msg.ProjectID, VersionId: msg.VersionID})
+func (a *App) executeTask(ctx context.Context, msg contracts.QueueTaskMessage) (string, int, error) {
+	runCtx, cancel := context.WithTimeout(ctx, time.Duration(a.cfg.TaskTimeoutSeconds)*time.Second)
+	defer cancel()
+
+	resp, err := a.grpcClient.GetArtifact(a.withControlNodeAuth(runCtx), &pb.GetArtifactRequest{ProjectId: msg.ProjectID, VersionId: msg.VersionID})
 	if err != nil {
 		return "", 1, err
 	}
 	if len(resp.Content) == 0 {
 		return "", 1, errors.New("empty artifact content")
 	}
-	sha := computeSHA256(resp.Content)
+	sha := runtimeexec.ComputeSHA256(resp.Content)
 	if sha != resp.Sha256 {
 		return "", 1, fmt.Errorf("artifact checksum mismatch expected=%s actual=%s", resp.Sha256, sha)
 	}
@@ -316,8 +352,8 @@ func (a *App) executeTask(ctx context.Context, msg queueTaskMessage) (string, in
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
 		return "", 1, err
 	}
-	if err := unzipBytes(resp.Content, runDir); err != nil {
+	if err := runtimeexec.UnzipBytes(resp.Content, runDir); err != nil {
 		return "", 1, err
 	}
-	return runCommand(ctx, runDir, msg.EntryCommand)
+	return runtimeexec.RunCommand(runCtx, runDir, msg.EntryCommand)
 }

@@ -1,118 +1,94 @@
 services:
-  controlnode:
-    build:
-      context: ./ControlNode
-    mem_limit: 1536m
-    cpus: 1.0
-    env_file:
-      - ./.env
-    environment:
-      DJANGO_MIGRATE: "1"
-      DJANGO_DATABASE_URL: ${DJANGO_DATABASE_URL:?DJANGO_DATABASE_URL is required}
-    ports:
-      - "8107:8000"
-    restart: unless-stopped
-    volumes:
-      - ./data/controlnode/media:/app/media
-      - ./data/controlnode/repo:/app/Araneae_repo/repo
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-
-  controlnode-worker:
-    build:
-      context: ./ControlNode
-    mem_limit: 1536m
-    cpus: 1.0
-    env_file:
-      - ./.env
-    command: ["celery", "-A", "Araneae", "worker", "-l", "info"]
-    environment:
-      DJANGO_MIGRATE: "0"
-      DJANGO_DATABASE_URL: ${DJANGO_DATABASE_URL:?DJANGO_DATABASE_URL is required}
-    restart: unless-stopped
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-      controlnode:
-        condition: service_healthy
-
-  controlnode-beat:
-    build:
-      context: ./ControlNode
-    mem_limit: 512m
-    cpus: 0.5
-    env_file:
-      - ./.env
-    command:
-      [
-        "celery",
-        "-A",
-        "Araneae",
-        "beat",
-        "-l",
-        "info",
-        "--scheduler",
-        "django_celery_beat.schedulers:DatabaseScheduler"
-      ]
-    environment:
-      DJANGO_MIGRATE: "0"
-      DJANGO_DATABASE_URL: ${DJANGO_DATABASE_URL:?DJANGO_DATABASE_URL is required}
-    restart: unless-stopped
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-      controlnode:
-        condition: service_healthy
-
-  executionnode:
-    build:
-      context: ./ExecutionNode
-    mem_limit: 2g
-    cpus: 1.5
-    env_file:
-      - ./.env
-    environment:
-      EXECUTION_DATABASE_URL: ${EXECUTION_DATABASE_URL:?EXECUTION_DATABASE_URL is required}
-    ports:
-      - "4107:5001"
-    restart: unless-stopped
-    volumes:
-      - ./data/executionnode/logs:/app/logs
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-
-  front:
-    build:
-      context: ./Front
-    mem_limit: 512m
-    cpus: 0.5
-    env_file:
-      - ./.env
-    ports:
-      - "5109:80"
-    restart: unless-stopped
-    depends_on:
-      controlnode:
-        condition: service_healthy
-
   rabbitmq:
     image: rabbitmq:3-management-alpine
-    mem_limit: 512m
-    cpus: 0.5
     restart: unless-stopped
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:?RABBITMQ_USERNAME is required}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
     volumes:
-      - ./data/rabbitmq:/var/lib/rabbitmq
+      - ./Backend/data/rabbitmq:/var/lib/rabbitmq
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
       interval: 15s
       timeout: 10s
       retries: 8
       start_period: 20s
+
+  controlnode:
+    image: golang:1.25
+    working_dir: /app
+    command: sh -c "go mod download && go run ./cmd/control"
+    restart: unless-stopped
+    volumes:
+      - ./Backend:/app
+      - ./Backend/data:/data
+    environment:
+      ARANEAE_ENV: production
+      RABBITMQ_URL: ${CONTROL_RABBITMQ_URL:-amqp://${RABBITMQ_USERNAME:?RABBITMQ_USERNAME is required}:${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}@rabbitmq:5672/}
+      CONTROL_HTTP_ADDR: ${CONTROL_HTTP_ADDR:-:8180}
+      CONTROL_GRPC_ADDR: ${CONTROL_GRPC_ADDR:-:9190}
+      CONTROL_GRPC_TLS_ENABLED: "true"
+      CONTROL_GRPC_TLS_CERT_FILE: ${CONTROL_GRPC_TLS_CERT_FILE:?CONTROL_GRPC_TLS_CERT_FILE is required}
+      CONTROL_GRPC_TLS_KEY_FILE: ${CONTROL_GRPC_TLS_KEY_FILE:?CONTROL_GRPC_TLS_KEY_FILE is required}
+      CONTROL_GRPC_TLS_CLIENT_CA_FILE: ${CONTROL_GRPC_TLS_CLIENT_CA_FILE:-}
+      CONTROL_DB_PATH: ${CONTROL_DB_PATH:-/data/control.db}
+      ARTIFACT_ROOT: ${ARTIFACT_ROOT:-/data/artifacts}
+      INIT_ADMIN_PASSWORD: ${INIT_ADMIN_PASSWORD:?INIT_ADMIN_PASSWORD is required}
+      CONTROL_JWT_SECRET: ${CONTROL_JWT_SECRET:?CONTROL_JWT_SECRET is required}
+      EXECUTION_CALLBACK_KEY: ${EXECUTION_CALLBACK_KEY:?EXECUTION_CALLBACK_KEY is required}
+      CONTROL_NODE_VERIFY_SCHEME: https
+      CONTROL_CORS_ALLOW_ORIGINS: ${CONTROL_CORS_ALLOW_ORIGINS:?CONTROL_CORS_ALLOW_ORIGINS is required}
+    ports:
+      - "${CONTROL_HTTP_PORT:-8180}:8180"
+      - "${CONTROL_GRPC_PORT:-9190}:9190"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  executionnode:
+    image: golang:1.25
+    working_dir: /app
+    command: sh -c "go mod download && go run ./cmd/executor"
+    restart: unless-stopped
+    volumes:
+      - ./Backend:/app
+      - ./Backend/data:/data
+    environment:
+      ARANEAE_ENV: production
+      RABBITMQ_URL: ${EXECUTOR_RABBITMQ_URL:?EXECUTOR_RABBITMQ_URL is required}
+      EXECUTOR_HTTP_ADDR: ${EXECUTOR_HTTP_ADDR:-:4280}
+      EXECUTOR_DB_PATH: ${EXECUTOR_DB_PATH:-/data/executor.db}
+      EXECUTOR_WORKDIR: ${EXECUTOR_WORKDIR:-/data/workdir}
+      EXECUTOR_TASK_TIMEOUT_SECONDS: ${EXECUTOR_TASK_TIMEOUT_SECONDS:-1800}
+      EXECUTOR_QUEUE: ${EXECUTOR_QUEUE:-default}
+      CONTROL_GRPC_TARGET: ${EXECUTOR_CONTROL_GRPC_TARGET:-controlnode:9190}
+      EXECUTOR_CONTROL_GRPC_TLS_ENABLED: "true"
+      EXECUTOR_CONTROL_GRPC_TLS_CA_FILE: ${EXECUTOR_CONTROL_GRPC_TLS_CA_FILE:-}
+      EXECUTOR_CONTROL_GRPC_TLS_SERVER_NAME: ${EXECUTOR_CONTROL_GRPC_TLS_SERVER_NAME:?EXECUTOR_CONTROL_GRPC_TLS_SERVER_NAME is required}
+      EXECUTOR_GRPC_TLS_CERT_FILE: ${EXECUTOR_GRPC_TLS_CERT_FILE:-}
+      EXECUTOR_GRPC_TLS_KEY_FILE: ${EXECUTOR_GRPC_TLS_KEY_FILE:-}
+      CONTROL_HTTP_BASE: ${EXECUTOR_CONTROL_HTTP_BASE:?EXECUTOR_CONTROL_HTTP_BASE is required}
+      EXECUTION_CALLBACK_KEY: ${EXECUTION_CALLBACK_KEY:?EXECUTION_CALLBACK_KEY is required}
+    ports:
+      - "${EXECUTOR_HTTP_PORT:-4280}:4280"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      controlnode:
+        condition: service_started
+
+  front:
+    build:
+      context: ./Frontend
+      args:
+        VITE_BACKEND_BASE_URL: ${FRONT_VITE_BACKEND_BASE_URL:?FRONT_VITE_BACKEND_BASE_URL is required}
+        VITE_API_FLAVOR: ${FRONT_VITE_API_FLAVOR:-go}
+    restart: unless-stopped
+    ports:
+      - "${FRONT_HTTP_PORT:-5109}:80"
+    depends_on:
+      controlnode:
+        condition: service_started

@@ -1,185 +1,214 @@
-# Araneae 部署说明
+# Araneae 部署与使用指南
 
-本文档基于当前仓库结构（Backend + Frontend）提供可直接执行的 Docker 部署方法，覆盖以下两类场景：
+本指南面向当前仓库结构（Backend + Frontend），提供从测试环境到生产环境的完整部署路径，并给出验收与排障方法。
 
-- 单机一体化部署：前端 + 控制端 + 运行端 + RabbitMQ
-- 多机拆分部署：控制端机器（可含前端）与运行端机器分离
-
-## 1. 端口与组件
+## 1. 组件与端口
 
 - Frontend: 5109
-- Control HTTP: 8180
+- Control HTTP API: 8180
 - Control gRPC: 9190
 - Executor HTTP: 4280
-- RabbitMQ: 5672
+- RabbitMQ AMQP: 5672
 - RabbitMQ 管理台: 15672
 
-## 2. 部署方式总览
+## 2. 部署模式选择
 
-仓库根目录提供三份 Compose 文件：
+仓库根目录提供以下 Compose 文件：
 
-- docker-compose.yml: 单机一体化
-- docker-compose.control.yml: 控制端机器（controlnode + rabbitmq + front）
-- docker-compose.executor.yml: 运行端机器（executionnode）
+- docker-compose.yml: 单机一体化（本地联调/测试）
+- docker-compose.control.yml: 多机模式的控制端机器（control + rabbitmq + front）
+- docker-compose.executor.yml: 多机模式的执行端机器（executor）
+- docker-compose.prod.yml: 单机生产模板（强约束、必须显式安全参数）
 
-## 3. 单机一体化部署
+建议：
 
-在仓库根目录执行：
+- 本地功能验证: 使用 docker-compose.yml
+- 正式生产发布（单机）: 使用 docker-compose.prod.yml
+- 正式生产发布（多机）: 使用 docker-compose.control.yml + docker-compose.executor.yml
+
+## 3. 先决条件
+
+- Docker 24+ 与 Docker Compose v2
+- 机器时间同步（NTP）
+- 可访问镜像仓库
+- 如果启用 TLS：提前准备证书文件
+
+## 4. 本地单机快速启动（测试环境）
+
+### 4.1 准备最小环境变量
+
+Linux/macOS:
 
 ```bash
-docker compose up -d --build
+cat > .env.local <<'EOF'
+EXECUTION_CALLBACK_KEY=dev-callback-key-change-this
+EOF
 ```
 
-验活：
+PowerShell:
+
+```powershell
+@"
+EXECUTION_CALLBACK_KEY=dev-callback-key-change-this
+"@ | Set-Content -Path .env.local
+```
+
+### 4.2 启动
 
 ```bash
-curl http://127.0.0.1:5109
+docker compose --env-file .env.local up -d --build
+```
+
+### 4.3 验活
+
+```bash
 curl http://127.0.0.1:8180/healthz
+curl http://127.0.0.1:5109
 NODE_KEY=$(tr -d '\r\n' < Backend/data/executor.node.key)
 curl -H "X-Node-Key: $NODE_KEY" http://127.0.0.1:4280/healthz
 ```
 
-## 4. 多机拆分部署
+## 5. 单机生产部署（推荐使用 docker-compose.prod.yml）
 
-### 4.1 机器 A（控制端机器）
+### 5.1 创建生产环境文件
 
-1. 在仓库根目录复制环境模板：
+创建 .env.prod，至少包含：
+
+```env
+RABBITMQ_USERNAME=<strong-user>
+RABBITMQ_PASSWORD=<strong-password>
+
+INIT_ADMIN_PASSWORD=<strong-admin-password>
+CONTROL_JWT_SECRET=<long-random-secret>
+EXECUTION_CALLBACK_KEY=<long-random-shared-key>
+
+CONTROL_CORS_ALLOW_ORIGINS=https://<frontend-domain>
+FRONT_VITE_BACKEND_BASE_URL=https://<frontend-domain-or-api-domain>
+FRONT_VITE_API_FLAVOR=go
+
+CONTROL_GRPC_TLS_CERT_FILE=/data/certs/control-grpc.crt
+CONTROL_GRPC_TLS_KEY_FILE=/data/certs/control-grpc.key
+
+EXECUTOR_CONTROL_HTTP_BASE=https://<control-domain>
+EXECUTOR_CONTROL_GRPC_TLS_SERVER_NAME=<control-domain>
+```
+
+说明：
+
+- docker-compose.prod.yml 会强制要求关键变量，不满足会拒绝启动。
+- 生产模式默认启用 gRPC TLS，且节点配对默认使用 HTTPS。
+
+### 5.2 启动
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+```
+
+### 5.3 观察状态
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.prod ps
+docker compose -f docker-compose.prod.yml --env-file .env.prod logs -f controlnode executionnode front rabbitmq
+```
+
+## 6. 多机生产部署（控制端 + 执行端）
+
+## 6.1 机器 A（控制端）
+
+1. 复制模板：
 
 ```bash
 cp .env.control.example .env.control
 ```
 
-2. 编辑 .env.control，至少确认：
+2. 修改关键参数：
 
-- RABBITMQ_USERNAME
-- RABBITMQ_PASSWORD
+- RABBITMQ_USERNAME / RABBITMQ_PASSWORD
+- INIT_ADMIN_PASSWORD
+- CONTROL_JWT_SECRET
 - EXECUTION_CALLBACK_KEY
-- FRONT_VITE_BACKEND_BASE_URL
+- CONTROL_GRPC_TLS_CERT_FILE / CONTROL_GRPC_TLS_KEY_FILE
 - CONTROL_CORS_ALLOW_ORIGINS
+- FRONT_VITE_BACKEND_BASE_URL
 
-3. 启动控制端机器服务：
+3. 启动：
 
 ```bash
 docker compose -f docker-compose.control.yml --env-file .env.control up -d --build
 ```
 
-### 4.2 机器 B（运行端机器）
+## 6.2 机器 B（执行端）
 
-1. 在仓库根目录复制环境模板：
+1. 复制模板：
 
 ```bash
 cp .env.executor.example .env.executor
 ```
 
-2. 编辑 .env.executor，至少确认：
+2. 修改关键参数：
 
 - EXECUTOR_RABBITMQ_URL
 - EXECUTOR_CONTROL_GRPC_TARGET
+- EXECUTOR_CONTROL_GRPC_TLS_SERVER_NAME
 - EXECUTOR_CONTROL_HTTP_BASE
-- EXECUTION_CALLBACK_KEY
-- EXECUTOR_QUEUE
+- EXECUTION_CALLBACK_KEY（必须与控制端一致）
+- EXECUTOR_TASK_TIMEOUT_SECONDS
 
-3. 启动运行端：
+3. 启动：
 
 ```bash
 docker compose -f docker-compose.executor.yml --env-file .env.executor up -d --build
 ```
 
-### 4.3 鉴权模式下添加工作节点（必须执行）
+## 6.3 注册执行节点（必做）
 
-从当前版本开始，Control 与 Executor 之间默认采用节点密钥鉴权。工作节点只启动还不够，必须完成“注册绑定”。
+控制端和执行端启动后，还需要把执行节点注册到控制端。
 
-#### 步骤 1：获取工作节点密钥
-
-优先级如下：
-
-1. 若你在 .env.executor 中显式配置了 EXECUTOR_NODE_KEY，直接使用该值。
-2. 若未显式配置，Executor 启动后会自动生成密钥并写入 EXECUTOR_NODE_KEY_FILE。
-
-默认文件位置（按本仓库 Compose）：
-
-- 运行端机器仓库路径：Backend/data/executor.node.key
-
-读取示例：
+步骤 1：读取执行节点密钥
 
 ```bash
 NODE_KEY=$(tr -d '\r\n' < Backend/data/executor.node.key)
 echo "$NODE_KEY"
 ```
 
-#### 步骤 2：确认工作节点 HTTP 已开启鉴权
-
-不带密钥应返回 401：
+步骤 2：确认执行端健康检查鉴权生效
 
 ```bash
 curl -i http://<executor-ip>:4280/healthz
-```
-
-带密钥应返回 200：
-
-```bash
 curl -H "X-Node-Key: $NODE_KEY" http://<executor-ip>:4280/healthz
 ```
 
-#### 步骤 3：在控制端注册该工作节点
-
-先登录拿 token：
+步骤 3：登录控制端并注册节点
 
 ```bash
 TOKEN=$(curl -s http://<control-ip>:8180/api/v1/auth/login \
-	-H 'Content-Type: application/json' \
-	-d '{"username":"admin","password":"admin123"}' | jq -r '.token')
-```
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"<INIT_ADMIN_PASSWORD>"}' | jq -r '.token')
 
-注册节点（pair_key 必填）：
-
-```bash
 curl -s http://<control-ip>:8180/api/v1/nodes/register/ \
-	-H "Authorization: Bearer $TOKEN" \
-	-H 'Content-Type: application/json' \
-	-d "{\"ip\":\"<executor-ip>\",\"name\":\"executor-a\",\"port\":4280,\"grpc_port\":9190,\"pair_key\":\"$NODE_KEY\"}"
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d "{\"ip\":\"<executor-ip>\",\"name\":\"executor-a\",\"port\":4280,\"grpc_port\":9190,\"pair_key\":\"$NODE_KEY\"}"
 ```
 
-说明：
+## 7. 发布后验收清单
 
-- Control 会用 pair_key 主动调用 Executor 的 /node/verify 做握手。
-- 握手成功后，Control 才会保存该节点，并允许该节点通过 gRPC 拉取制品。
+- Frontend 首页可访问
+- Control 健康检查返回 200
+- Executor 健康检查不带 X-Node-Key 返回 401
+- Executor 健康检查带 X-Node-Key 返回 200
+- /api/v1/nodes/register/ 可以成功注册节点
+- 创建任务后可正常触发、执行并回调成功
 
-#### 步骤 4：在前端添加节点（可选）
+## 8. 常用运维命令
 
-前端路径：Aprons -> 节点 -> 创建节点。
-
-现在“创建节点”表单中必须填写“节点密钥”，其值与上面的 NODE_KEY 相同。
-
-#### 步骤 5：验证任务能路由到该节点
-
-创建任务时把 node_queue 设为该节点队列（通常与 EXECUTOR_QUEUE 一致），触发后检查任务运行记录为 success。
-
-## 5. 分机部署关键约束
-
-1. 所有运行端与控制端必须使用同一个 EXECUTION_CALLBACK_KEY。
-2. 运行端必须能访问控制端的 9190 和 8180。
-3. 运行端必须能访问共享 RabbitMQ 的 5672。
-4. 任务下发时 node_queue 需与运行端 EXECUTOR_QUEUE 对齐。
-5. 前端构建地址 FRONT_VITE_BACKEND_BASE_URL 应填写用户可访问的控制端地址，不建议在分机部署时使用 localhost。
-6. 每个运行端都必须完成节点注册，并提供正确 pair_key（节点密钥）。
-7. Executor 的开放 HTTP 端口请求需带 X-Node-Key，匿名请求会被拒绝。
-
-## 6. 推荐网络与安全策略
-
-- 控制端机器仅对必要网段开放 8180 与 9190。
-- RabbitMQ 5672 只对控制端与运行端网段开放。
-- EXECUTION_CALLBACK_KEY 使用高强度随机值并定期轮换。
-- 生产环境建议在控制端前放置反向代理与 HTTPS。
-
-## 7. 常用运维命令
-
-单机：
+单机生产：
 
 ```bash
-docker compose ps
-docker compose logs -f controlnode executionnode front rabbitmq
-docker compose down
+docker compose -f docker-compose.prod.yml --env-file .env.prod ps
+docker compose -f docker-compose.prod.yml --env-file .env.prod logs -f
+docker compose -f docker-compose.prod.yml --env-file .env.prod pull
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
 ```
 
 控制端机器：
@@ -189,18 +218,35 @@ docker compose -f docker-compose.control.yml --env-file .env.control ps
 docker compose -f docker-compose.control.yml --env-file .env.control logs -f controlnode front rabbitmq
 ```
 
-运行端机器：
+执行端机器：
 
 ```bash
 docker compose -f docker-compose.executor.yml --env-file .env.executor ps
 docker compose -f docker-compose.executor.yml --env-file .env.executor logs -f executionnode
 ```
 
-## 8. 验收清单
+## 9. 常见问题排查
 
-- Frontend 可访问。
-- Control /healthz 返回 200。
-- Executor /healthz 在带 X-Node-Key 时返回 200。
-- Executor /healthz 在不带 X-Node-Key 时返回 401。
-- 节点注册接口 /api/v1/nodes/register/ 在携带正确 pair_key 时成功。
-- 创建任务后可按预期路由到目标 queue 并完成回调。
+1. 节点注册失败（401 / pair_key rejected）
+
+- 检查执行端 NODE_KEY 是否读取正确
+- 检查注册请求中的 pair_key 是否有换行符
+- 检查执行端是否对外可达（4280）
+
+2. 任务触发后一直 queued
+
+- 检查 node_queue 与 EXECUTOR_QUEUE 是否一致
+- 检查执行端与 RabbitMQ 连通性
+- 检查执行端日志是否存在消费报错
+
+3. 回调失败（callback failed with status ...）
+
+- 检查 EXECUTION_CALLBACK_KEY 两端是否一致
+- 检查 EXECUTOR_CONTROL_HTTP_BASE 地址和协议是否正确
+- 检查控制端 8180/443 防火墙与反向代理规则
+
+4. gRPC 拉制品失败
+
+- 检查控制端 9190 端口开放
+- 检查 TLS 证书、SNI（EXECUTOR_CONTROL_GRPC_TLS_SERVER_NAME）配置
+- 检查节点是否已注册且处于 enabled/active
