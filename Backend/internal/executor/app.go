@@ -2,12 +2,15 @@ package executor
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"araneae-go/gen/pb"
@@ -18,6 +21,7 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"gorm.io/gorm"
 )
@@ -34,9 +38,65 @@ type App struct {
 	httpClient *http.Client
 }
 
+func validateExecutorSecurityConfig(cfg common.ExecutorConfig) error {
+	isProd := strings.EqualFold(strings.TrimSpace(cfg.Environment), "production")
+	if !isProd {
+		return nil
+	}
+	if !cfg.ControlGRPCTLSEnabled {
+		return errors.New("EXECUTOR_CONTROL_GRPC_TLS_ENABLED must be true for production")
+	}
+	if strings.TrimSpace(cfg.ControlGRPCTLSServerName) == "" {
+		return errors.New("EXECUTOR_CONTROL_GRPC_TLS_SERVER_NAME is required for production")
+	}
+	return nil
+}
+
+func buildControlGRPCTransportCredentials(cfg common.ExecutorConfig) (credentials.TransportCredentials, error) {
+	if !cfg.ControlGRPCTLSEnabled {
+		return insecure.NewCredentials(), nil
+	}
+
+	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12}
+	if serverName := strings.TrimSpace(cfg.ControlGRPCTLSServerName); serverName != "" {
+		tlsCfg.ServerName = serverName
+	}
+
+	caFile := strings.TrimSpace(cfg.ControlGRPCTLSCAFile)
+	if caFile != "" {
+		caPEM, err := os.ReadFile(caFile)
+		if err != nil {
+			return nil, fmt.Errorf("read executor grpc ca failed: %w", err)
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(caPEM) {
+			return nil, errors.New("parse executor grpc ca failed")
+		}
+		tlsCfg.RootCAs = pool
+	}
+
+	certFile := strings.TrimSpace(cfg.ExecutorGRPCTLSCertFile)
+	keyFile := strings.TrimSpace(cfg.ExecutorGRPCTLSKeyFile)
+	if (certFile == "") != (keyFile == "") {
+		return nil, errors.New("EXECUTOR_GRPC_TLS_CERT_FILE and EXECUTOR_GRPC_TLS_KEY_FILE must be provided together")
+	}
+	if certFile != "" {
+		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+		if err != nil {
+			return nil, fmt.Errorf("load executor grpc client cert/key failed: %w", err)
+		}
+		tlsCfg.Certificates = []tls.Certificate{cert}
+	}
+
+	return credentials.NewTLS(tlsCfg), nil
+}
+
 func NewApp(cfg common.ExecutorConfig) (*App, error) {
 	log, err := zap.NewProduction()
 	if err != nil {
+		return nil, err
+	}
+	if err := validateExecutorSecurityConfig(cfg); err != nil {
 		return nil, err
 	}
 	if err := ensureNodeAuthKey(&cfg); err != nil {
@@ -61,7 +121,14 @@ func NewApp(cfg common.ExecutorConfig) (*App, error) {
 		return nil, err
 	}
 
-	grpcConn, err := grpc.Dial(cfg.ControlGRPCAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	transportCreds, err := buildControlGRPCTransportCredentials(cfg)
+	if err != nil {
+		_ = rabbitCh.Close()
+		_ = rabbitConn.Close()
+		return nil, err
+	}
+
+	grpcConn, err := grpc.Dial(cfg.ControlGRPCAddr, grpc.WithTransportCredentials(transportCreds))
 	if err != nil {
 		_ = rabbitCh.Close()
 		_ = rabbitConn.Close()

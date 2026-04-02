@@ -460,13 +460,6 @@ func (a *App) getProject(c *fiber.Ctx) error {
 	if err := a.db.Where("id = ?", projectID).First(&project).Error; err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "project not found")
 	}
-	canWrite, accessErr := a.canWriteProject(c, project)
-	if accessErr != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
-	}
-	if !canWrite {
-		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
-	}
 	allowed, accessErr := a.canAccessProject(c, project)
 	if accessErr != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
@@ -844,13 +837,6 @@ func (a *App) getTask(c *fiber.Ctx) error {
 	var task common.Task
 	if err := a.db.Where("id = ?", taskID).First(&task).Error; err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "task not found")
-	}
-	canWrite, accessErr := a.canWriteTask(c, task)
-	if accessErr != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
-	}
-	if !canWrite {
-		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
 	}
 	allowed, accessErr := a.canAccessTask(c, task)
 	if accessErr != nil {
@@ -1262,13 +1248,6 @@ func (a *App) getSchedule(c *fiber.Ctx) error {
 	var schedule common.Schedule
 	if err := a.db.Where("id = ?", id).First(&schedule).Error; err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "schedule not found")
-	}
-	canWrite, accessErr := a.canWriteSchedule(c, schedule)
-	if accessErr != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
-	}
-	if !canWrite {
-		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
 	}
 	allowed, accessErr := a.canAccessSchedule(c, schedule)
 	if accessErr != nil {

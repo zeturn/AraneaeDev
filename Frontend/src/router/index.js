@@ -10,6 +10,7 @@
  */
 
 import {createRouter, createWebHistory} from 'vue-router';
+import { getAccessToken } from '@/utils/authStorage';
 
 const routes = [
 
@@ -272,7 +273,7 @@ const router = createRouter({
 
 function isAuthenticated() {
     // 假设你存储了一个 token 或其他标识用户已登录的标志
-    return !!localStorage.getItem('token');
+    return !!getAccessToken();
 }
 
 router.beforeEach((to, from, next) => {

@@ -10,6 +10,13 @@
  */
 
 import axios from 'axios';
+import {
+    clearStoredAuth,
+    getAccessToken,
+    getCsrfToken,
+    hasStoredAuth,
+    setCsrfTokenValue,
+} from '@/utils/authStorage';
 
 
 const apiFlavor = (import.meta.env.VITE_API_FLAVOR || 'django').toLowerCase();
@@ -21,7 +28,7 @@ const apiClient = axios.create({
     headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
-        'X-CSRFToken': localStorage.getItem('csrf_token') || '', // 添加CSRF令牌
+        'X-CSRFToken': getCsrfToken() || '', // 添加CSRF令牌
     },
 });
 
@@ -30,14 +37,14 @@ const setCsrfToken = async () => {
         return '';
     }
     try {
-        const token = localStorage.getItem('token');
+        const token = getAccessToken();
         const response = await axios.get(`${backendBase}/api/csrf-token/`, {
             headers: {
                 'Authorization': `Bearer ${token}`
             }
         });
         const csrf_token = response.data.csrfToken;
-        localStorage.setItem('csrf_token', csrf_token);
+        setCsrfTokenValue(csrf_token);
         document.cookie = `csrftoken=${csrf_token}; path=/; SameSite=Strict`;
         return csrf_token; // 返回新的 CSRF 令牌
     } catch (error) {
@@ -57,7 +64,7 @@ apiClient.interceptors.request.use(async config => {
         }
     }
 
-    const token = localStorage.getItem('token');
+    const token = getAccessToken();
     if (token) {
         config.headers.Authorization = `Bearer ${token}`;
     }
@@ -69,10 +76,7 @@ apiClient.interceptors.request.use(async config => {
 let hasTriggeredSessionLogout = false;
 
 const clearAuthState = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('refresh_token');
-    localStorage.removeItem('refresh');
-    localStorage.removeItem('csrf_token');
+    clearStoredAuth();
 
     if (typeof document !== 'undefined') {
         document.cookie = 'csrftoken=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Strict';
@@ -119,7 +123,7 @@ const redirectToLoginOnSessionExpiry = () => {
 apiClient.interceptors.response.use(
     response => response,
     error => {
-        const hadLocalAuth = !!localStorage.getItem('token') || !!localStorage.getItem('refresh_token');
+        const hadLocalAuth = hasStoredAuth();
         if (hadLocalAuth && isAuthExpiredResponse(error)) {
             clearAuthState();
             redirectToLoginOnSessionExpiry();
@@ -747,7 +751,7 @@ const ApiService = {
             withCredentials: true,
             headers: {
                 'Content-Type': 'multipart/form-data',
-                'X-CSRFToken': localStorage.getItem('csrf_token'), // 添加CSRF令牌
+                'X-CSRFToken': getCsrfToken(), // 添加CSRF令牌
             },
         });
     },
@@ -872,10 +876,7 @@ const ApiService = {
     },
     logout() {
         if (isGoApi) {
-            localStorage.removeItem('token');
-            localStorage.removeItem('refresh_token');
-            localStorage.removeItem('refresh');
-            localStorage.removeItem('csrf_token');
+            clearStoredAuth();
             return Promise.resolve({ data: { ok: true } });
         }
         return apiClient.post('/logout/');

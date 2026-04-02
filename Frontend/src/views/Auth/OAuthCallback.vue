@@ -9,6 +9,8 @@
 </template>
 
 <script>
+import { setAccessToken, setRefreshToken } from '@/utils/authStorage';
+
 export default {
   data() {
     return {
@@ -36,9 +38,9 @@ export default {
       return;
     }
 
-    localStorage.setItem('token', access);
+    setAccessToken(access);
     if (refresh) {
-      localStorage.setItem('refresh_token', refresh);
+      setRefreshToken(refresh);
     }
     this.$router.replace(safeNext);
   },

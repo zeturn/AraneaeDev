@@ -15,6 +15,7 @@
 
 <script>
 import ApiService from '@/services/ApiService';
+import { setAccessToken, setCsrfTokenValue } from '@/utils/authStorage';
 
 export default {
   data() {
@@ -31,8 +32,8 @@ export default {
       };
       ApiService.login(credentials)
           .then(response => {
-            localStorage.setItem('token', response.data.access);
-            localStorage.setItem('csrf_token', response.data.csrf);
+            setAccessToken(response.data.access);
+            setCsrfTokenValue(response.data.csrf);
             this.$router.push('/workplaces');
           })
           .catch(error => {

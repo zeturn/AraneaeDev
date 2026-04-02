@@ -13,7 +13,7 @@
           <input
             v-model="username"
             :class="['field-input block w-full mb-4 p-3', usernameError ? 'login-input-error' : '']"
-            placeholder="Email, phone, or username"
+            placeholder="Username"
             type="text"
           />
           <span v-if="usernameError" class="absolute right-2 top-3 text-sm text-red-500">
@@ -58,6 +58,7 @@
 
 <script>
 import ApiService from '@/services/ApiService';
+import { setAccessToken, setCsrfTokenValue, setRefreshToken } from '@/utils/authStorage';
 
 export default {
   data() {
@@ -111,11 +112,11 @@ export default {
             this.loginError = '登录响应缺少 token。';
             return;
           }
-          localStorage.setItem('token', token);
+          setAccessToken(token);
           if (response.data.refresh) {
-            localStorage.setItem('refresh_token', response.data.refresh);
+            setRefreshToken(response.data.refresh);
           }
-          localStorage.setItem('csrf_token', response.data.csrf || '');
+          setCsrfTokenValue(response.data.csrf || '');
           this.$router.push(this.resolveNextRoute());
         })
         .catch(error => {

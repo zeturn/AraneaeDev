@@ -2,6 +2,8 @@ package control
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -25,6 +27,7 @@ import (
 	"github.com/robfig/cron/v3"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"gorm.io/gorm"
 )
 
@@ -75,7 +78,54 @@ func validateSecurityConfig(cfg common.ControlConfig) error {
 		return errors.New("INIT_ADMIN_PASSWORD is missing or too weak for production")
 	}
 
+	if !cfg.GRPCTLSEnabled {
+		return errors.New("CONTROL_GRPC_TLS_ENABLED must be true for production")
+	}
+	if strings.TrimSpace(cfg.GRPCTLSCertFile) == "" || strings.TrimSpace(cfg.GRPCTLSKeyFile) == "" {
+		return errors.New("CONTROL_GRPC_TLS_CERT_FILE and CONTROL_GRPC_TLS_KEY_FILE are required for production")
+	}
+
 	return nil
+}
+
+func (a *App) buildControlGRPCServerOptions() ([]grpc.ServerOption, error) {
+	cfg := a.cfg
+	opts := []grpc.ServerOption{grpc.UnaryInterceptor(a.nodeAuthUnaryInterceptor)}
+	if !cfg.GRPCTLSEnabled {
+		return opts, nil
+	}
+
+	certFile := strings.TrimSpace(cfg.GRPCTLSCertFile)
+	keyFile := strings.TrimSpace(cfg.GRPCTLSKeyFile)
+	if certFile == "" || keyFile == "" {
+		return nil, errors.New("CONTROL_GRPC_TLS_CERT_FILE and CONTROL_GRPC_TLS_KEY_FILE are required when CONTROL_GRPC_TLS_ENABLED=true")
+	}
+
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return nil, fmt.Errorf("load control grpc tls cert/key failed: %w", err)
+	}
+	tlsCfg := &tls.Config{
+		MinVersion:   tls.VersionTLS12,
+		Certificates: []tls.Certificate{cert},
+	}
+
+	clientCAFile := strings.TrimSpace(cfg.GRPCTLSClientCAFile)
+	if clientCAFile != "" {
+		caPEM, err := os.ReadFile(clientCAFile)
+		if err != nil {
+			return nil, fmt.Errorf("read control grpc client ca failed: %w", err)
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(caPEM) {
+			return nil, errors.New("parse control grpc client ca failed")
+		}
+		tlsCfg.ClientCAs = pool
+		tlsCfg.ClientAuth = tls.RequireAndVerifyClientCert
+	}
+
+	opts = append(opts, grpc.Creds(credentials.NewTLS(tlsCfg)))
+	return opts, nil
 }
 
 func NewApp(cfg common.ControlConfig) (*App, error) {
@@ -142,7 +192,11 @@ func (a *App) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	a.grpcSrv = grpc.NewServer(grpc.UnaryInterceptor(a.nodeAuthUnaryInterceptor))
+	grpcOpts, err := a.buildControlGRPCServerOptions()
+	if err != nil {
+		return err
+	}
+	a.grpcSrv = grpc.NewServer(grpcOpts...)
 	pb.RegisterArtifactServiceServer(a.grpcSrv, a)
 	go func() {
 		a.log.Info("control grpc started", zap.String("addr", a.cfg.GRPCAddr))

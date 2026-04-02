@@ -23,6 +23,7 @@
 
 <script>
 import ApiService from "@/services/ApiService";
+import { clearStoredAuth } from '@/utils/authStorage';
 
 export default {
   name: "Logout",
@@ -39,10 +40,7 @@ export default {
         console.error("Logout failed:", error.response ? error.response.data : error.message);
       } finally {
         // 无论请求成功与否，都清理本地存储
-        localStorage.removeItem("token");
-        localStorage.removeItem("csrf_token");
-        localStorage.removeItem("refresh_token");
-        localStorage.removeItem("refresh");
+        clearStoredAuth();
         this.loading = false; // 停止加载
         setTimeout(() => {
           this.$router.push("/login");

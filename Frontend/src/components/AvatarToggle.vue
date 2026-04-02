@@ -53,6 +53,7 @@
 import {onBeforeUnmount, onMounted, ref} from 'vue';
 import ApiService from '@/services/ApiService';
 import SmallAvatar from '@/components/SmallAvatar.vue';
+import { getAccessToken } from '@/utils/authStorage';
 
 const menuOpen = ref(false);
 const menuRef = ref(null);
@@ -73,7 +74,7 @@ const decodeJwtPayload = token => {
 };
 
 const fillUserFromToken = () => {
-  const token = localStorage.getItem('token');
+  const token = getAccessToken();
   const payload = decodeJwtPayload(token);
   if (!payload) {
     return;
