@@ -23,6 +23,14 @@ type ControlConfig struct {
 	ArtifactRoot        string
 	ExecutionAPIKey     string
 	CORSAllowOrigins    string
+	FrontendBaseURL     string
+	BasaltBaseURL       string
+	BasaltOAuthEnabled  bool
+	BasaltClientID      string
+	BasaltClientSecret  string
+	BasaltRedirectURI   string
+	BasaltScope         string
+	BasaltCallbackPath  string
 }
 
 type ExecutorConfig struct {
@@ -99,6 +107,14 @@ func LoadControlConfig() ControlConfig {
 		ArtifactRoot:        GetEnv("ARTIFACT_ROOT", "./data/artifacts"),
 		ExecutionAPIKey:     GetEnv("EXECUTION_CALLBACK_KEY", ""),
 		CORSAllowOrigins:    GetEnv("CONTROL_CORS_ALLOW_ORIGINS", "http://localhost:5109,http://127.0.0.1:5109"),
+		FrontendBaseURL:     GetEnv("FRONTEND_BASE_URL", "http://localhost:5109"),
+		BasaltBaseURL:       GetEnv("BASALTPASS_BASE_URL", "http://localhost:8101"),
+		BasaltOAuthEnabled:  GetEnvBool("BASALTPASS_OAUTH_ENABLED", false),
+		BasaltClientID:      GetEnv("BASALTPASS_OAUTH_CLIENT_ID", ""),
+		BasaltClientSecret:  GetEnv("BASALTPASS_OAUTH_CLIENT_SECRET", ""),
+		BasaltRedirectURI:   GetEnv("BASALTPASS_OAUTH_REDIRECT_URI", "http://localhost:8180/api/auth/basaltpass/callback/"),
+		BasaltScope:         GetEnv("BASALTPASS_OAUTH_SCOPE", "openid profile email"),
+		BasaltCallbackPath:  GetEnv("BASALTPASS_FRONTEND_CALLBACK_PATH", "/oauth/callback"),
 	}
 }
 

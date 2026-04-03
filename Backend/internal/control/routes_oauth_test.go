@@ -1,0 +1,145 @@
+package control
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"testing"
+)
+
+func TestBasaltPassLoginRedirectsToAuthorizeURL(t *testing.T) {
+	app := newTestControlApp(t)
+	app.cfg.BasaltOAuthEnabled = true
+	app.cfg.BasaltBaseURL = "http://basalt.example"
+	app.cfg.BasaltClientID = "client-123"
+	app.cfg.BasaltRedirectURI = "http://localhost:8180/api/auth/basaltpass/callback/"
+	app.cfg.BasaltScope = "openid profile email"
+
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/basaltpass/login/?next=%2Faprons%2Fworkplaces", nil)
+	resp, err := app.http.Test(req, -1)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusFound {
+		t.Fatalf("expected 302, got %d", resp.StatusCode)
+	}
+
+	location, err := url.Parse(resp.Header.Get("Location"))
+	if err != nil {
+		t.Fatalf("parse location: %v", err)
+	}
+	if got := location.Scheme + "://" + location.Host + location.Path; got != "http://basalt.example/api/v1/oauth/authorize" {
+		t.Fatalf("unexpected redirect target: %s", got)
+	}
+
+	query := location.Query()
+	if query.Get("client_id") != "client-123" {
+		t.Fatalf("unexpected client_id: %s", query.Get("client_id"))
+	}
+	if query.Get("redirect_uri") != "http://localhost:8180/api/auth/basaltpass/callback/" {
+		t.Fatalf("unexpected redirect_uri: %s", query.Get("redirect_uri"))
+	}
+	if query.Get("code_challenge") == "" {
+		t.Fatal("missing code_challenge")
+	}
+	if query.Get("state") == "" {
+		t.Fatal("missing state")
+	}
+
+	cookies := resp.Cookies()
+	if len(cookies) == 0 {
+		t.Fatal("expected oauth cookies to be set")
+	}
+}
+
+func TestBasaltPassCallbackRedirectsToFrontendCallback(t *testing.T) {
+	fakeBasalt := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/oauth/token":
+			if err := r.ParseForm(); err != nil {
+				t.Fatalf("parse form: %v", err)
+			}
+			if r.Form.Get("code") != "code-123" {
+				t.Fatalf("unexpected code: %s", r.Form.Get("code"))
+			}
+			if r.Form.Get("code_verifier") != "verifier-123" {
+				t.Fatalf("unexpected verifier: %s", r.Form.Get("code_verifier"))
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "bp-access-token"})
+		case "/api/v1/oauth/userinfo":
+			if got := r.Header.Get("Authorization"); got != "Bearer bp-access-token" {
+				t.Fatalf("unexpected authorization header: %s", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"sub": "user-subject-1"})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer fakeBasalt.Close()
+
+	app := newTestControlApp(t)
+	app.cfg.BasaltOAuthEnabled = true
+	app.cfg.BasaltBaseURL = fakeBasalt.URL
+	app.cfg.BasaltClientID = "client-123"
+	app.cfg.BasaltClientSecret = "secret-123"
+	app.cfg.BasaltRedirectURI = "http://localhost:8180/api/auth/basaltpass/callback/"
+	app.cfg.BasaltScope = "openid profile email"
+	app.cfg.FrontendBaseURL = "http://localhost:5109"
+	app.cfg.BasaltCallbackPath = "/oauth/callback"
+
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/basaltpass/callback/?code=code-123&state=state-123", nil)
+	req.AddCookie(&http.Cookie{Name: basaltStateCookie, Value: "state-123"})
+	req.AddCookie(&http.Cookie{Name: basaltVerifierCookie, Value: "verifier-123"})
+	req.AddCookie(&http.Cookie{Name: basaltNextCookie, Value: "/aprons/workplaces"})
+
+	resp, err := app.http.Test(req, -1)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusFound {
+		t.Fatalf("expected 302, got %d", resp.StatusCode)
+	}
+
+	location, err := url.Parse(resp.Header.Get("Location"))
+	if err != nil {
+		t.Fatalf("parse redirect location: %v", err)
+	}
+	if got := location.Scheme + "://" + location.Host + location.Path; got != "http://localhost:5109/oauth/callback" {
+		t.Fatalf("unexpected frontend callback: %s", got)
+	}
+	if location.Query().Get("next") != "/aprons/workplaces" {
+		t.Fatalf("unexpected next: %s", location.Query().Get("next"))
+	}
+
+	issuedToken := location.Query().Get("access")
+	if issuedToken == "" {
+		t.Fatal("missing access token in redirect")
+	}
+	claims, err := app.parseToken(issuedToken)
+	if err != nil {
+		t.Fatalf("parse issued token: %v", err)
+	}
+	if claims.Role != "operator" {
+		t.Fatalf("unexpected role: %s", claims.Role)
+	}
+
+	var userCount int64
+	if err := app.db.Model(&struct{}{}).Table("users").Where("id = ?", claims.UserID).Count(&userCount).Error; err != nil {
+		t.Fatalf("count created user: %v", err)
+	}
+	if userCount != 1 {
+		t.Fatalf("expected created oauth user, got count=%d", userCount)
+	}
+
+	for _, cookie := range resp.Cookies() {
+		if strings.HasPrefix(cookie.Name, "araneae_basalt_") && cookie.Value == "" && cookie.Expires.IsZero() {
+			t.Fatalf("expected oauth cookie %s to be cleared explicitly", cookie.Name)
+		}
+	}
+}

@@ -115,5 +115,8 @@ go_validation.log
 # repo folders created during runtime
 ExecutionNode/repo/**/logs/
 
+
+# gocache
+.gocache/
 # allow overriding
 # End of .gitignore

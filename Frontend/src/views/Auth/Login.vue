@@ -86,11 +86,8 @@ export default {
       return rawNext.startsWith('/') ? rawNext : '/aprons/workplaces';
     },
     loginWithBasaltPass() {
-      if ((import.meta.env.VITE_API_FLAVOR || 'django').toLowerCase() === 'go') {
-        this.loginError = 'Go API 模式暂不支持 BasaltPass 登录，请使用本地账号登录。';
-        return;
-      }
-      const backendBase = import.meta.env.VITE_BACKEND_BASE_URL || 'http://localhost:8107';
+      this.loginError = '';
+      const backendBase = import.meta.env.VITE_BACKEND_BASE_URL || 'http://localhost:8180';
       const next = encodeURIComponent(this.resolveNextRoute());
       window.location.href = `${backendBase}/api/auth/basaltpass/login/?next=${next}`;
     },
