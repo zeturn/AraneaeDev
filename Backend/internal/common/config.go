@@ -25,6 +25,7 @@ type ControlConfig struct {
 	CORSAllowOrigins    string
 	FrontendBaseURL     string
 	BasaltBaseURL       string
+	BasaltInternalBaseURL string
 	BasaltOAuthEnabled  bool
 	BasaltClientID      string
 	BasaltClientSecret  string
@@ -109,6 +110,7 @@ func LoadControlConfig() ControlConfig {
 		CORSAllowOrigins:    GetEnv("CONTROL_CORS_ALLOW_ORIGINS", "http://localhost:5109,http://127.0.0.1:5109"),
 		FrontendBaseURL:     GetEnv("FRONTEND_BASE_URL", "http://localhost:5109"),
 		BasaltBaseURL:       GetEnv("BASALTPASS_BASE_URL", "http://localhost:8101"),
+		BasaltInternalBaseURL: GetEnv("BASALTPASS_INTERNAL_BASE_URL", GetEnv("BASALTPASS_BASE_URL", "http://localhost:8101")),
 		BasaltOAuthEnabled:  GetEnvBool("BASALTPASS_OAUTH_ENABLED", false),
 		BasaltClientID:      GetEnv("BASALTPASS_OAUTH_CLIENT_ID", ""),
 		BasaltClientSecret:  GetEnv("BASALTPASS_OAUTH_CLIENT_SECRET", ""),

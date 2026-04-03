@@ -30,6 +30,10 @@ const (
 	basaltCookieMaxAge   = 600
 )
 
+func trimBasaltURL(raw string) string {
+	return strings.TrimRight(strings.TrimSpace(raw), "/")
+}
+
 func safeFrontendNext(raw string) string {
 	next := strings.TrimSpace(raw)
 	if next == "" {
@@ -55,7 +59,7 @@ func createPKCEPair() (string, string, error) {
 		return "", "", err
 	}
 	challengeBytes := sha256.Sum256([]byte(verifier))
-	return verifier, hex.EncodeToString(challengeBytes[:]), nil
+	return verifier, base64.RawURLEncoding.EncodeToString(challengeBytes[:]), nil
 }
 
 func (a *App) setBasaltOAuthCookies(c *fiber.Ctx, state, verifier, next string) {
@@ -111,7 +115,7 @@ func (a *App) buildBasaltAuthorizeURL(state, challenge string) (string, error) {
 	values.Set("state", state)
 	values.Set("code_challenge", challenge)
 	values.Set("code_challenge_method", "S256")
-	return strings.TrimRight(strings.TrimSpace(a.cfg.BasaltBaseURL), "/") + "/api/v1/oauth/authorize?" + values.Encode(), nil
+	return trimBasaltURL(a.cfg.BasaltBaseURL) + "/api/v1/oauth/authorize?" + values.Encode(), nil
 }
 
 func (a *App) exchangeBasaltCode(code, verifier string) (map[string]any, error) {
@@ -125,7 +129,7 @@ func (a *App) exchangeBasaltCode(code, verifier string) (map[string]any, error) 
 		form.Set("client_secret", secret)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, strings.TrimRight(strings.TrimSpace(a.cfg.BasaltBaseURL), "/")+"/api/v1/oauth/token", strings.NewReader(form.Encode()))
+	req, err := http.NewRequest(http.MethodPost, trimBasaltURL(a.cfg.BasaltInternalBaseURL)+"/api/v1/oauth/token", strings.NewReader(form.Encode()))
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +159,7 @@ func (a *App) exchangeBasaltCode(code, verifier string) (map[string]any, error) 
 }
 
 func (a *App) fetchBasaltUserInfo(accessToken string) (map[string]any, error) {
-	req, err := http.NewRequest(http.MethodGet, strings.TrimRight(strings.TrimSpace(a.cfg.BasaltBaseURL), "/")+"/api/v1/oauth/userinfo", nil)
+	req, err := http.NewRequest(http.MethodGet, trimBasaltURL(a.cfg.BasaltInternalBaseURL)+"/api/v1/oauth/userinfo", nil)
 	if err != nil {
 		return nil, err
 	}

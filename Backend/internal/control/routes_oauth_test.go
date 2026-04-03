@@ -1,6 +1,8 @@
 package control
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,10 +11,27 @@ import (
 	"testing"
 )
 
+func TestCreatePKCEPairUsesRFC7636S256Encoding(t *testing.T) {
+	verifier, challenge, err := createPKCEPair()
+	if err != nil {
+		t.Fatalf("createPKCEPair failed: %v", err)
+	}
+	if verifier == "" || challenge == "" {
+		t.Fatal("expected verifier and challenge")
+	}
+
+	sum := sha256.Sum256([]byte(verifier))
+	expected := base64.RawURLEncoding.EncodeToString(sum[:])
+	if challenge != expected {
+		t.Fatalf("unexpected challenge encoding: got %s want %s", challenge, expected)
+	}
+}
+
 func TestBasaltPassLoginRedirectsToAuthorizeURL(t *testing.T) {
 	app := newTestControlApp(t)
 	app.cfg.BasaltOAuthEnabled = true
 	app.cfg.BasaltBaseURL = "http://basalt.example"
+	app.cfg.BasaltInternalBaseURL = "http://basalt-internal.example"
 	app.cfg.BasaltClientID = "client-123"
 	app.cfg.BasaltRedirectURI = "http://localhost:8180/api/auth/basaltpass/callback/"
 	app.cfg.BasaltScope = "openid profile email"
@@ -84,6 +103,7 @@ func TestBasaltPassCallbackRedirectsToFrontendCallback(t *testing.T) {
 	app := newTestControlApp(t)
 	app.cfg.BasaltOAuthEnabled = true
 	app.cfg.BasaltBaseURL = fakeBasalt.URL
+	app.cfg.BasaltInternalBaseURL = fakeBasalt.URL
 	app.cfg.BasaltClientID = "client-123"
 	app.cfg.BasaltClientSecret = "secret-123"
 	app.cfg.BasaltRedirectURI = "http://localhost:8180/api/auth/basaltpass/callback/"
