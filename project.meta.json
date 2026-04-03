@@ -29,5 +29,19 @@
       "port": 4107,
       "protocol": "http"
     }
+  ],
+  "health_checks": [
+    {
+      "service": "controlnode_api",
+      "kind": "liveness",
+      "path": "/healthz",
+      "url": "http://localhost:8107/healthz"
+    },
+    {
+      "service": "execution_node",
+      "kind": "liveness",
+      "path": "/healthz",
+      "url": "http://localhost:4107/healthz"
+    }
   ]
 }

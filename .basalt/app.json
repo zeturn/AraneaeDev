@@ -24,7 +24,21 @@
     ],
     "metadata": {
       "project_root": "C:/Users/Administrator/Desktop/WorkPlace/Araneae",
-      "oauth_record_name": "Araneae OAuth Client"
+      "oauth_record_name": "Araneae OAuth Client",
+      "health_checks": [
+        {
+          "service": "controlnode_api",
+          "kind": "liveness",
+          "path": "/healthz",
+          "url": "http://localhost:8107/healthz"
+        },
+        {
+          "service": "execution_node",
+          "kind": "liveness",
+          "path": "/healthz",
+          "url": "http://localhost:4107/healthz"
+        }
+      ]
     }
   }
 }

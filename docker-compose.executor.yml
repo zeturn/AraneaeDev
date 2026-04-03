@@ -25,3 +25,9 @@ services:
       EXECUTION_CALLBACK_KEY: ${EXECUTION_CALLBACK_KEY:?set EXECUTION_CALLBACK_KEY to match control side}
     ports:
       - "${EXECUTOR_HTTP_PORT:-4280}:4280"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -lc 'exec 3<>/dev/tcp/127.0.0.1/4280; printf \"GET /healthz HTTP/1.1\\r\\nHost: 127.0.0.1\\r\\nConnection: close\\r\\n\\r\\n\" >&3; grep -q \"200\" <&3'"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
