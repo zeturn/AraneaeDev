@@ -69,6 +69,8 @@ func (a *App) listRecentRuns(c *fiber.Ctx) error {
 func (a *App) runCallback(c *fiber.Ctx) error {
 	runID := c.Params("id")
 	providedKey := strings.TrimSpace(c.Get("X-Execution-Key"))
+	providedRunToken := strings.TrimSpace(c.Get("X-Run-Token"))
+	providedCorrelationID := strings.TrimSpace(c.Get("X-Correlation-ID"))
 	expectedKey := strings.TrimSpace(a.cfg.ExecutionAPIKey)
 	if expectedKey == "" || subtle.ConstantTimeCompare([]byte(providedKey), []byte(expectedKey)) != 1 {
 		a.recordSecurityEvent(c, "callback_invalid_key", "critical", "run_id="+runID)
@@ -82,6 +84,14 @@ func (a *App) runCallback(c *fiber.Ctx) error {
 	if isTerminalRunStatus(existingRun.Status) {
 		a.recordSecurityEvent(c, "callback_replay_ignored", "warning", "run_id="+runID)
 		return c.JSON(fiber.Map{"ok": true, "ignored": true})
+	}
+	if providedRunToken == "" || hashNodeKey(providedRunToken) != existingRun.RunTokenHash {
+		a.recordSecurityEvent(c, "callback_invalid_run_token", "critical", "run_id="+runID)
+		return fiber.NewError(fiber.StatusUnauthorized, "invalid run token")
+	}
+	if providedCorrelationID == "" || subtle.ConstantTimeCompare([]byte(providedCorrelationID), []byte(existingRun.CorrelationID)) != 1 {
+		a.recordSecurityEvent(c, "callback_invalid_correlation", "critical", "run_id="+runID)
+		return fiber.NewError(fiber.StatusUnauthorized, "invalid correlation id")
 	}
 
 	var req contracts.RunCallbackPayload

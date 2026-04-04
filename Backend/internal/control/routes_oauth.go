@@ -28,7 +28,18 @@ const (
 	basaltNextCookie     = "araneae_basalt_next"
 	basaltCookiePath     = "/api/auth/basaltpass"
 	basaltCookieMaxAge   = 600
+	basaltExchangeTTL    = 5 * time.Minute
 )
+
+type oauthExchangeState struct {
+	Token     string
+	Next      string
+	ExpiresAt time.Time
+}
+
+type basaltExchangeRequest struct {
+	Code string `json:"code"`
+}
 
 func trimBasaltURL(raw string) string {
 	return strings.TrimRight(strings.TrimSpace(raw), "/")
@@ -308,6 +319,11 @@ func (a *App) basaltPassCallback(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}
+	exchangeCode, err := randomURLSafeToken(24)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+	a.storeOAuthExchangeCode(exchangeCode, token, next)
 
 	callbackPath := strings.TrimSpace(a.cfg.BasaltCallbackPath)
 	if callbackPath == "" {
@@ -317,6 +333,53 @@ func (a *App) basaltPassCallback(c *fiber.Ctx) error {
 	if frontendBase == "" {
 		frontendBase = "http://localhost:5109"
 	}
-	redirectURL := fmt.Sprintf("%s%s?access=%s&next=%s", frontendBase, callbackPath, url.QueryEscape(token), url.QueryEscape(next))
+	redirectURL := fmt.Sprintf("%s%s?code=%s&next=%s", frontendBase, callbackPath, url.QueryEscape(exchangeCode), url.QueryEscape(next))
 	return c.Redirect(redirectURL, fiber.StatusFound)
+}
+
+func (a *App) basaltPassExchange(c *fiber.Ctx) error {
+	var req basaltExchangeRequest
+	if err := c.BodyParser(&req); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+	token, next, ok := a.consumeOAuthExchangeCode(req.Code)
+	if !ok {
+		return fiber.NewError(fiber.StatusUnauthorized, "invalid oauth exchange code")
+	}
+	return c.JSON(fiber.Map{
+		"access": token,
+		"next":   next,
+	})
+}
+
+func (a *App) storeOAuthExchangeCode(code, token, next string) {
+	a.oauthMu.Lock()
+	defer a.oauthMu.Unlock()
+
+	now := time.Now()
+	for key, state := range a.oauthCodes {
+		if !state.ExpiresAt.After(now) {
+			delete(a.oauthCodes, key)
+		}
+	}
+	a.oauthCodes[strings.TrimSpace(code)] = oauthExchangeState{
+		Token:     strings.TrimSpace(token),
+		Next:      safeFrontendNext(next),
+		ExpiresAt: now.Add(basaltExchangeTTL),
+	}
+}
+
+func (a *App) consumeOAuthExchangeCode(code string) (string, string, bool) {
+	a.oauthMu.Lock()
+	defer a.oauthMu.Unlock()
+
+	state, ok := a.oauthCodes[strings.TrimSpace(code)]
+	if !ok {
+		return "", "", false
+	}
+	delete(a.oauthCodes, strings.TrimSpace(code))
+	if !state.ExpiresAt.After(time.Now()) {
+		return "", "", false
+	}
+	return state.Token, state.Next, true
 }

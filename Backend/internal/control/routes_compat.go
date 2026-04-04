@@ -710,6 +710,13 @@ func (a *App) updateTeam(c *fiber.Ctx) error {
 	if err := a.db.Where("id = ?", teamID).First(&team).Error; err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "team not found")
 	}
+	canManage, accessErr := a.canManageTeam(c, team)
+	if accessErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+	}
+	if !canManage {
+		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
+	}
 	var req updateTeamRequest
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
@@ -742,6 +749,13 @@ func (a *App) deleteTeam(c *fiber.Ctx) error {
 			return fiber.NewError(fiber.StatusNotFound, "team not found")
 		}
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+	canManage, accessErr := a.canManageTeam(c, team)
+	if accessErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+	}
+	if !canManage {
+		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
 	}
 	if team.IsPersonal {
 		return fiber.NewError(fiber.StatusBadRequest, "personal team cannot be deleted")
@@ -803,6 +817,17 @@ func (a *App) addTeamMembers(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid team id")
 	}
+	var team common.Team
+	if err := a.db.Where("id = ?", teamID).First(&team).Error; err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "team not found")
+	}
+	canManage, accessErr := a.canManageTeam(c, team)
+	if accessErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+	}
+	if !canManage {
+		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
+	}
 	var req addTeamMembersRequest
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
@@ -853,6 +878,17 @@ func (a *App) removeTeamMember(c *fiber.Ctx) error {
 	user, resolveErr := a.resolveUserIdentifier(identifier)
 	if resolveErr != nil {
 		return fiber.NewError(fiber.StatusNotFound, "user not found")
+	}
+	var team common.Team
+	if err := a.db.Where("id = ?", teamID).First(&team).Error; err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "team not found")
+	}
+	canManage, accessErr := a.canManageTeam(c, team)
+	if accessErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+	}
+	if !canManage {
+		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
 	}
 
 	var member common.TeamMember
@@ -1009,6 +1045,15 @@ func (a *App) createWorkplace(c *fiber.Ctx) error {
 
 	uid, _ := c.Locals("uid").(string)
 	now := time.Now()
+	if req.TeamID != nil {
+		canManageTeam, accessErr := a.canManageTeamByID(c, *req.TeamID)
+		if accessErr != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+		}
+		if !canManageTeam {
+			return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
+		}
+	}
 	workplace := common.Workplace{
 		Name:        req.Name,
 		Description: req.Description,
@@ -1082,6 +1127,13 @@ func (a *App) updateWorkplace(c *fiber.Ctx) error {
 	if err := a.db.Where("id = ?", workplaceID).First(&workplace).Error; err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "workplace not found")
 	}
+	canManage, accessErr := a.canManageWorkplace(c, workplace)
+	if accessErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+	}
+	if !canManage {
+		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
+	}
 	var req updateWorkplaceRequest
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
@@ -1110,6 +1162,17 @@ func (a *App) deleteWorkplace(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid workplace id")
 	}
+	var workplace common.Workplace
+	if err := a.db.Where("id = ?", workplaceID).First(&workplace).Error; err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "workplace not found")
+	}
+	canManage, accessErr := a.canManageWorkplace(c, workplace)
+	if accessErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+	}
+	if !canManage {
+		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
+	}
 	_ = a.db.Where("workplace_id = ?", workplaceID).Delete(&common.WorkplaceTeam{}).Error
 	result := a.db.Delete(&common.Workplace{}, workplaceID)
 	if result.Error != nil {
@@ -1126,6 +1189,17 @@ func (a *App) addWorkplaceTeams(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid workplace id")
 	}
+	var workplace common.Workplace
+	if err := a.db.Where("id = ?", workplaceID).First(&workplace).Error; err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "workplace not found")
+	}
+	canManage, accessErr := a.canManageWorkplace(c, workplace)
+	if accessErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+	}
+	if !canManage {
+		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
+	}
 	var req addWorkplaceTeamsRequest
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
@@ -1133,6 +1207,13 @@ func (a *App) addWorkplaceTeams(c *fiber.Ctx) error {
 	now := time.Now()
 	added := 0
 	for _, teamID := range req.TeamIDs {
+		canManageTeam, accessErr := a.canManageTeamByID(c, teamID)
+		if accessErr != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+		}
+		if !canManageTeam {
+			return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
+		}
 		var count int64
 		if err := a.db.Model(&common.WorkplaceTeam{}).Where("workplace_id = ? AND team_id = ?", workplaceID, teamID).Count(&count).Error; err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, err.Error())
@@ -1150,9 +1231,20 @@ func (a *App) addWorkplaceTeams(c *fiber.Ctx) error {
 }
 
 func (a *App) addWorkplacePeople(c *fiber.Ctx) error {
-	_, err := parseUintParam(c, "id")
+	workplaceID, err := parseUintParam(c, "id")
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid workplace id")
+	}
+	var workplace common.Workplace
+	if err := a.db.Where("id = ?", workplaceID).First(&workplace).Error; err != nil {
+		return fiber.NewError(fiber.StatusNotFound, "workplace not found")
+	}
+	canManage, accessErr := a.canManageWorkplace(c, workplace)
+	if accessErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+	}
+	if !canManage {
+		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
 	}
 	var req addWorkplacePeopleRequest
 	if err := c.BodyParser(&req); err != nil {

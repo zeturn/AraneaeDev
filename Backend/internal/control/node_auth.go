@@ -24,7 +24,14 @@ import (
 const (
 	nodeAuthHeader          = "X-Node-Key"
 	controlNodeAuthMetadata = "x-node-key"
+	controlRunIDMetadata    = "x-run-id"
+	controlRunTokenMetadata = "x-run-token"
+	controlCorrelationIDMD  = "x-correlation-id"
 )
+
+type nodeContextKey string
+
+const authenticatedNodeContextKey nodeContextKey = "authenticated-node"
 
 type nodeVerifyResponse struct {
 	Status string `json:"status"`
@@ -113,5 +120,10 @@ func (a *App) nodeAuthUnaryInterceptor(ctx context.Context, req interface{}, _ *
 		"updated_at":       now,
 	}).Error
 
-	return handler(ctx, req)
+	return handler(context.WithValue(ctx, authenticatedNodeContextKey, node), req)
+}
+
+func authenticatedNodeFromContext(ctx context.Context) (common.Node, bool) {
+	node, ok := ctx.Value(authenticatedNodeContextKey).(common.Node)
+	return node, ok
 }

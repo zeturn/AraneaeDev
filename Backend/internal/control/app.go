@@ -46,7 +46,9 @@ type App struct {
 	cron            *cron.Cron
 	cronEntries     map[string]cron.EntryID
 	scheduleEntries map[string]cron.EntryID
+	oauthCodes      map[string]oauthExchangeState
 	cronMu          sync.Mutex
+	oauthMu         sync.Mutex
 	rabbitConn      *amqp.Connection
 	rabbitCh        *amqp.Channel
 	grpcSrv         *grpc.Server
@@ -220,6 +222,7 @@ func NewApp(cfg common.ControlConfig) (*App, error) {
 		cron:            cron.New(cron.WithSeconds()),
 		cronEntries:     make(map[string]cron.EntryID),
 		scheduleEntries: make(map[string]cron.EntryID),
+		oauthCodes:      make(map[string]oauthExchangeState),
 	}
 
 	app.http.Use(cors.New(cors.Config{
@@ -389,10 +392,16 @@ func (a *App) publishRun(taskID, scheduleID, source, projectID, versionID, entry
 		TaskID:        taskID,
 		ScheduleID:    scheduleID,
 		TriggerSource: source,
+		NodeQueue:     nodeQueue,
 		Status:        "queued",
 		CreatedAt:     time.Now(),
 		CorrelationID: uuid.NewString(),
 	}
+	runToken, err := randomSecret(32)
+	if err != nil {
+		return nil, err
+	}
+	run.RunTokenHash = hashNodeKey(runToken)
 	if chainMeta != nil {
 		run.ChainID = chainMeta.ChainID
 		run.ChainIndex = chainMeta.ChainIndex
@@ -412,12 +421,14 @@ func (a *App) publishRun(taskID, scheduleID, source, projectID, versionID, entry
 	}
 
 	payload := contracts.QueueTaskMessage{
-		RunID:        run.ID,
-		TaskID:       taskID,
-		ProjectID:    projectID,
-		VersionID:    versionID,
-		EntryCommand: entryCommand,
-		NodeQueue:    nodeQueue,
+		RunID:         run.ID,
+		TaskID:        taskID,
+		ProjectID:     projectID,
+		VersionID:     versionID,
+		EntryCommand:  entryCommand,
+		NodeQueue:     nodeQueue,
+		CorrelationID: run.CorrelationID,
+		RunToken:      runToken,
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {

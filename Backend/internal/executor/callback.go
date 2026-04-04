@@ -9,7 +9,7 @@ import (
 	"araneae-go/internal/executor/contracts"
 )
 
-func (a *App) reportCallback(runID string, payload contracts.CallbackPayload) error {
+func (a *App) reportCallback(runID, runToken, correlationID string, payload contracts.CallbackPayload) error {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -21,6 +21,8 @@ func (a *App) reportCallback(runID string, payload contracts.CallbackPayload) er
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Execution-Key", a.cfg.ControlCallbackKey)
+	req.Header.Set("X-Run-Token", runToken)
+	req.Header.Set("X-Correlation-ID", correlationID)
 	resp, err := a.httpClient.Do(req)
 	if err != nil {
 		return err

@@ -8,6 +8,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
+	"gorm.io/gorm"
 )
 
 type authClaims struct {
@@ -176,6 +177,69 @@ func (a *App) canBindWorkplace(c *fiber.Ctx, workplaceID uint) (bool, error) {
 		return false, nil
 	}
 	return a.userCanAccessWorkplace(uid, workplaceID)
+}
+
+func (a *App) canManageTeam(c *fiber.Ctx, team common.Team) (bool, error) {
+	uid, _ := c.Locals("uid").(string)
+	role, _ := c.Locals("role").(string)
+	if isAdminRole(role) {
+		return true, nil
+	}
+	if uid == "" {
+		return false, nil
+	}
+	if team.CreatedBy == uid {
+		return true, nil
+	}
+
+	var membership common.TeamMember
+	if err := a.db.Where("team_id = ? AND user_id = ?", team.ID, uid).First(&membership).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return membership.Role == "owner", nil
+}
+
+func (a *App) canManageTeamByID(c *fiber.Ctx, teamID uint) (bool, error) {
+	var team common.Team
+	if err := a.db.Where("id = ?", teamID).First(&team).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return a.canManageTeam(c, team)
+}
+
+func (a *App) canManageWorkplace(c *fiber.Ctx, workplace common.Workplace) (bool, error) {
+	uid, _ := c.Locals("uid").(string)
+	role, _ := c.Locals("role").(string)
+	if isAdminRole(role) {
+		return true, nil
+	}
+	if uid == "" {
+		return false, nil
+	}
+	if workplace.CreatedBy == uid {
+		return true, nil
+	}
+
+	teamIDs, err := teamIDsForWorkplace(a.db, workplace.ID)
+	if err != nil {
+		return false, err
+	}
+	for _, teamID := range teamIDs {
+		allowed, err := a.canManageTeamByID(c, teamID)
+		if err != nil {
+			return false, err
+		}
+		if allowed {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (a *App) canAccessTask(c *fiber.Ctx, task common.Task) (bool, error) {

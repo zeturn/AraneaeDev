@@ -58,12 +58,14 @@ type TaskRun struct {
 	ChainIndex    int        `gorm:"not null;default:0" json:"chain_index"`
 	ChainTotal    int        `gorm:"not null;default:0" json:"chain_total"`
 	TriggerSource string     `gorm:"size:32;not null" json:"trigger_source"`
+	NodeQueue     string     `gorm:"size:64;not null;default:default" json:"node_queue"`
 	Status        string     `gorm:"size:32;not null" json:"status"`
 	Output        string     `gorm:"type:text" json:"output"`
 	ExitCode      int        `gorm:"not null;default:0" json:"exit_code"`
 	StartedAt     *time.Time `json:"started_at"`
 	FinishedAt    *time.Time `json:"finished_at"`
 	CorrelationID string     `gorm:"size:64" json:"correlation_id"`
+	RunTokenHash  string     `gorm:"size:64" json:"-"`
 	CreatedAt     time.Time  `gorm:"not null" json:"created_at"`
 }
 

@@ -3,6 +3,7 @@ package control
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"mime/multipart"
@@ -13,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"araneae-go/gen/pb"
 	"araneae-go/internal/common"
 	"araneae-go/internal/control/security/password"
 
@@ -20,6 +22,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 	"github.com/robfig/cron/v3"
+	"google.golang.org/grpc/metadata"
 	"gorm.io/gorm"
 )
 
@@ -71,9 +74,24 @@ func newTestControlApp(t *testing.T) *App {
 		cron:            cron.New(cron.WithSeconds()),
 		cronEntries:     map[string]cron.EntryID{},
 		scheduleEntries: map[string]cron.EntryID{},
+		oauthCodes:      map[string]oauthExchangeState{},
 	}
 	a.setupRoutes()
 	return a
+}
+
+func newProtectedRun(taskID string) (common.TaskRun, string) {
+	runToken := "run-token-" + uuid.NewString()
+	return common.TaskRun{
+		ID:            uuid.NewString(),
+		TaskID:        taskID,
+		TriggerSource: "manual",
+		NodeQueue:     "default",
+		Status:        "queued",
+		CreatedAt:     time.Now(),
+		CorrelationID: uuid.NewString(),
+		RunTokenHash:  hashNodeKey(runToken),
+	}, runToken
 }
 
 func buildTestZip(t *testing.T, entries map[string]string) []byte {
@@ -651,6 +669,88 @@ func TestControlRoutes_OperatorCannotCreateProjectInForeignWorkplace(t *testing.
 	}
 }
 
+func TestControlRoutes_OperatorCannotUpdateForeignTeam(t *testing.T) {
+	app := newTestControlApp(t)
+	adminToken := loginAndGetToken(t, app)
+
+	operatorHash, err := password.Hash("operator-team-123")
+	if err != nil {
+		t.Fatalf("hash operator password: %v", err)
+	}
+	operator := common.User{
+		ID:           uuid.NewString(),
+		Username:     "operator_team",
+		PasswordHash: operatorHash,
+		Role:         "operator",
+		CreatedAt:    time.Now(),
+	}
+	if err := app.db.Create(&operator).Error; err != nil {
+		t.Fatalf("create operator: %v", err)
+	}
+	operatorToken := loginAndGetTokenFor(t, app, "operator_team", "operator-team-123")
+
+	teamRec := doJSONRequest(t, app, http.MethodPost, "/api/v1/teams", adminToken, map[string]any{
+		"name":        "admin-owned-team",
+		"description": "private",
+		"join_able":   false,
+	})
+	if teamRec.Code != http.StatusOK {
+		t.Fatalf("create team failed: status=%d body=%s", teamRec.Code, teamRec.Body.String())
+	}
+	var team map[string]any
+	if err := json.Unmarshal(teamRec.Body.Bytes(), &team); err != nil {
+		t.Fatalf("decode team response: %v", err)
+	}
+
+	rec := doJSONRequest(t, app, http.MethodPut, fmt.Sprintf("/api/v1/teams/%d", int(team["id"].(float64))), operatorToken, map[string]any{
+		"name": "tampered-team",
+	})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("operator should not update foreign team: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestControlRoutes_OperatorCannotUpdateForeignWorkplace(t *testing.T) {
+	app := newTestControlApp(t)
+	adminToken := loginAndGetToken(t, app)
+
+	operatorHash, err := password.Hash("operator-workplace-123")
+	if err != nil {
+		t.Fatalf("hash operator password: %v", err)
+	}
+	operator := common.User{
+		ID:           uuid.NewString(),
+		Username:     "operator_workplace",
+		PasswordHash: operatorHash,
+		Role:         "operator",
+		CreatedAt:    time.Now(),
+	}
+	if err := app.db.Create(&operator).Error; err != nil {
+		t.Fatalf("create operator: %v", err)
+	}
+	operatorToken := loginAndGetTokenFor(t, app, "operator_workplace", "operator-workplace-123")
+
+	workplaceRec := doJSONRequest(t, app, http.MethodPost, "/api/v1/workplaces", adminToken, map[string]any{
+		"name":        "admin-owned-workplace",
+		"description": "private",
+		"status":      "active",
+	})
+	if workplaceRec.Code != http.StatusOK {
+		t.Fatalf("create workplace failed: status=%d body=%s", workplaceRec.Code, workplaceRec.Body.String())
+	}
+	var workplace map[string]any
+	if err := json.Unmarshal(workplaceRec.Body.Bytes(), &workplace); err != nil {
+		t.Fatalf("decode workplace response: %v", err)
+	}
+
+	rec := doJSONRequest(t, app, http.MethodPut, fmt.Sprintf("/api/v1/workplaces/%d", int(workplace["id"].(float64))), operatorToken, map[string]any{
+		"name": "tampered-workplace",
+	})
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("operator should not update foreign workplace: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestControlRoutes_CreateScheduleRejectsTaskProjectVersionMismatch(t *testing.T) {
 	app := newTestControlApp(t)
 	adminToken := loginAndGetToken(t, app)
@@ -746,8 +846,12 @@ func TestControlRoutes_RegisterNodeRequiresPairKey(t *testing.T) {
 
 func TestControlRoutes_CallbackBypassesJWTGroup(t *testing.T) {
 	app := newTestControlApp(t)
+	run, runToken := newProtectedRun(uuid.NewString())
+	if err := app.db.Create(&run).Error; err != nil {
+		t.Fatalf("seed protected run failed: %v", err)
+	}
 
-	rec := doJSONRequest(t, app, http.MethodPost, "/api/v1/runs/fake-run-id/callback", "", map[string]any{
+	rec := doJSONRequest(t, app, http.MethodPost, "/api/v1/runs/"+run.ID+"/callback", "", map[string]any{
 		"status":    "success",
 		"output":    "ok",
 		"exit_code": 0,
@@ -759,17 +863,19 @@ func TestControlRoutes_CallbackBypassesJWTGroup(t *testing.T) {
 		t.Fatalf("expected callback_invalid_key security event")
 	}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/runs/fake-run-id/callback", bytes.NewReader([]byte(`{"status":"success"}`)))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/runs/"+run.ID+"/callback", bytes.NewReader([]byte(`{"status":"success"}`)))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Execution-Key", app.cfg.ExecutionAPIKey)
+	req.Header.Set("X-Run-Token", runToken)
+	req.Header.Set("X-Correlation-ID", run.CorrelationID)
 	resp, err := app.http.Test(req, -1)
 	if err != nil {
 		t.Fatalf("callback request failed: %v", err)
 	}
-	if resp.StatusCode != http.StatusNotFound {
+	if resp.StatusCode != http.StatusOK {
 		b := bytes.NewBuffer(nil)
 		_, _ = b.ReadFrom(resp.Body)
-		t.Fatalf("expected 404 with callback key on missing run, got %d body=%s", resp.StatusCode, b.String())
+		t.Fatalf("expected 200 with valid callback auth, got %d body=%s", resp.StatusCode, b.String())
 	}
 	_ = resp.Body.Close()
 }
@@ -777,14 +883,7 @@ func TestControlRoutes_CallbackBypassesJWTGroup(t *testing.T) {
 func TestControlRoutes_CallbackUpdatesRun(t *testing.T) {
 	app := newTestControlApp(t)
 
-	run := common.TaskRun{
-		ID:            uuid.NewString(),
-		TaskID:        uuid.NewString(),
-		TriggerSource: "manual",
-		Status:        "queued",
-		CreatedAt:     time.Now(),
-		CorrelationID: uuid.NewString(),
-	}
+	run, runToken := newProtectedRun(uuid.NewString())
 	if err := app.db.Create(&run).Error; err != nil {
 		t.Fatalf("seed task run failed: %v", err)
 	}
@@ -792,6 +891,8 @@ func TestControlRoutes_CallbackUpdatesRun(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/runs/"+run.ID+"/callback", bytes.NewReader([]byte(`{"status":"success","output":"done","exit_code":0}`)))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Execution-Key", app.cfg.ExecutionAPIKey)
+	req.Header.Set("X-Run-Token", runToken)
+	req.Header.Set("X-Correlation-ID", run.CorrelationID)
 	resp, err := app.http.Test(req, -1)
 	if err != nil {
 		t.Fatalf("callback request failed: %v", err)
@@ -815,14 +916,7 @@ func TestControlRoutes_CallbackUpdatesRun(t *testing.T) {
 func TestControlRoutes_CallbackIsIdempotentAfterTerminalState(t *testing.T) {
 	app := newTestControlApp(t)
 
-	run := common.TaskRun{
-		ID:            uuid.NewString(),
-		TaskID:        uuid.NewString(),
-		TriggerSource: "manual",
-		Status:        "queued",
-		CreatedAt:     time.Now(),
-		CorrelationID: uuid.NewString(),
-	}
+	run, runToken := newProtectedRun(uuid.NewString())
 	if err := app.db.Create(&run).Error; err != nil {
 		t.Fatalf("seed task run failed: %v", err)
 	}
@@ -830,6 +924,8 @@ func TestControlRoutes_CallbackIsIdempotentAfterTerminalState(t *testing.T) {
 	first := httptest.NewRequest(http.MethodPost, "/api/v1/runs/"+run.ID+"/callback", bytes.NewReader([]byte(`{"status":"success","output":"done","exit_code":0}`)))
 	first.Header.Set("Content-Type", "application/json")
 	first.Header.Set("X-Execution-Key", app.cfg.ExecutionAPIKey)
+	first.Header.Set("X-Run-Token", runToken)
+	first.Header.Set("X-Correlation-ID", run.CorrelationID)
 	firstResp, err := app.http.Test(first, -1)
 	if err != nil {
 		t.Fatalf("first callback request failed: %v", err)
@@ -844,6 +940,8 @@ func TestControlRoutes_CallbackIsIdempotentAfterTerminalState(t *testing.T) {
 	second := httptest.NewRequest(http.MethodPost, "/api/v1/runs/"+run.ID+"/callback", bytes.NewReader([]byte(`{"status":"failed","output":"tampered","exit_code":1}`)))
 	second.Header.Set("Content-Type", "application/json")
 	second.Header.Set("X-Execution-Key", app.cfg.ExecutionAPIKey)
+	second.Header.Set("X-Run-Token", runToken)
+	second.Header.Set("X-Correlation-ID", run.CorrelationID)
 	secondResp, err := app.http.Test(second, -1)
 	if err != nil {
 		t.Fatalf("second callback request failed: %v", err)
@@ -861,6 +959,80 @@ func TestControlRoutes_CallbackIsIdempotentAfterTerminalState(t *testing.T) {
 	}
 	if updated.Status != "success" || updated.ExitCode != 0 || updated.Output != "done" {
 		t.Fatalf("replay callback should not overwrite terminal result: status=%s code=%d output=%q", updated.Status, updated.ExitCode, updated.Output)
+	}
+}
+
+func TestControlRoutes_CallbackRejectsWrongRunToken(t *testing.T) {
+	app := newTestControlApp(t)
+	run, _ := newProtectedRun(uuid.NewString())
+	if err := app.db.Create(&run).Error; err != nil {
+		t.Fatalf("seed task run failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/runs/"+run.ID+"/callback", bytes.NewReader([]byte(`{"status":"success"}`)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Execution-Key", app.cfg.ExecutionAPIKey)
+	req.Header.Set("X-Run-Token", "wrong-token")
+	req.Header.Set("X-Correlation-ID", run.CorrelationID)
+	resp, err := app.http.Test(req, -1)
+	if err != nil {
+		t.Fatalf("callback request failed: %v", err)
+	}
+	if resp.StatusCode != http.StatusUnauthorized {
+		b := bytes.NewBuffer(nil)
+		_, _ = b.ReadFrom(resp.Body)
+		t.Fatalf("expected 401 for wrong run token, got %d body=%s", resp.StatusCode, b.String())
+	}
+}
+
+func TestControl_GetArtifactRequiresRunScopedAuth(t *testing.T) {
+	app := newTestControlApp(t)
+	token := loginAndGetToken(t, app)
+	project, version, _ := createProjectVersionTask(t, app, token, "")
+
+	node := common.Node{
+		Name:           "executor-a",
+		Status:         "active",
+		IPAddress:      "127.0.0.1",
+		Port:           4280,
+		GRPCPort:       9190,
+		CeleryQueue:    "default",
+		AuthTokenHash:  hashNodeKey("pair-key"),
+		IsEnabled:      true,
+		LastActiveTime: time.Now(),
+		CreatedAt:      time.Now(),
+		UpdatedAt:      time.Now(),
+	}
+	if err := app.db.Create(&node).Error; err != nil {
+		t.Fatalf("seed node failed: %v", err)
+	}
+
+	run, runToken := newProtectedRun(uuid.NewString())
+	if err := app.db.Create(&run).Error; err != nil {
+		t.Fatalf("seed run failed: %v", err)
+	}
+
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
+		controlNodeAuthMetadata, "pair-key",
+		controlRunIDMetadata, run.ID,
+		controlRunTokenMetadata, runToken,
+		controlCorrelationIDMD, run.CorrelationID,
+	))
+	ctx = context.WithValue(ctx, authenticatedNodeContextKey, node)
+
+	if _, err := app.GetArtifact(ctx, &pb.GetArtifactRequest{ProjectId: project.ID, VersionId: version.ID}); err != nil {
+		t.Fatalf("expected artifact fetch to succeed, got %v", err)
+	}
+
+	badCtx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
+		controlNodeAuthMetadata, "pair-key",
+		controlRunIDMetadata, run.ID,
+		controlRunTokenMetadata, "wrong-token",
+		controlCorrelationIDMD, run.CorrelationID,
+	))
+	badCtx = context.WithValue(badCtx, authenticatedNodeContextKey, node)
+	if _, err := app.GetArtifact(badCtx, &pb.GetArtifactRequest{ProjectId: project.ID, VersionId: version.ID}); err == nil {
+		t.Fatalf("expected artifact fetch to fail with wrong run token")
 	}
 }
 

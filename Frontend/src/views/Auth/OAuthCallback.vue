@@ -9,6 +9,7 @@
 </template>
 
 <script>
+import axios from 'axios';
 import { setAccessToken, setRefreshToken } from '@/utils/authStorage';
 
 export default {
@@ -18,11 +19,11 @@ export default {
       error: '',
     };
   },
-  mounted() {
+  async mounted() {
     const queryParams = new URLSearchParams(window.location.search);
     const hash = window.location.hash.startsWith('#') ? window.location.hash.slice(1) : '';
     const hashParams = new URLSearchParams(hash);
-    const access = queryParams.get('access') || hashParams.get('access');
+    const exchangeCode = queryParams.get('code') || hashParams.get('code');
     const refresh = queryParams.get('refresh') || hashParams.get('refresh');
     const next = queryParams.get('next') || hashParams.get('next') || '/aprons/workplaces';
     const safeNext = next.startsWith('/') ? next : '/aprons/workplaces';
@@ -37,17 +38,37 @@ export default {
       return;
     }
 
-    if (!access) {
-      this.error = '登录失败: 缺少 access token';
+    if (!exchangeCode) {
+      this.error = '登录失败: 缺少 exchange code';
       this.message = '请返回登录页重试。';
       return;
     }
+    const apiFlavor = (import.meta.env.VITE_API_FLAVOR || 'django').toLowerCase();
+    const isGoApi = apiFlavor === 'go';
+    const backendBase = import.meta.env.VITE_BACKEND_BASE_URL || (isGoApi ? 'http://localhost:8180' : 'http://localhost:8107');
 
-    setAccessToken(access);
-    if (refresh) {
-      setRefreshToken(refresh);
+    try {
+      const response = await axios.post(`${backendBase}/api/v1/auth/basaltpass/exchange`, {
+        code: exchangeCode,
+      });
+      const access = response?.data?.access || '';
+      const exchangeNext = response?.data?.next || safeNext;
+      const safeExchangeNext = exchangeNext.startsWith('/') ? exchangeNext : '/aprons/workplaces';
+      if (!access) {
+        this.error = '登录失败: access token 交换失败';
+        this.message = '请返回登录页重试。';
+        return;
+      }
+
+      setAccessToken(access);
+      if (refresh) {
+        setRefreshToken(refresh);
+      }
+      this.$router.replace(safeExchangeNext);
+    } catch (err) {
+      this.error = '登录失败: exchange 请求失败';
+      this.message = '请返回登录页重试。';
     }
-    this.$router.replace(safeNext);
   },
 };
 </script>

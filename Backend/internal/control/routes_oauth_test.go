@@ -137,9 +137,31 @@ func TestBasaltPassCallbackRedirectsToFrontendCallback(t *testing.T) {
 		t.Fatalf("unexpected next: %s", location.Query().Get("next"))
 	}
 
-	issuedToken := location.Query().Get("access")
+	exchangeCode := location.Query().Get("code")
+	if exchangeCode == "" {
+		t.Fatal("missing exchange code in redirect")
+	}
+	if location.Query().Get("access") != "" {
+		t.Fatal("redirect should not expose access token in query")
+	}
+
+	exchangeReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/basaltpass/exchange", strings.NewReader(`{"code":"`+exchangeCode+`"}`))
+	exchangeReq.Header.Set("Content-Type", "application/json")
+	exchangeResp, err := app.http.Test(exchangeReq, -1)
+	if err != nil {
+		t.Fatalf("exchange request failed: %v", err)
+	}
+	defer exchangeResp.Body.Close()
+	if exchangeResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 from exchange, got %d", exchangeResp.StatusCode)
+	}
+	var exchangePayload map[string]any
+	if err := json.NewDecoder(exchangeResp.Body).Decode(&exchangePayload); err != nil {
+		t.Fatalf("decode exchange response: %v", err)
+	}
+	issuedToken, _ := exchangePayload["access"].(string)
 	if issuedToken == "" {
-		t.Fatal("missing access token in redirect")
+		t.Fatal("missing access token in exchange response")
 	}
 	claims, err := app.parseToken(issuedToken)
 	if err != nil {
@@ -147,6 +169,9 @@ func TestBasaltPassCallbackRedirectsToFrontendCallback(t *testing.T) {
 	}
 	if claims.Role != "operator" {
 		t.Fatalf("unexpected role: %s", claims.Role)
+	}
+	if exchangePayload["next"] != "/aprons/workplaces" {
+		t.Fatalf("unexpected exchange next: %v", exchangePayload["next"])
 	}
 
 	var userCount int64
@@ -161,5 +186,16 @@ func TestBasaltPassCallbackRedirectsToFrontendCallback(t *testing.T) {
 		if strings.HasPrefix(cookie.Name, "araneae_basalt_") && cookie.Value == "" && cookie.Expires.IsZero() {
 			t.Fatalf("expected oauth cookie %s to be cleared explicitly", cookie.Name)
 		}
+	}
+
+	replayReq := httptest.NewRequest(http.MethodPost, "/api/v1/auth/basaltpass/exchange", strings.NewReader(`{"code":"`+exchangeCode+`"}`))
+	replayReq.Header.Set("Content-Type", "application/json")
+	replayResp, err := app.http.Test(replayReq, -1)
+	if err != nil {
+		t.Fatalf("replay exchange request failed: %v", err)
+	}
+	defer replayResp.Body.Close()
+	if replayResp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for replayed exchange code, got %d", replayResp.StatusCode)
 	}
 }

@@ -254,6 +254,7 @@ func (a *App) setupRoutes() {
 	a.http.Get("/api/auth/basaltpass/login/", a.basaltPassLogin)
 	a.http.Get("/api/auth/basaltpass/callback", a.basaltPassCallback)
 	a.http.Get("/api/auth/basaltpass/callback/", a.basaltPassCallback)
+	a.http.Post("/api/v1/auth/basaltpass/exchange", a.basaltPassExchange)
 	a.http.Post("/api/v1/runs/:id/callback", a.runCallback)
 
 	api := a.http.Group("/api/v1", a.authMiddleware)

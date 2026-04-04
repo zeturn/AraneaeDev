@@ -324,7 +324,7 @@ func (a *App) processMessage(ctx context.Context, raw []byte) error {
 		return err
 	}
 
-	return a.reportCallback(m.RunID, contracts.CallbackPayload{
+	return a.reportCallback(m.RunID, m.RunToken, m.CorrelationID, contracts.CallbackPayload{
 		Status:     status,
 		Output:     output,
 		ExitCode:   exitCode,
@@ -337,7 +337,10 @@ func (a *App) executeTask(ctx context.Context, msg contracts.QueueTaskMessage) (
 	runCtx, cancel := context.WithTimeout(ctx, time.Duration(a.cfg.TaskTimeoutSeconds)*time.Second)
 	defer cancel()
 
-	resp, err := a.grpcClient.GetArtifact(a.withControlNodeAuth(runCtx), &pb.GetArtifactRequest{ProjectId: msg.ProjectID, VersionId: msg.VersionID})
+	resp, err := a.grpcClient.GetArtifact(
+		a.withControlNodeAuth(runCtx, msg.RunID, msg.RunToken, msg.CorrelationID),
+		&pb.GetArtifactRequest{ProjectId: msg.ProjectID, VersionId: msg.VersionID},
+	)
 	if err != nil {
 		return "", 1, err
 	}

@@ -19,6 +19,9 @@ import (
 const (
 	nodeAuthHeader          = "X-Node-Key"
 	controlNodeAuthMetadata = "x-node-key"
+	controlRunIDMetadata    = "x-run-id"
+	controlRunTokenMetadata = "x-run-token"
+	controlCorrelationIDMD  = "x-correlation-id"
 )
 
 func ensureNodeAuthKey(cfg *common.ExecutorConfig) error {
@@ -74,6 +77,12 @@ func (a *App) nodeAuthMiddleware(c *fiber.Ctx) error {
 	return c.Next()
 }
 
-func (a *App) withControlNodeAuth(ctx context.Context) context.Context {
-	return metadata.AppendToOutgoingContext(ctx, controlNodeAuthMetadata, a.cfg.NodeAuthKey)
+func (a *App) withControlNodeAuth(ctx context.Context, runID, runToken, correlationID string) context.Context {
+	return metadata.AppendToOutgoingContext(
+		ctx,
+		controlNodeAuthMetadata, a.cfg.NodeAuthKey,
+		controlRunIDMetadata, strings.TrimSpace(runID),
+		controlRunTokenMetadata, strings.TrimSpace(runToken),
+		controlCorrelationIDMD, strings.TrimSpace(correlationID),
+	)
 }
