@@ -2,6 +2,7 @@ package control
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"araneae-go/internal/common"
@@ -52,13 +53,71 @@ func (a *App) authMiddleware(c *fiber.Ctx) error {
 	if len(header) < 8 || header[:7] != "Bearer " {
 		return fiber.NewError(fiber.StatusUnauthorized, "missing bearer token")
 	}
-	claims, err := a.parseToken(header[7:])
+	tokenStr := strings.TrimSpace(header[7:])
+
+	if strings.HasPrefix(tokenStr, "bp_") {
+		payload, err := a.introspectBasaltToken(tokenStr)
+		if err != nil {
+			return fiber.NewError(fiber.StatusUnauthorized, "token introspection failed")
+		}
+		active, _ := payload["active"].(bool)
+		if !active {
+			return fiber.NewError(fiber.StatusUnauthorized, "inactive or invalid token")
+		}
+
+		subject := extractStringValue(payload, "sub", "user_id")
+		user, err := a.findOrCreateBasaltUser(subject)
+		if err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, "failed to map subject to user")
+		}
+
+		c.Locals("uid", user.ID)
+		c.Locals("role", user.Role)
+
+		if scopes, ok := payload["scope"].(string); ok {
+			c.Locals("scopes", scopes)
+		}
+		if act, ok := payload["act"].(map[string]any); ok {
+			c.Locals("act", act)
+		}
+
+		return c.Next()
+	}
+
+	claims, err := a.parseToken(tokenStr)
 	if err != nil {
 		return fiber.NewError(fiber.StatusUnauthorized, "invalid bearer token")
 	}
 	c.Locals("uid", claims.UserID)
 	c.Locals("role", claims.Role)
 	return c.Next()
+}
+
+func (a *App) requireAppScope(requiredScope string) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		act := c.Locals("act")
+		if act == nil {
+			// Direct user request, bypass scope check, let role/project permissions handle it.
+			return c.Next()
+		}
+
+		scopesStr, _ := c.Locals("scopes").(string)
+		scopes := strings.Fields(scopesStr)
+
+		hasScope := false
+		for _, s := range scopes {
+			if s == requiredScope || s == "*" || s == "araneae.*" {
+				hasScope = true
+				break
+			}
+		}
+
+		if !hasScope {
+			return fiber.NewError(fiber.StatusForbidden, "insufficient app scope: required "+requiredScope)
+		}
+
+		return c.Next()
+	}
 }
 
 func (a *App) requireRoles(roles ...string) fiber.Handler {

@@ -199,6 +199,42 @@ func (a *App) fetchBasaltUserInfo(accessToken string) (map[string]any, error) {
 	return payload, nil
 }
 
+func (a *App) introspectBasaltToken(token string) (map[string]any, error) {
+	form := url.Values{}
+	form.Set("token", token)
+
+	req, err := http.NewRequest(http.MethodPost, trimBasaltURL(a.cfg.BasaltInternalBaseURL)+"/api/v1/oauth/introspect", strings.NewReader(form.Encode()))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+	if clientID := strings.TrimSpace(a.cfg.BasaltClientID); clientID != "" {
+		req.SetBasicAuth(clientID, strings.TrimSpace(a.cfg.BasaltClientSecret))
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("introspect failed with status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return nil, err
+	}
+	return payload, nil
+}
+
 func extractStringValue(payload map[string]any, keys ...string) string {
 	for _, key := range keys {
 		if value, ok := payload[key].(string); ok {
