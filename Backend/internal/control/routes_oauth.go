@@ -236,12 +236,29 @@ func (a *App) introspectBasaltToken(token string) (map[string]any, error) {
 }
 
 func extractStringValue(payload map[string]any, keys ...string) string {
-	for _, key := range keys {
-		if value, ok := payload[key].(string); ok {
-			value = strings.TrimSpace(value)
-			if value != "" {
-				return value
+	tryExtract := func(source map[string]any) string {
+		for _, key := range keys {
+			if value, ok := source[key].(string); ok {
+				value = strings.TrimSpace(value)
+				if value != "" {
+					return value
+				}
 			}
+		}
+		return ""
+	}
+
+	if value := tryExtract(payload); value != "" {
+		return value
+	}
+
+	for _, nestedKey := range []string{"data", "result", "payload"} {
+		nested, ok := payload[nestedKey].(map[string]any)
+		if !ok {
+			continue
+		}
+		if value := tryExtract(nested); value != "" {
+			return value
 		}
 	}
 	return ""
@@ -333,7 +350,7 @@ func (a *App) basaltPassCallback(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadGateway, err.Error())
 	}
-	accessToken := extractStringValue(tokenPayload, "access_token")
+	accessToken := extractStringValue(tokenPayload, "access_token", "accessToken", "access", "token")
 	if accessToken == "" {
 		return fiber.NewError(fiber.StatusBadGateway, "missing access token")
 	}

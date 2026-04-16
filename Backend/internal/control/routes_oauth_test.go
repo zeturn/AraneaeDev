@@ -199,3 +199,59 @@ func TestBasaltPassCallbackRedirectsToFrontendCallback(t *testing.T) {
 		t.Fatalf("expected 401 for replayed exchange code, got %d", replayResp.StatusCode)
 	}
 }
+
+func TestBasaltPassCallbackAcceptsWrappedAccessTokenPayload(t *testing.T) {
+	fakeBasalt := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/oauth/token":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"data": map[string]any{"access_token": "bp-access-token"},
+			})
+		case "/api/v1/oauth/userinfo":
+			if got := r.Header.Get("Authorization"); got != "Bearer bp-access-token" {
+				t.Fatalf("unexpected authorization header: %s", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"sub": "user-subject-2"})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer fakeBasalt.Close()
+
+	app := newTestControlApp(t)
+	app.cfg.BasaltOAuthEnabled = true
+	app.cfg.BasaltBaseURL = fakeBasalt.URL
+	app.cfg.BasaltInternalBaseURL = fakeBasalt.URL
+	app.cfg.BasaltClientID = "client-123"
+	app.cfg.BasaltClientSecret = "secret-123"
+	app.cfg.BasaltRedirectURI = "http://localhost:8180/api/auth/basaltpass/callback/"
+	app.cfg.BasaltScope = "openid profile email"
+	app.cfg.FrontendBaseURL = "http://localhost:5109"
+	app.cfg.BasaltCallbackPath = "/oauth/callback"
+
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/basaltpass/callback/?code=code-456&state=state-456", nil)
+	req.AddCookie(&http.Cookie{Name: basaltStateCookie, Value: "state-456"})
+	req.AddCookie(&http.Cookie{Name: basaltVerifierCookie, Value: "verifier-456"})
+	req.AddCookie(&http.Cookie{Name: basaltNextCookie, Value: "/aprons/workplaces"})
+
+	resp, err := app.http.Test(req, -1)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusFound {
+		t.Fatalf("expected 302, got %d", resp.StatusCode)
+	}
+
+	location, err := url.Parse(resp.Header.Get("Location"))
+	if err != nil {
+		t.Fatalf("parse redirect location: %v", err)
+	}
+	if got := location.Scheme + "://" + location.Host + location.Path; got != "http://localhost:5109/oauth/callback" {
+		t.Fatalf("unexpected frontend callback: %s", got)
+	}
+	if location.Query().Get("code") == "" {
+		t.Fatal("missing exchange code in redirect")
+	}
+}
