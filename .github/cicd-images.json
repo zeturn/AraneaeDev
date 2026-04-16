@@ -1,0 +1,26 @@
+{
+  "project": "araneae",
+  "namespace": "araneae",
+  "images": [
+    {
+      "name": "controlnode",
+      "context": "./Backend",
+      "dockerfile": "./Backend/Dockerfile",
+      "build_args": "TARGET=control",
+      "port": 8180
+    },
+    {
+      "name": "executionnode",
+      "context": "./Backend",
+      "dockerfile": "./Backend/Dockerfile",
+      "build_args": "TARGET=executor",
+      "port": 4280
+    },
+    {
+      "name": "front",
+      "context": "./Frontend",
+      "dockerfile": "./Frontend/Dockerfile",
+      "port": 80
+    }
+  ]
+}
