@@ -3,6 +3,7 @@ package control
 import (
 	"crypto/subtle"
 	"strings"
+	"time"
 
 	"araneae-go/internal/common"
 	"araneae-go/internal/control/contracts"
@@ -71,10 +72,20 @@ func (a *App) runCallback(c *fiber.Ctx) error {
 	providedKey := strings.TrimSpace(c.Get("X-Execution-Key"))
 	providedRunToken := strings.TrimSpace(c.Get("X-Run-Token"))
 	providedCorrelationID := strings.TrimSpace(c.Get("X-Correlation-ID"))
+	providedSignature := strings.TrimSpace(c.Get(common.CallbackSignatureHeader))
+	providedTimestamp := strings.TrimSpace(c.Get(common.CallbackTimestampHeader))
+	body := c.Body()
 	expectedKey := strings.TrimSpace(a.cfg.ExecutionAPIKey)
 	if expectedKey == "" || subtle.ConstantTimeCompare([]byte(providedKey), []byte(expectedKey)) != 1 {
 		a.recordSecurityEvent(c, "callback_invalid_key", "critical", "run_id="+runID)
 		return fiber.NewError(fiber.StatusUnauthorized, "invalid execution key")
+	}
+	requireSigned := strings.EqualFold(strings.TrimSpace(a.cfg.Environment), "production")
+	if requireSigned || providedSignature != "" || providedTimestamp != "" {
+		if err := common.VerifyCallbackSignature(expectedKey, providedSignature, providedTimestamp, runID, providedRunToken, providedCorrelationID, body, time.Now(), 5*time.Minute); err != nil {
+			a.recordSecurityEvent(c, "callback_invalid_signature", "critical", "run_id="+runID+" reason="+err.Error())
+			return fiber.NewError(fiber.StatusUnauthorized, "invalid callback signature")
+		}
 	}
 	var existingRun common.TaskRun
 	if err := a.db.Where("id = ?", runID).First(&existingRun).Error; err != nil {

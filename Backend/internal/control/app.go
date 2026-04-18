@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -85,6 +86,28 @@ func isWeakSecret(value string, minLen int, denyList ...string) bool {
 	return false
 }
 
+func isWildcardCORS(raw string) bool {
+	for _, origin := range strings.Split(raw, ",") {
+		if strings.TrimSpace(origin) == "*" {
+			return true
+		}
+	}
+	return false
+}
+
+func usesDefaultRabbitCredentials(raw string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.User == nil {
+		return false
+	}
+	username := strings.TrimSpace(parsed.User.Username())
+	password, hasPassword := parsed.User.Password()
+	if !hasPassword {
+		return false
+	}
+	return username == "guest" && strings.TrimSpace(password) == "guest"
+}
+
 func validateSecurityConfig(cfg *common.ControlConfig, log *zap.Logger) error {
 	cfg.JWTSecret = strings.TrimSpace(cfg.JWTSecret)
 	cfg.ExecutionAPIKey = strings.TrimSpace(cfg.ExecutionAPIKey)
@@ -95,7 +118,7 @@ func validateSecurityConfig(cfg *common.ControlConfig, log *zap.Logger) error {
 	}
 
 	isProd := strings.EqualFold(strings.TrimSpace(cfg.Environment), "production")
-	if isWeakSecret(cfg.JWTSecret, 24, "change-me") {
+	if isWeakSecret(cfg.JWTSecret, 32, "change-me") {
 		if isProd {
 			return errors.New("CONTROL_JWT_SECRET is missing or too weak for production")
 		}
@@ -107,7 +130,7 @@ func validateSecurityConfig(cfg *common.ControlConfig, log *zap.Logger) error {
 		log.Warn("CONTROL_JWT_SECRET is missing/weak; generated an ephemeral development secret")
 	}
 
-	if isWeakSecret(cfg.ExecutionAPIKey, 24, "change-me-callback") {
+	if isWeakSecret(cfg.ExecutionAPIKey, 32, "change-me-callback") {
 		if isProd {
 			return errors.New("EXECUTION_CALLBACK_KEY is missing or too weak for production")
 		}
@@ -133,6 +156,14 @@ func validateSecurityConfig(cfg *common.ControlConfig, log *zap.Logger) error {
 
 	if !isProd {
 		return nil
+	}
+
+	if isWildcardCORS(cfg.CORSAllowOrigins) {
+		return errors.New("CONTROL_CORS_ALLOW_ORIGINS must not contain wildcard '*' in production")
+	}
+
+	if usesDefaultRabbitCredentials(cfg.RabbitURL) {
+		return errors.New("RABBITMQ_URL must not use default guest credentials in production")
 	}
 
 	if cfg.NodeVerifyScheme != "https" {

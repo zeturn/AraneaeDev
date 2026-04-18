@@ -160,6 +160,7 @@ type updateScheduleRequest struct {
 const (
 	maxCallbackOutputBytes    = 1024 * 1024
 	maxManualTriggerPerMinute = 20
+	maxCallbackPerMinute      = 120
 	triggerDuplicateWindow    = 20 * time.Second
 )
 
@@ -249,13 +250,25 @@ func (a *App) setupRoutes() {
 		},
 	})
 
+	callbackRateLimit := limiter.New(limiter.Config{
+		Max:        maxCallbackPerMinute,
+		Expiration: time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return c.IP()
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			a.recordSecurityEvent(c, "callback_rate_limited", "warning", "too many callback attempts")
+			return fiber.NewError(fiber.StatusTooManyRequests, "too many callback attempts")
+		},
+	})
+
 	a.http.Post("/api/v1/auth/login", loginRateLimit, a.login)
 	a.http.Get("/api/auth/basaltpass/login", a.basaltPassLogin)
 	a.http.Get("/api/auth/basaltpass/login/", a.basaltPassLogin)
 	a.http.Get("/api/auth/basaltpass/callback", a.basaltPassCallback)
 	a.http.Get("/api/auth/basaltpass/callback/", a.basaltPassCallback)
 	a.http.Post("/api/v1/auth/basaltpass/exchange", a.basaltPassExchange)
-	a.http.Post("/api/v1/runs/:id/callback", a.runCallback)
+	a.http.Post("/api/v1/runs/:id/callback", callbackRateLimit, a.runCallback)
 
 	api := a.http.Group("/api/v1", a.authMiddleware)
 	api.Post("/projects", a.requireRoles("admin", "operator"), a.requireAppScope("araneae.write"), a.createProject)
@@ -292,7 +305,7 @@ func (a *App) setupRoutes() {
 	api.Get("/users/:id", a.requireAppScope("araneae.read"), a.getUser)
 
 	api.Get("/nodes/discover/", a.requireRoles("admin", "operator"), a.requireAppScope("araneae.read"), a.discoverNodes)
-	api.Post("/nodes/register/", a.requireRoles("admin", "operator"), a.requireAppScope("araneae.write"), a.registerNode)
+	api.Post("/nodes/register/", a.requireRoles("admin"), a.requireAppScope("araneae.write"), a.registerNode)
 	api.Get("/nodes/", a.requireRoles("admin", "operator"), a.requireAppScope("araneae.read"), a.listNodes)
 	api.Get("/nodes", a.requireRoles("admin", "operator"), a.requireAppScope("araneae.read"), a.listNodes)
 	api.Get("/nodes/:id/", a.requireRoles("admin", "operator"), a.requireAppScope("araneae.read"), a.getNode)

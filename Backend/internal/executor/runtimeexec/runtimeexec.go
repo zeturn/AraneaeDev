@@ -6,12 +6,18 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+)
+
+const (
+	maxUnzipEntries = 10000
+	maxUnzipBytes   = 500 * 1024 * 1024
 )
 
 func ComputeSHA256(data []byte) string {
@@ -24,7 +30,15 @@ func UnzipBytes(data []byte, dest string) error {
 	if err != nil {
 		return err
 	}
+	if len(r.File) > maxUnzipEntries {
+		return errors.New("archive contains too many entries")
+	}
+	var totalUncompressed uint64
 	for _, f := range r.File {
+		totalUncompressed += f.UncompressedSize64
+		if totalUncompressed > maxUnzipBytes {
+			return errors.New("archive uncompressed size exceeds limit")
+		}
 		if err := extractZipEntry(f, dest); err != nil {
 			return err
 		}
@@ -34,6 +48,9 @@ func UnzipBytes(data []byte, dest string) error {
 
 func extractZipEntry(f *zip.File, dest string) error {
 	name := filepath.Clean(f.Name)
+	if filepath.IsAbs(name) {
+		return os.ErrPermission
+	}
 	if strings.Contains(name, "..") {
 		return os.ErrPermission
 	}

@@ -242,6 +242,71 @@ const emptyAvatarResponse = () => ({
     config: {},
 });
 
+const decodeJwtPayload = token => {
+    if (!token || token.split('.').length < 2) {
+        return null;
+    }
+    try {
+        const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+        const padded = base64.padEnd(base64.length + ((4 - base64.length % 4) % 4), '=');
+        return JSON.parse(atob(padded));
+    } catch (_) {
+        return null;
+    }
+};
+
+const resolveCurrentUserID = () => {
+    const token = getAccessToken();
+    const payload = decodeJwtPayload(token);
+    if (!payload) {
+        return '';
+    }
+
+    const uid = payload.uid || payload.user_id || payload.sub || '';
+    return typeof uid === 'string' ? uid.trim() : String(uid || '').trim();
+};
+
+const toLegacyProfileResponse = response => {
+    const payload = response?.data || {};
+    let profile = null;
+
+    if (Array.isArray(payload?.results) && payload.results.length > 0) {
+        profile = payload.results[0] || null;
+    } else if (payload && typeof payload === 'object') {
+        profile = payload;
+    }
+
+    if (!profile) {
+        return {
+            ...response,
+            data: {results: []},
+        };
+    }
+
+    const username = profile.username || '';
+    const email = profile.email || '';
+    const id = profile.id || '';
+    const role = profile.role || '';
+
+    return {
+        ...response,
+        data: {
+            results: [
+                {
+                    ...profile,
+                    avatar: profile.avatar || null,
+                    user: {
+                        id,
+                        username,
+                        email,
+                        role,
+                    },
+                },
+            ],
+        },
+    };
+};
+
 const ApiService = {
     getUsers() {
         return apiClient.get('/users/');
@@ -250,6 +315,11 @@ const ApiService = {
         return apiClient.get(`/users/${userId}/`);
     },
     getProfile() {
+        if (isGoApi) {
+            const uid = resolveCurrentUserID();
+            const req = uid ? apiClient.get(`/users/${uid}/`) : apiClient.get('/users/');
+            return req.then(toLegacyProfileResponse);
+        }
         return apiClient.get('/profile/');
     },
     getProfileAvatar() {

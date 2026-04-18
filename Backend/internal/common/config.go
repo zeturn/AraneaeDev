@@ -7,31 +7,36 @@ import (
 )
 
 type ControlConfig struct {
-	Environment         string
-	HTTPAddr            string
-	GRPCAddr            string
-	GRPCTLSEnabled      bool
-	GRPCTLSCertFile     string
-	GRPCTLSKeyFile      string
-	GRPCTLSClientCAFile string
-	NodeVerifyScheme    string
-	DBPath              string
-	RabbitURL           string
-	RabbitExchange      string
-	InitAdminPassword   string
-	JWTSecret           string
-	ArtifactRoot        string
-	ExecutionAPIKey     string
-	CORSAllowOrigins    string
-	FrontendBaseURL     string
-	BasaltBaseURL       string
+	Environment           string
+	HTTPAddr              string
+	GRPCAddr              string
+	GRPCTLSEnabled        bool
+	GRPCTLSCertFile       string
+	GRPCTLSKeyFile        string
+	GRPCTLSClientCAFile   string
+	NodeVerifyScheme      string
+	DBPath                string
+	RabbitURL             string
+	RabbitExchange        string
+	InitAdminPassword     string
+	JWTSecret             string
+	ArtifactRoot          string
+	ExecutionAPIKey       string
+	CORSAllowOrigins      string
+	FrontendBaseURL       string
+	BasaltBaseURL         string
 	BasaltInternalBaseURL string
-	BasaltOAuthEnabled  bool
-	BasaltClientID      string
-	BasaltClientSecret  string
-	BasaltRedirectURI   string
-	BasaltScope         string
-	BasaltCallbackPath  string
+	BasaltOAuthEnabled    bool
+	BasaltClientID        string
+	BasaltClientSecret    string
+	BasaltRedirectURI     string
+	BasaltScope           string
+	BasaltCallbackPath    string
+	BasaltRoleClaimKeys   string
+	BasaltGroupClaimKeys  string
+	BasaltTeamSyncEnabled bool
+	BasaltTeamSyncPrune   bool
+	BasaltTeamPrefix      string
 }
 
 type ExecutorConfig struct {
@@ -92,31 +97,36 @@ func GetEnvBool(key string, fallback bool) bool {
 
 func LoadControlConfig() ControlConfig {
 	return ControlConfig{
-		Environment:         GetEnv("ARANEAE_ENV", "development"),
-		HTTPAddr:            GetEnv("CONTROL_HTTP_ADDR", ":8180"),
-		GRPCAddr:            GetEnv("CONTROL_GRPC_ADDR", ":9190"),
-		GRPCTLSEnabled:      GetEnvBool("CONTROL_GRPC_TLS_ENABLED", false),
-		GRPCTLSCertFile:     GetEnv("CONTROL_GRPC_TLS_CERT_FILE", ""),
-		GRPCTLSKeyFile:      GetEnv("CONTROL_GRPC_TLS_KEY_FILE", ""),
-		GRPCTLSClientCAFile: GetEnv("CONTROL_GRPC_TLS_CLIENT_CA_FILE", ""),
-		NodeVerifyScheme:    GetEnv("CONTROL_NODE_VERIFY_SCHEME", "http"),
-		DBPath:              GetEnv("CONTROL_DB_PATH", "./data/control.db"),
-		RabbitURL:           GetEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
-		RabbitExchange:      GetEnv("RABBITMQ_EXCHANGE", "tasks.direct"),
-		InitAdminPassword:   GetEnv("INIT_ADMIN_PASSWORD", ""),
-		JWTSecret:           GetEnv("CONTROL_JWT_SECRET", ""),
-		ArtifactRoot:        GetEnv("ARTIFACT_ROOT", "./data/artifacts"),
-		ExecutionAPIKey:     GetEnv("EXECUTION_CALLBACK_KEY", ""),
-		CORSAllowOrigins:    GetEnv("CONTROL_CORS_ALLOW_ORIGINS", "http://localhost:5109,http://127.0.0.1:5109"),
-		FrontendBaseURL:     GetEnv("FRONTEND_BASE_URL", "http://localhost:5109"),
-		BasaltBaseURL:       GetEnv("BASALTPASS_BASE_URL", "http://localhost:8101"),
+		Environment:           GetEnv("ARANEAE_ENV", "development"),
+		HTTPAddr:              GetEnv("CONTROL_HTTP_ADDR", ":8180"),
+		GRPCAddr:              GetEnv("CONTROL_GRPC_ADDR", ":9190"),
+		GRPCTLSEnabled:        GetEnvBool("CONTROL_GRPC_TLS_ENABLED", false),
+		GRPCTLSCertFile:       GetEnv("CONTROL_GRPC_TLS_CERT_FILE", ""),
+		GRPCTLSKeyFile:        GetEnv("CONTROL_GRPC_TLS_KEY_FILE", ""),
+		GRPCTLSClientCAFile:   GetEnv("CONTROL_GRPC_TLS_CLIENT_CA_FILE", ""),
+		NodeVerifyScheme:      GetEnv("CONTROL_NODE_VERIFY_SCHEME", "http"),
+		DBPath:                GetEnv("CONTROL_DB_PATH", "./data/control.db"),
+		RabbitURL:             GetEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
+		RabbitExchange:        GetEnv("RABBITMQ_EXCHANGE", "tasks.direct"),
+		InitAdminPassword:     GetEnv("INIT_ADMIN_PASSWORD", ""),
+		JWTSecret:             GetEnv("CONTROL_JWT_SECRET", ""),
+		ArtifactRoot:          GetEnv("ARTIFACT_ROOT", "./data/artifacts"),
+		ExecutionAPIKey:       GetEnv("EXECUTION_CALLBACK_KEY", ""),
+		CORSAllowOrigins:      GetEnv("CONTROL_CORS_ALLOW_ORIGINS", "http://localhost:5109,http://127.0.0.1:5109"),
+		FrontendBaseURL:       GetEnv("FRONTEND_BASE_URL", "http://localhost:5109"),
+		BasaltBaseURL:         GetEnv("BASALTPASS_BASE_URL", "http://localhost:8101"),
 		BasaltInternalBaseURL: GetEnv("BASALTPASS_INTERNAL_BASE_URL", GetEnv("BASALTPASS_BASE_URL", "http://localhost:8101")),
-		BasaltOAuthEnabled:  GetEnvBool("BASALTPASS_OAUTH_ENABLED", false),
-		BasaltClientID:      GetEnv("BASALTPASS_OAUTH_CLIENT_ID", ""),
-		BasaltClientSecret:  GetEnv("BASALTPASS_OAUTH_CLIENT_SECRET", ""),
-		BasaltRedirectURI:   GetEnv("BASALTPASS_OAUTH_REDIRECT_URI", "http://localhost:8180/api/auth/basaltpass/callback/"),
-		BasaltScope:         GetEnv("BASALTPASS_OAUTH_SCOPE", "openid profile email"),
-		BasaltCallbackPath:  GetEnv("BASALTPASS_FRONTEND_CALLBACK_PATH", "/oauth/callback"),
+		BasaltOAuthEnabled:    GetEnvBool("BASALTPASS_OAUTH_ENABLED", false),
+		BasaltClientID:        GetEnv("BASALTPASS_OAUTH_CLIENT_ID", ""),
+		BasaltClientSecret:    GetEnv("BASALTPASS_OAUTH_CLIENT_SECRET", ""),
+		BasaltRedirectURI:     GetEnv("BASALTPASS_OAUTH_REDIRECT_URI", "http://localhost:8180/api/auth/basaltpass/callback/"),
+		BasaltScope:           GetEnv("BASALTPASS_OAUTH_SCOPE", "openid profile email"),
+		BasaltCallbackPath:    GetEnv("BASALTPASS_FRONTEND_CALLBACK_PATH", "/oauth/callback"),
+		BasaltRoleClaimKeys:   GetEnv("BASALTPASS_ROLE_CLAIM_KEYS", "roles,role,app_roles"),
+		BasaltGroupClaimKeys:  GetEnv("BASALTPASS_GROUP_CLAIM_KEYS", "groups,group,teams,team"),
+		BasaltTeamSyncEnabled: GetEnvBool("BASALTPASS_TEAM_SYNC_ENABLED", true),
+		BasaltTeamSyncPrune:   GetEnvBool("BASALTPASS_TEAM_SYNC_PRUNE", false),
+		BasaltTeamPrefix:      GetEnv("BASALTPASS_TEAM_PREFIX", "Basalt::"),
 	}
 }
 

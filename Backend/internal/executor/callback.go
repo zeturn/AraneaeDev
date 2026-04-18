@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
+	"araneae-go/internal/common"
 	"araneae-go/internal/executor/contracts"
 )
 
@@ -19,10 +21,14 @@ func (a *App) reportCallback(runID, runToken, correlationID string, payload cont
 	if err != nil {
 		return err
 	}
+	timestamp := fmt.Sprintf("%d", time.Now().Unix())
+	signature := common.BuildCallbackSignature(a.cfg.ControlCallbackKey, timestamp, runID, runToken, correlationID, body)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Execution-Key", a.cfg.ControlCallbackKey)
 	req.Header.Set("X-Run-Token", runToken)
 	req.Header.Set("X-Correlation-ID", correlationID)
+	req.Header.Set(common.CallbackTimestampHeader, timestamp)
+	req.Header.Set(common.CallbackSignatureHeader, signature)
 	resp, err := a.httpClient.Do(req)
 	if err != nil {
 		return err

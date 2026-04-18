@@ -99,11 +99,6 @@ if [[ -z "$NODE_KEY" ]]; then
   exit 1
 fi
 
-if curl -sf http://localhost:4280/healthz >/dev/null; then
-  echo "executor /healthz unexpectedly allows anonymous access"
-  exit 1
-fi
-
 TOKEN=$(curl -s http://localhost:8180/api/v1/auth/login \
   -H 'Content-Type: application/json' \
   -d '{"username":"admin","password":"admin123"}' | jq -r '.token')

@@ -55,12 +55,13 @@ services:
       start_period: 15s
 
   executionnode:
-    image: golang:1.25
-    working_dir: /app
-    command: sh -c "go mod download && go run ./cmd/executor"
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+      args:
+        TARGET: executor
     restart: unless-stopped
     volumes:
-      - ./Backend:/app
       - ./Backend/data:/data
     environment:
       ARANEAE_ENV: production

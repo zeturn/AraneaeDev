@@ -12,6 +12,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
 
@@ -94,6 +95,8 @@ type addWorkplacePeopleRequest struct {
 	UserIDs []string `json:"user_ids"`
 }
 
+const nodeInactiveAfter = 2 * time.Minute
+
 func (a *App) resolveUserIdentifier(identifier string) (common.User, error) {
 	value := strings.TrimSpace(identifier)
 	if value == "" {
@@ -137,6 +140,21 @@ func defaultCapabilities() []nodeCapability {
 		{Key: "go", Name: "Go", Available: true, Version: "1.26"},
 		{Key: "java", Name: "Java", Available: false},
 	}
+}
+
+func applyEffectiveNodeStatus(node *common.Node, now time.Time) {
+	if node == nil {
+		return
+	}
+	if !node.IsEnabled {
+		node.Status = "inactive"
+		return
+	}
+	if !node.LastActiveTime.IsZero() && now.Sub(node.LastActiveTime) > nodeInactiveAfter {
+		node.Status = "inactive"
+		return
+	}
+	node.Status = "active"
 }
 
 func parseCapabilities(raw string) []nodeCapability {
@@ -252,6 +270,15 @@ func (a *App) registerNode(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusUnauthorized, err.Error())
 	}
 
+	capabilities := defaultCapabilities()
+	if capResp, capErr := a.fetchExecutorCapabilities(req.IP, req.Port, req.PairKey); capErr == nil && len(capResp.Capabilities) > 0 {
+		capabilities = capResp.Capabilities
+	} else if capErr != nil {
+		if a.log != nil {
+			a.log.Warn("node capability fetch failed; using defaults", zap.String("ip", req.IP), zap.Int("port", req.Port), zap.Error(capErr))
+		}
+	}
+
 	uid, _ := c.Locals("uid").(string)
 	now := time.Now()
 
@@ -269,10 +296,12 @@ func (a *App) registerNode(c *fiber.Ctx) error {
 			node.CeleryQueue = queue
 		}
 		node.LastActiveTime = now
+		node.CapabilitiesJSON = toCapabilitiesJSON(capabilities)
 		node.UpdatedAt = now
 		if err := a.db.Save(&node).Error; err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 		}
+		applyEffectiveNodeStatus(&node, now)
 		return c.JSON(node)
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -294,7 +323,7 @@ func (a *App) registerNode(c *fiber.Ctx) error {
 		HDID:             strings.ToUpper(strings.ReplaceAll(uuid.NewString()[:12], "-", "")),
 		CPUInfo:          defaultCPUInfoJSON(),
 		MemoryInfo:       defaultMemoryInfoJSON(),
-		CapabilitiesJSON: toCapabilitiesJSON(defaultCapabilities()),
+		CapabilitiesJSON: toCapabilitiesJSON(capabilities),
 		CreatedBy:        uid,
 		CreatedAt:        now,
 		UpdatedAt:        now,
@@ -305,6 +334,7 @@ func (a *App) registerNode(c *fiber.Ctx) error {
 	if err := a.db.Create(&node).Error; err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}
+	applyEffectiveNodeStatus(&node, now)
 	return c.JSON(node)
 }
 
@@ -312,6 +342,10 @@ func (a *App) listNodes(c *fiber.Ctx) error {
 	var nodes []common.Node
 	if err := a.db.Order("id asc").Find(&nodes).Error; err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
+	now := time.Now()
+	for i := range nodes {
+		applyEffectiveNodeStatus(&nodes[i], now)
 	}
 	return c.JSON(fiber.Map{"results": nodes, "count": len(nodes)})
 }
@@ -325,6 +359,7 @@ func (a *App) getNode(c *fiber.Ctx) error {
 	if err := a.db.Where("id = ?", nodeID).First(&node).Error; err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "node not found")
 	}
+	applyEffectiveNodeStatus(&node, time.Now())
 	return c.JSON(node)
 }
 
@@ -337,6 +372,7 @@ func (a *App) updateNode(c *fiber.Ctx) error {
 	if err := a.db.Where("id = ?", nodeID).First(&node).Error; err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "node not found")
 	}
+	applyEffectiveNodeStatus(&node, time.Now())
 
 	var req updateNodeRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -438,6 +474,7 @@ func (a *App) getNodeCapabilities(c *fiber.Ctx) error {
 	if err := a.db.Where("id = ?", nodeID).First(&node).Error; err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "node not found")
 	}
+	applyEffectiveNodeStatus(&node, time.Now())
 	return c.JSON(fiber.Map{"capabilities": parseCapabilities(node.CapabilitiesJSON)})
 }
 
@@ -470,6 +507,7 @@ func (a *App) getNodeInstallers(c *fiber.Ctx) error {
 	if err := a.db.Where("id = ?", nodeID).First(&node).Error; err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "node not found")
 	}
+	applyEffectiveNodeStatus(&node, time.Now())
 	return c.JSON(fiber.Map{"installers": parseCapabilities(node.CapabilitiesJSON)})
 }
 

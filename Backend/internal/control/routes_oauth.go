@@ -269,11 +269,25 @@ func normalizeBasaltUsername(subject string) string {
 	return "bp_" + hex.EncodeToString(hash[:])[:24]
 }
 
-func (a *App) findOrCreateBasaltUser(subject string) (*common.User, error) {
+func (a *App) findOrCreateBasaltUser(subject, scopeRaw string, claims map[string]any) (*common.User, error) {
+	subject = strings.TrimSpace(subject)
+	if subject == "" {
+		return nil, errors.New("missing subject")
+	}
 	username := normalizeBasaltUsername(subject)
+	role := a.basaltRoleFromIdentity(scopeRaw, claims)
 	var user common.User
 	err := a.db.Where("username = ?", username).First(&user).Error
 	if err == nil {
+		if user.Role != role {
+			if updateErr := a.db.Model(&common.User{}).Where("id = ?", user.ID).Update("role", role).Error; updateErr != nil {
+				return nil, updateErr
+			}
+			user.Role = role
+		}
+		if syncErr := a.syncBasaltGroups(user, claims); syncErr != nil {
+			return nil, syncErr
+		}
 		return &user, nil
 	}
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -293,11 +307,14 @@ func (a *App) findOrCreateBasaltUser(subject string) (*common.User, error) {
 		ID:           uuid.NewString(),
 		Username:     username,
 		PasswordHash: passwordHash,
-		Role:         "operator",
+		Role:         role,
 		CreatedAt:    time.Now(),
 	}
 	if err := a.db.Create(&user).Error; err != nil {
 		return nil, err
+	}
+	if syncErr := a.syncBasaltGroups(user, claims); syncErr != nil {
+		return nil, syncErr
 	}
 	return &user, nil
 }
@@ -364,7 +381,9 @@ func (a *App) basaltPassCallback(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadGateway, "missing subject from userinfo")
 	}
 
-	user, err := a.findOrCreateBasaltUser(subject)
+	scopeRaw := normalizeScopes(extractStringValue(tokenPayload, "scope"))
+	identityClaims := mergeClaims(tokenPayload, userInfo)
+	user, err := a.findOrCreateBasaltUser(subject, scopeRaw, identityClaims)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}

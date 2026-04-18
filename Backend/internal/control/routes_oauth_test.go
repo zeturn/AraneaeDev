@@ -167,7 +167,7 @@ func TestBasaltPassCallbackRedirectsToFrontendCallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse issued token: %v", err)
 	}
-	if claims.Role != "operator" {
+	if claims.Role != "viewer" {
 		t.Fatalf("unexpected role: %s", claims.Role)
 	}
 	if exchangePayload["next"] != "/aprons/workplaces" {

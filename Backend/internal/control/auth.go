@@ -66,7 +66,8 @@ func (a *App) authMiddleware(c *fiber.Ctx) error {
 		}
 
 		subject := extractStringValue(payload, "sub", "user_id")
-		user, err := a.findOrCreateBasaltUser(subject)
+		scopes := normalizeScopes(extractStringValue(payload, "scope"))
+		user, err := a.findOrCreateBasaltUser(subject, scopes, payload)
 		if err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "failed to map subject to user")
 		}
@@ -74,9 +75,10 @@ func (a *App) authMiddleware(c *fiber.Ctx) error {
 		c.Locals("uid", user.ID)
 		c.Locals("role", user.Role)
 
-		if scopes, ok := payload["scope"].(string); ok {
-			c.Locals("scopes", scopes)
+		if scopes == "" {
+			scopes = defaultScopesForRole(user.Role)
 		}
+		c.Locals("scopes", scopes)
 		if act, ok := payload["act"].(map[string]any); ok {
 			c.Locals("act", act)
 		}
@@ -90,29 +92,14 @@ func (a *App) authMiddleware(c *fiber.Ctx) error {
 	}
 	c.Locals("uid", claims.UserID)
 	c.Locals("role", claims.Role)
+	c.Locals("scopes", defaultScopesForRole(claims.Role))
 	return c.Next()
 }
 
 func (a *App) requireAppScope(requiredScope string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		act := c.Locals("act")
-		if act == nil {
-			// Direct user request, bypass scope check, let role/project permissions handle it.
-			return c.Next()
-		}
-
 		scopesStr, _ := c.Locals("scopes").(string)
-		scopes := strings.Fields(scopesStr)
-
-		hasScope := false
-		for _, s := range scopes {
-			if s == requiredScope || s == "*" || s == "araneae.*" {
-				hasScope = true
-				break
-			}
-		}
-
-		if !hasScope {
+		if !hasScope(scopesStr, requiredScope) {
 			return fiber.NewError(fiber.StatusForbidden, "insufficient app scope: required "+requiredScope)
 		}
 

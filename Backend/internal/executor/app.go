@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -9,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -41,6 +43,13 @@ type App struct {
 	httpClient *http.Client
 }
 
+type runtimeCapability struct {
+	Key       string `json:"key"`
+	Name      string `json:"name"`
+	Available bool   `json:"available"`
+	Version   string `json:"version,omitempty"`
+}
+
 const maxExecutorOutputBytes = 900 * 1024
 
 func truncateOutput(raw string, maxBytes int) string {
@@ -71,7 +80,7 @@ func validateExecutorSecurityConfig(cfg common.ExecutorConfig) error {
 		return errors.New("CONTROL_HTTP_BASE must use https:// for production")
 	}
 	callbackKey := strings.TrimSpace(cfg.ControlCallbackKey)
-	if callbackKey == "change-me-callback" || len(callbackKey) < 24 {
+	if callbackKey == "change-me-callback" || len(callbackKey) < 32 {
 		return errors.New("EXECUTION_CALLBACK_KEY is missing or too weak for production")
 	}
 	return nil
@@ -212,8 +221,6 @@ func initRabbit(cfg common.ExecutorConfig) (*amqp.Connection, *amqp.Channel, err
 }
 
 func (a *App) setupRoutes() {
-	a.http.Use(a.nodeAuthMiddleware)
-
 	a.http.Get("/healthz", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
 			"status": "ok",
@@ -221,12 +228,66 @@ func (a *App) setupRoutes() {
 		})
 	})
 
+	a.http.Use(a.nodeAuthMiddleware)
+
 	a.http.Get("/node/verify", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
 			"status": "ok",
 			"queue":  a.cfg.RabbitQueue,
 		})
 	})
+
+	a.http.Get("/node/capabilities", func(c *fiber.Ctx) error {
+		caps := collectRuntimeCapabilities()
+		return c.JSON(fiber.Map{
+			"status":       "ok",
+			"queue":        a.cfg.RabbitQueue,
+			"capabilities": caps,
+		})
+	})
+}
+
+func collectRuntimeCapabilities() []runtimeCapability {
+	return []runtimeCapability{
+		detectRuntimeCapability("python", "Python", []runtimeCheck{{Command: "python3", Args: []string{"--version"}}, {Command: "python", Args: []string{"--version"}}}),
+		detectRuntimeCapability("node", "Node.js", []runtimeCheck{{Command: "node", Args: []string{"--version"}}}),
+		detectRuntimeCapability("go", "Go", []runtimeCheck{{Command: "go", Args: []string{"version"}}}),
+		detectRuntimeCapability("java", "Java", []runtimeCheck{{Command: "java", Args: []string{"-version"}}}),
+	}
+}
+
+type runtimeCheck struct {
+	Command string
+	Args    []string
+}
+
+func detectRuntimeCapability(key, name string, checks []runtimeCheck) runtimeCapability {
+	for _, check := range checks {
+		if _, err := exec.LookPath(check.Command); err != nil {
+			continue
+		}
+		cmd := exec.Command(check.Command, check.Args...)
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			continue
+		}
+		version := firstNonEmptyLine(string(output))
+		if version == "" {
+			version = "installed"
+		}
+		return runtimeCapability{Key: key, Name: name, Available: true, Version: version}
+	}
+	return runtimeCapability{Key: key, Name: name, Available: false}
+}
+
+func firstNonEmptyLine(raw string) string {
+	for _, line := range bytes.Split([]byte(raw), []byte("\n")) {
+		trimmed := strings.TrimSpace(string(line))
+		if trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func (a *App) Run(ctx context.Context) error {

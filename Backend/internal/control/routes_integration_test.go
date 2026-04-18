@@ -985,6 +985,52 @@ func TestControlRoutes_CallbackRejectsWrongRunToken(t *testing.T) {
 	}
 }
 
+func TestControlRoutes_CallbackRequiresSignatureInProduction(t *testing.T) {
+	app := newTestControlApp(t)
+	app.cfg.Environment = "production"
+	run, runToken := newProtectedRun(uuid.NewString())
+	if err := app.db.Create(&run).Error; err != nil {
+		t.Fatalf("seed task run failed: %v", err)
+	}
+
+	body := []byte(`{"status":"success","output":"done","exit_code":0}`)
+	unsigned := httptest.NewRequest(http.MethodPost, "/api/v1/runs/"+run.ID+"/callback", bytes.NewReader(body))
+	unsigned.Header.Set("Content-Type", "application/json")
+	unsigned.Header.Set("X-Execution-Key", app.cfg.ExecutionAPIKey)
+	unsigned.Header.Set("X-Run-Token", runToken)
+	unsigned.Header.Set("X-Correlation-ID", run.CorrelationID)
+	unsignedResp, err := app.http.Test(unsigned, -1)
+	if err != nil {
+		t.Fatalf("unsigned callback request failed: %v", err)
+	}
+	if unsignedResp.StatusCode != http.StatusUnauthorized {
+		b := bytes.NewBuffer(nil)
+		_, _ = b.ReadFrom(unsignedResp.Body)
+		t.Fatalf("expected 401 for unsigned production callback, got %d body=%s", unsignedResp.StatusCode, b.String())
+	}
+	_ = unsignedResp.Body.Close()
+
+	ts := fmt.Sprintf("%d", time.Now().Unix())
+	sig := common.BuildCallbackSignature(app.cfg.ExecutionAPIKey, ts, run.ID, runToken, run.CorrelationID, body)
+	signed := httptest.NewRequest(http.MethodPost, "/api/v1/runs/"+run.ID+"/callback", bytes.NewReader(body))
+	signed.Header.Set("Content-Type", "application/json")
+	signed.Header.Set("X-Execution-Key", app.cfg.ExecutionAPIKey)
+	signed.Header.Set("X-Run-Token", runToken)
+	signed.Header.Set("X-Correlation-ID", run.CorrelationID)
+	signed.Header.Set(common.CallbackTimestampHeader, ts)
+	signed.Header.Set(common.CallbackSignatureHeader, sig)
+	signedResp, err := app.http.Test(signed, -1)
+	if err != nil {
+		t.Fatalf("signed callback request failed: %v", err)
+	}
+	if signedResp.StatusCode != http.StatusOK {
+		b := bytes.NewBuffer(nil)
+		_, _ = b.ReadFrom(signedResp.Body)
+		t.Fatalf("expected 200 for signed callback, got %d body=%s", signedResp.StatusCode, b.String())
+	}
+	_ = signedResp.Body.Close()
+}
+
 func TestControl_GetArtifactRequiresRunScopedAuth(t *testing.T) {
 	app := newTestControlApp(t)
 	token := loginAndGetToken(t, app)

@@ -38,6 +38,12 @@ type nodeVerifyResponse struct {
 	Queue  string `json:"queue"`
 }
 
+type nodeCapabilitiesResponse struct {
+	Status       string           `json:"status"`
+	Queue        string           `json:"queue"`
+	Capabilities []nodeCapability `json:"capabilities"`
+}
+
 func hashNodeKey(raw string) string {
 	sum := sha256.Sum256([]byte(strings.TrimSpace(raw)))
 	return hex.EncodeToString(sum[:])
@@ -85,6 +91,52 @@ func (a *App) verifyExecutorNodeKey(ip string, port int, pairKey string) (*nodeV
 	}
 	if strings.TrimSpace(out.Status) != "ok" {
 		return nil, errors.New("executor verify response is invalid")
+	}
+	return &out, nil
+}
+
+func (a *App) fetchExecutorCapabilities(ip string, port int, pairKey string) (*nodeCapabilitiesResponse, error) {
+	pairKey = strings.TrimSpace(pairKey)
+	if pairKey == "" {
+		return nil, errors.New("pair_key is required")
+	}
+
+	scheme := strings.ToLower(strings.TrimSpace(a.cfg.NodeVerifyScheme))
+	if scheme == "" {
+		scheme = "http"
+	}
+	if scheme != "http" && scheme != "https" {
+		return nil, errors.New("invalid CONTROL_NODE_VERIFY_SCHEME")
+	}
+
+	url := fmt.Sprintf("%s://%s:%d/node/capabilities", scheme, ip, port)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build executor capabilities request failed: %w", err)
+	}
+	req.Header.Set(nodeAuthHeader, pairKey)
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("executor capabilities request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil, errors.New("pair_key rejected by executor")
+	}
+	if resp.StatusCode >= http.StatusMultipleChoices {
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		return nil, fmt.Errorf("executor capabilities failed with status %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+	}
+
+	var out nodeCapabilitiesResponse
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 16*1024)).Decode(&out); err != nil {
+		return nil, fmt.Errorf("decode executor capabilities response failed: %w", err)
+	}
+	if strings.TrimSpace(out.Status) != "ok" {
+		return nil, errors.New("executor capabilities response is invalid")
 	}
 	return &out, nil
 }
