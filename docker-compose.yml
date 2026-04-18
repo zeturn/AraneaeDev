@@ -65,6 +65,7 @@ services:
       dockerfile: Dockerfile
       args:
         TARGET: executor
+    user: "0:0"
     restart: unless-stopped
     volumes:
       - ./Backend/data:/data
@@ -74,6 +75,7 @@ services:
       EXECUTOR_DB_PATH: ${EXECUTOR_DB_PATH:-/data/executor.db}
       EXECUTOR_WORKDIR: ${EXECUTOR_WORKDIR:-/data/workdir}
       EXECUTOR_QUEUE: ${EXECUTOR_QUEUE:-default}
+      EXECUTOR_NODE_KEY_FILE: ${EXECUTOR_NODE_KEY_FILE:-/data/executor.node.key}
       CONTROL_GRPC_TARGET: ${EXECUTOR_CONTROL_GRPC_TARGET:-controlnode:9190}
       EXECUTOR_CONTROL_GRPC_TLS_ENABLED: ${EXECUTOR_CONTROL_GRPC_TLS_ENABLED:-false}
       EXECUTOR_CONTROL_GRPC_TLS_CA_FILE: ${EXECUTOR_CONTROL_GRPC_TLS_CA_FILE:-}
