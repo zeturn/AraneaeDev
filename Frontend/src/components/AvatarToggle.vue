@@ -29,7 +29,7 @@
       </div>
       <div class="mt-2 space-y-1">
         <RouterLink
-          to="/profile"
+          to="/aprons/profile"
           class="block rounded-md px-3 py-2 text-sm text-slate-700 transition hover:bg-slate-100"
           role="menuitem"
           @click="closeMenu"
@@ -79,7 +79,7 @@ const fillUserFromToken = () => {
   if (!payload) {
     return;
   }
-  userName.value = payload.username || payload.name || payload.sub || userName.value;
+  userName.value = payload.name || payload.preferred_username || payload.username || payload.sub || userName.value;
   userEmail.value = payload.email || userEmail.value;
 };
 
@@ -105,7 +105,7 @@ const fetchProfile = async () => {
     if (!profile) {
       return;
     }
-    userName.value = profile.username || profile.name || userName.value;
+    userName.value = profile.name || profile.username || userName.value;
     userEmail.value = profile.email || userEmail.value;
   } catch (_) {
     // Keep token-derived fallback when profile API is unavailable.

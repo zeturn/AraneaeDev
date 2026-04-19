@@ -1,31 +1,44 @@
 <template>
-  <div class="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
-    <h2 class="text-2xl font-semibold text-gray-800 mb-6">Avatar Management</h2>
+  <Aprons>
+    <div class="mx-auto flex max-w-3xl flex-col items-center rounded-2xl bg-[#F8FAFC] p-6">
+      <h2 class="mb-6 text-2xl font-semibold text-gray-800">头像管理</h2>
 
-    <div v-if="avatarUrl" class="mb-4">
-      <img :src="avatarUrl" alt="User Avatar" class="w-36 h-36 rounded-full object-cover shadow-lg"/>
+      <div v-if="avatarUrl" class="mb-4">
+        <img :src="avatarUrl" alt="User Avatar" class="h-36 w-36 rounded-full object-cover shadow-lg"/>
+      </div>
+
+      <div v-else class="mb-4 text-gray-500">
+        <p class="text-lg font-medium">暂无头像</p>
+      </div>
+
+      <input class="mb-4 w-full max-w-md cursor-pointer"
+             type="file"
+             @change="onFileChange"/>
+
+      <div class="flex w-full max-w-md gap-3">
+        <button
+            class="btn-primary flex-1 px-6 py-2"
+            @click="uploadAvatar">
+          上传头像
+        </button>
+        <button
+            class="btn-muted px-4 py-2"
+            @click="$router.push('/aprons/profile')">
+          返回资料
+        </button>
+      </div>
     </div>
-
-    <div v-else class="mb-4 text-gray-500">
-      <p class="text-lg font-medium">NO AVATAR~</p>
-    </div>
-
-    <input class="mb-4 w-full max-w-md cursor-pointer"
-           type="file"
-           @change="onFileChange"/>
-
-    <button
-        class="btn-primary px-6 py-2"
-        @click="uploadAvatar">
-      Upload Avatar
-    </button>
-  </div>
+  </Aprons>
 </template>
 
 <script>
 import ApiService from "@/services/ApiService.js"; // 引入ApiService
+import Aprons from "@/views/Aprons/Aprons.vue";
 
 export default {
+  components: {
+    Aprons,
+  },
   data() {
     return {
       avatar: null,

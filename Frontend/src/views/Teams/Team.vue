@@ -61,7 +61,7 @@ const links = computed(() => {
 const right_links = computed(() => {
 	return [
 		{name: '团队列表', url: `/aprons/teams`},
-		{name: '个人资料', url: `/profile`},
+		{name: '个人资料', url: `/aprons/profile`},
 		{name: '注销', url: `/logout`},
 	];
 });

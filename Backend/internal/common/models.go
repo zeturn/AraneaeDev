@@ -11,6 +11,8 @@ import (
 type User struct {
 	ID           string    `gorm:"primaryKey;size:36" json:"id"`
 	Username     string    `gorm:"uniqueIndex;size:64;not null" json:"username"`
+	Name         string    `gorm:"size:128" json:"name"`
+	Email        string    `gorm:"size:160;index" json:"email"`
 	PasswordHash string    `gorm:"not null" json:"-"`
 	Role         string    `gorm:"size:32;not null" json:"role"`
 	CreatedAt    time.Time `gorm:"not null" json:"created_at"`

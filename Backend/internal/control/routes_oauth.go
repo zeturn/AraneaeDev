@@ -269,6 +269,23 @@ func normalizeBasaltUsername(subject string) string {
 	return "bp_" + hex.EncodeToString(hash[:])[:24]
 }
 
+func basaltDisplayNameFromClaims(claims map[string]any) string {
+	name := extractStringValue(claims, "name", "full_name", "display_name", "preferred_username", "nickname", "username")
+	if name != "" {
+		return name
+	}
+	given := extractStringValue(claims, "given_name", "first_name")
+	family := extractStringValue(claims, "family_name", "last_name")
+	if given == "" && family == "" {
+		email := extractStringValue(claims, "email")
+		if at := strings.Index(email, "@"); at > 0 {
+			return strings.TrimSpace(email[:at])
+		}
+		return extractStringValue(claims, "sub", "user_id", "id")
+	}
+	return strings.TrimSpace(strings.TrimSpace(given) + " " + strings.TrimSpace(family))
+}
+
 func (a *App) findOrCreateBasaltUser(subject, scopeRaw string, claims map[string]any) (*common.User, error) {
 	subject = strings.TrimSpace(subject)
 	if subject == "" {
@@ -276,14 +293,28 @@ func (a *App) findOrCreateBasaltUser(subject, scopeRaw string, claims map[string
 	}
 	username := normalizeBasaltUsername(subject)
 	role := a.basaltRoleFromIdentity(scopeRaw, claims)
+	profileName := basaltDisplayNameFromClaims(claims)
+	email := extractStringValue(claims, "email")
 	var user common.User
 	err := a.db.Where("username = ?", username).First(&user).Error
 	if err == nil {
+		updates := map[string]any{}
 		if user.Role != role {
-			if updateErr := a.db.Model(&common.User{}).Where("id = ?", user.ID).Update("role", role).Error; updateErr != nil {
+			updates["role"] = role
+			user.Role = role
+		}
+		if profileName != "" && strings.TrimSpace(user.Name) != profileName {
+			updates["name"] = profileName
+			user.Name = profileName
+		}
+		if email != "" && strings.TrimSpace(user.Email) != email {
+			updates["email"] = email
+			user.Email = email
+		}
+		if len(updates) > 0 {
+			if updateErr := a.db.Model(&common.User{}).Where("id = ?", user.ID).Updates(updates).Error; updateErr != nil {
 				return nil, updateErr
 			}
-			user.Role = role
 		}
 		if syncErr := a.syncBasaltGroups(user, claims); syncErr != nil {
 			return nil, syncErr
@@ -306,6 +337,8 @@ func (a *App) findOrCreateBasaltUser(subject, scopeRaw string, claims map[string
 	user = common.User{
 		ID:           uuid.NewString(),
 		Username:     username,
+		Name:         profileName,
+		Email:        email,
 		PasswordHash: passwordHash,
 		Role:         role,
 		CreatedAt:    time.Now(),
@@ -387,7 +420,15 @@ func (a *App) basaltPassCallback(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}
-	token, err := a.issueToken(user.ID, user.Role)
+	displayName := basaltDisplayNameFromClaims(identityClaims)
+	email := extractStringValue(identityClaims, "email")
+	if displayName == "" {
+		displayName = strings.TrimSpace(user.Name)
+	}
+	if email == "" {
+		email = strings.TrimSpace(user.Email)
+	}
+	token, err := a.issueTokenWithIdentity(user.ID, user.Role, displayName, email)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}

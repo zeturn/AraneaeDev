@@ -584,6 +584,10 @@ func (a *App) getInstallStatus(c *fiber.Ctx) error {
 func (a *App) listUsers(c *fiber.Ctx) error {
 	role, _ := c.Locals("role").(string)
 	uid, _ := c.Locals("uid").(string)
+	identityName, _ := c.Locals("name").(string)
+	identityEmail, _ := c.Locals("email").(string)
+	identityName = strings.TrimSpace(identityName)
+	identityEmail = strings.TrimSpace(identityEmail)
 	query := a.db.Order("created_at asc")
 	if !isPrivilegedRole(role) {
 		query = query.Where("id = ?", uid)
@@ -596,9 +600,21 @@ func (a *App) listUsers(c *fiber.Ctx) error {
 
 	results := make([]fiber.Map, 0, len(users))
 	for _, u := range users {
+		name := strings.TrimSpace(u.Name)
+		email := strings.TrimSpace(u.Email)
+		if u.ID == uid {
+			if name == "" {
+				name = identityName
+			}
+			if email == "" {
+				email = identityEmail
+			}
+		}
 		results = append(results, fiber.Map{
 			"id":         u.ID,
+			"name":       name,
 			"username":   u.Username,
+			"email":      email,
 			"role":       u.Role,
 			"created_at": u.CreatedAt,
 		})
@@ -617,9 +633,23 @@ func (a *App) getUser(c *fiber.Ctx) error {
 	if !isPrivilegedRole(role) && uid != user.ID {
 		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
 	}
+	identityName, _ := c.Locals("name").(string)
+	identityEmail, _ := c.Locals("email").(string)
+	name := strings.TrimSpace(user.Name)
+	email := strings.TrimSpace(user.Email)
+	if uid == user.ID {
+		if name == "" {
+			name = strings.TrimSpace(identityName)
+		}
+		if email == "" {
+			email = strings.TrimSpace(identityEmail)
+		}
+	}
 	return c.JSON(fiber.Map{
 		"id":         user.ID,
+		"name":       name,
 		"username":   user.Username,
+		"email":      email,
 		"role":       user.Role,
 		"created_at": user.CreatedAt,
 	})

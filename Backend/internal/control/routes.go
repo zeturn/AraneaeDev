@@ -377,7 +377,11 @@ func (a *App) login(c *fiber.Ctx) error {
 		a.recordSecurityEvent(c, "auth_login_failed", "warning", "invalid credentials for username="+username)
 		return fiber.NewError(fiber.StatusUnauthorized, "invalid credentials")
 	}
-	token, err := a.issueToken(user.ID, user.Role)
+	displayName := strings.TrimSpace(user.Name)
+	if displayName == "" {
+		displayName = user.Username
+	}
+	token, err := a.issueTokenWithIdentity(user.ID, user.Role, displayName, strings.TrimSpace(user.Email))
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}

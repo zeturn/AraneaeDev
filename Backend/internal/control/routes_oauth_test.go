@@ -93,7 +93,11 @@ func TestBasaltPassCallbackRedirectsToFrontendCallback(t *testing.T) {
 			if got := r.Header.Get("Authorization"); got != "Bearer bp-access-token" {
 				t.Fatalf("unexpected authorization header: %s", got)
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{"sub": "user-subject-1"})
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"sub":   "user-subject-1",
+				"name":  "Basalt Demo User",
+				"email": "demo.user@example.com",
+			})
 		default:
 			http.NotFound(w, r)
 		}
@@ -170,8 +174,35 @@ func TestBasaltPassCallbackRedirectsToFrontendCallback(t *testing.T) {
 	if claims.Role != "viewer" {
 		t.Fatalf("unexpected role: %s", claims.Role)
 	}
+	if claims.Name != "Basalt Demo User" {
+		t.Fatalf("unexpected name in issued token: %q", claims.Name)
+	}
+	if claims.Email != "demo.user@example.com" {
+		t.Fatalf("unexpected email in issued token: %q", claims.Email)
+	}
 	if exchangePayload["next"] != "/aprons/workplaces" {
 		t.Fatalf("unexpected exchange next: %v", exchangePayload["next"])
+	}
+
+	profileReq := httptest.NewRequest(http.MethodGet, "/api/v1/users/"+claims.UserID, nil)
+	profileReq.Header.Set("Authorization", "Bearer "+issuedToken)
+	profileResp, err := app.http.Test(profileReq, -1)
+	if err != nil {
+		t.Fatalf("profile request failed: %v", err)
+	}
+	defer profileResp.Body.Close()
+	if profileResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 from profile api, got %d", profileResp.StatusCode)
+	}
+	var profilePayload map[string]any
+	if err := json.NewDecoder(profileResp.Body).Decode(&profilePayload); err != nil {
+		t.Fatalf("decode profile response: %v", err)
+	}
+	if got, _ := profilePayload["name"].(string); got != "Basalt Demo User" {
+		t.Fatalf("unexpected profile name: %q", got)
+	}
+	if got, _ := profilePayload["email"].(string); got != "demo.user@example.com" {
+		t.Fatalf("unexpected profile email: %q", got)
 	}
 
 	var userCount int64

@@ -284,6 +284,7 @@ const toLegacyProfileResponse = response => {
     }
 
     const username = profile.username || '';
+    const name = profile.name || profile.nickname || profile.preferred_username || '';
     const email = profile.email || '';
     const id = profile.id || '';
     const role = profile.role || '';
@@ -297,6 +298,7 @@ const toLegacyProfileResponse = response => {
                     avatar: profile.avatar || null,
                     user: {
                         id,
+                        name,
                         username,
                         email,
                         role,

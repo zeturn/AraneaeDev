@@ -15,13 +15,21 @@ import (
 type authClaims struct {
 	UserID string `json:"uid"`
 	Role   string `json:"role"`
+	Name   string `json:"name,omitempty"`
+	Email  string `json:"email,omitempty"`
 	jwt.RegisteredClaims
 }
 
 func (a *App) issueToken(userID, role string) (string, error) {
+	return a.issueTokenWithIdentity(userID, role, "", "")
+}
+
+func (a *App) issueTokenWithIdentity(userID, role, name, email string) (string, error) {
 	claims := authClaims{
 		UserID: userID,
 		Role:   role,
+		Name:   strings.TrimSpace(name),
+		Email:  strings.TrimSpace(email),
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(12 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -74,11 +82,27 @@ func (a *App) authMiddleware(c *fiber.Ctx) error {
 
 		c.Locals("uid", user.ID)
 		c.Locals("role", user.Role)
+		if name := strings.TrimSpace(user.Name); name != "" {
+			c.Locals("name", name)
+		}
+		if email := strings.TrimSpace(user.Email); email != "" {
+			c.Locals("email", email)
+		}
 
 		if scopes == "" {
 			scopes = defaultScopesForRole(user.Role)
 		}
 		c.Locals("scopes", scopes)
+		if c.Locals("name") == nil {
+			if name := extractStringValue(payload, "name", "full_name", "display_name", "preferred_username", "nickname", "username", "given_name", "first_name"); name != "" {
+				c.Locals("name", name)
+			}
+		}
+		if c.Locals("email") == nil {
+			if email := extractStringValue(payload, "email"); email != "" {
+				c.Locals("email", email)
+			}
+		}
 		if act, ok := payload["act"].(map[string]any); ok {
 			c.Locals("act", act)
 		}
@@ -93,6 +117,12 @@ func (a *App) authMiddleware(c *fiber.Ctx) error {
 	c.Locals("uid", claims.UserID)
 	c.Locals("role", claims.Role)
 	c.Locals("scopes", defaultScopesForRole(claims.Role))
+	if name := strings.TrimSpace(claims.Name); name != "" {
+		c.Locals("name", name)
+	}
+	if email := strings.TrimSpace(claims.Email); email != "" {
+		c.Locals("email", email)
+	}
 	return c.Next()
 }
 

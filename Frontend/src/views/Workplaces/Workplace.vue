@@ -61,7 +61,7 @@ const right_links = computed(() => {
   const id = route.params.id || 'default-id';  // 如果没有ID，使用默认值
   return [
     {name: '概览', url: `/aprons/workplaces`},
-	  {name: '个人资料', url: `/profile`},
+    {name: '个人资料', url: `/aprons/profile`},
     {name: '注销', url: `/logout`},
 
   ];

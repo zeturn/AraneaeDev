@@ -20,8 +20,18 @@ const routes = [
     {path: '/oauth/callback', component: () => import('../views/Auth/OAuthCallback.vue')},
     {path: '/logout', component: () => import('../views/Auth/Logout.vue')},
     {path: '/register', component: () => import('../views/Auth/Register.vue')},
-    {path: '/profile', component: () => import('../views/Profile/Index.vue')},
-    {path: '/profile/avatar', component: () => import('../views/Profile/Avatar.vue')},
+    {path: '/profile', redirect: '/aprons/profile'},
+    {path: '/profile/avatar', redirect: '/aprons/profile/avatar'},
+    {
+        path: '/aprons/profile',
+        component: () => import('../views/Profile/Index.vue'),
+        meta: {requiresAuth: true}
+    },
+    {
+        path: '/aprons/profile/avatar',
+        component: () => import('../views/Profile/Avatar.vue'),
+        meta: {requiresAuth: true}
+    },
 
     // Aprons
     {

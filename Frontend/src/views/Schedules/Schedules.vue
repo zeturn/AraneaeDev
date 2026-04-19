@@ -74,7 +74,7 @@ const right_links = computed(() => {
 	const id = route.params.id || 'default-id';
 	return [
 		{name: '概览', url: `/aprons/projects`},
-		{name: '个人资料', url: `/profile`},
+		{name: '个人资料', url: `/aprons/profile`},
 		{name: '注销', url: `/logout`},
 	];
 });
