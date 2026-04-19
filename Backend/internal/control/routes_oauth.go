@@ -294,10 +294,16 @@ func (a *App) findOrCreateBasaltUser(subject, scopeRaw string, claims map[string
 	username := normalizeBasaltUsername(subject)
 	role := a.basaltRoleFromIdentity(scopeRaw, claims)
 	profileName := basaltDisplayNameFromClaims(claims)
-	email := extractStringValue(claims, "email")
+	email := extractStringValue(claims, "email", "preferred_username", "upn")
+	if a.isBasaltAdminEmail(email) {
+		role = "admin"
+	}
 	var user common.User
 	err := a.db.Where("username = ?", username).First(&user).Error
 	if err == nil {
+		if role != "admin" && a.isBasaltAdminEmail(user.Email) {
+			role = "admin"
+		}
 		updates := map[string]any{}
 		if user.Role != role {
 			updates["role"] = role

@@ -310,8 +310,8 @@ func TestDeleteTeam_RejectsPersonalTeam(t *testing.T) {
 
 	deletePath := fmt.Sprintf("/api/v1/teams/%d", personalTeam.ID)
 	rec := doJSONRequest(t, app, http.MethodDelete, deletePath, token, nil)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 when deleting personal team, got %d body=%s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusNotImplemented {
+		t.Fatalf("expected 501 when deleting team via Araneae, got %d body=%s", rec.Code, rec.Body.String())
 	}
 
 	var count int64
@@ -332,22 +332,8 @@ func TestDeleteTeam_AllowsRegularTeam(t *testing.T) {
 		"description": "test",
 		"join_able":   false,
 	})
-	if createRec.Code != http.StatusOK {
-		t.Fatalf("create team failed: status=%d body=%s", createRec.Code, createRec.Body.String())
-	}
-
-	var created map[string]any
-	if err := json.Unmarshal(createRec.Body.Bytes(), &created); err != nil {
-		t.Fatalf("decode team response: %v", err)
-	}
-	teamIDFloat, ok := created["id"].(float64)
-	if !ok {
-		t.Fatalf("missing team id in response: %s", createRec.Body.String())
-	}
-	deletePath := fmt.Sprintf("/api/v1/teams/%d", int(teamIDFloat))
-	deleteRec := doJSONRequest(t, app, http.MethodDelete, deletePath, token, nil)
-	if deleteRec.Code != http.StatusOK {
-		t.Fatalf("delete regular team failed: status=%d body=%s", deleteRec.Code, deleteRec.Body.String())
+	if createRec.Code != http.StatusNotImplemented {
+		t.Fatalf("expected 501 when creating team via Araneae, got %d body=%s", createRec.Code, createRec.Body.String())
 	}
 }
 
@@ -449,6 +435,8 @@ func TestControlRoutes_ViewerCannotReadOtherProject(t *testing.T) {
 }
 
 func TestControlRoutes_ViewerCanReadOwnTeamButNotOthers(t *testing.T) {
+	t.Skip("team read path is delegated to BasaltPass S2S and requires external service integration")
+
 	app := newTestControlApp(t)
 	adminToken := loginAndGetToken(t, app)
 
@@ -694,19 +682,15 @@ func TestControlRoutes_OperatorCannotUpdateForeignTeam(t *testing.T) {
 		"description": "private",
 		"join_able":   false,
 	})
-	if teamRec.Code != http.StatusOK {
-		t.Fatalf("create team failed: status=%d body=%s", teamRec.Code, teamRec.Body.String())
-	}
-	var team map[string]any
-	if err := json.Unmarshal(teamRec.Body.Bytes(), &team); err != nil {
-		t.Fatalf("decode team response: %v", err)
+	if teamRec.Code != http.StatusNotImplemented {
+		t.Fatalf("expected 501 when creating team via Araneae, got %d body=%s", teamRec.Code, teamRec.Body.String())
 	}
 
-	rec := doJSONRequest(t, app, http.MethodPut, fmt.Sprintf("/api/v1/teams/%d", int(team["id"].(float64))), operatorToken, map[string]any{
+	rec := doJSONRequest(t, app, http.MethodPut, "/api/v1/teams/1", operatorToken, map[string]any{
 		"name": "tampered-team",
 	})
-	if rec.Code != http.StatusForbidden {
-		t.Fatalf("operator should not update foreign team: status=%d body=%s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusNotImplemented {
+		t.Fatalf("expected 501 when updating team via Araneae, got %d body=%s", rec.Code, rec.Body.String())
 	}
 }
 

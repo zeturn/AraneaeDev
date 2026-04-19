@@ -34,6 +34,8 @@ type ControlConfig struct {
 	BasaltCallbackPath    string
 	BasaltRoleClaimKeys   string
 	BasaltGroupClaimKeys  string
+	BasaltAdminEmails     string
+	BasaltS2SScopes       string
 	BasaltTeamSyncEnabled bool
 	BasaltTeamSyncPrune   bool
 	BasaltTeamPrefix      string
@@ -124,6 +126,8 @@ func LoadControlConfig() ControlConfig {
 		BasaltCallbackPath:    GetEnv("BASALTPASS_FRONTEND_CALLBACK_PATH", "/oauth/callback"),
 		BasaltRoleClaimKeys:   GetEnv("BASALTPASS_ROLE_CLAIM_KEYS", "roles,role,app_roles"),
 		BasaltGroupClaimKeys:  GetEnv("BASALTPASS_GROUP_CLAIM_KEYS", "groups,group,teams,team"),
+		BasaltAdminEmails:     GetEnv("BASALTPASS_ADMIN_EMAILS", "hrzh@ucdavis.edu"),
+		BasaltS2SScopes:       GetEnv("BASALTPASS_S2S_SCOPES", "s2s.user.read s2s.team.read"),
 		BasaltTeamSyncEnabled: GetEnvBool("BASALTPASS_TEAM_SYNC_ENABLED", true),
 		BasaltTeamSyncPrune:   GetEnvBool("BASALTPASS_TEAM_SYNC_PRUNE", false),
 		BasaltTeamPrefix:      GetEnv("BASALTPASS_TEAM_PREFIX", "Basalt::"),

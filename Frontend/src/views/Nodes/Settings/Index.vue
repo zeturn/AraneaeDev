@@ -88,13 +88,30 @@ const updateNode = async () => {
  * Delete node
  */
 const deleteNode = async () => {
+	let deleted = false;
 	try {
 		await ApiService.deleteNode(nodeId);
-		message.value = 'Node deleted successfully!';
-		router.push({name: 'NodesList'}); // 跳转回节点列表
+		deleted = true;
 	} catch (error) {
-		console.error('Error deleting node:', error);
-		message.value = 'Failed to delete node.';
+		const status = error?.response?.status;
+		if (status === 404) {
+			// Node is already gone on the backend; keep UI flow idempotent.
+			deleted = true;
+		} else {
+			console.error('Error deleting node:', error);
+			message.value = 'Failed to delete node.';
+			return;
+		}
+	}
+
+	if (deleted) {
+		message.value = 'Node deleted successfully!';
+		try {
+			await router.push({name: 'apronsNode'});
+		} catch (navError) {
+			console.error('Error navigating after node deletion:', navError);
+			await router.push('/aprons/nodes');
+		}
 	}
 };
 

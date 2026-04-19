@@ -44,6 +44,16 @@ type nodeCapabilitiesResponse struct {
 	Capabilities []nodeCapability `json:"capabilities"`
 }
 
+type nodeAliveResponse struct {
+	Status   string   `json:"status"`
+	Queue    string   `json:"queue"`
+	Hostname string   `json:"hostname"`
+	Machine  string   `json:"machine"`
+	OS       string   `json:"os"`
+	HTTPAddr string   `json:"http_addr"`
+	IPs      []string `json:"ips"`
+}
+
 func hashNodeKey(raw string) string {
 	sum := sha256.Sum256([]byte(strings.TrimSpace(raw)))
 	return hex.EncodeToString(sum[:])
@@ -137,6 +147,49 @@ func (a *App) fetchExecutorCapabilities(ip string, port int, pairKey string) (*n
 	}
 	if strings.TrimSpace(out.Status) != "ok" {
 		return nil, errors.New("executor capabilities response is invalid")
+	}
+	return &out, nil
+}
+
+func (a *App) probeExecutorAlive(host string, port int) (*nodeAliveResponse, error) {
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return nil, errors.New("host is required")
+	}
+
+	scheme := strings.ToLower(strings.TrimSpace(a.cfg.NodeVerifyScheme))
+	if scheme == "" {
+		scheme = "http"
+	}
+	if scheme != "http" && scheme != "https" {
+		return nil, errors.New("invalid CONTROL_NODE_VERIFY_SCHEME")
+	}
+
+	url := fmt.Sprintf("%s://%s:%d/node/alive", scheme, host, port)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build executor alive request failed: %w", err)
+	}
+
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("executor alive request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= http.StatusMultipleChoices {
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		return nil, fmt.Errorf("executor alive failed with status %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+	}
+
+	var out nodeAliveResponse
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 8192)).Decode(&out); err != nil {
+		return nil, fmt.Errorf("decode executor alive response failed: %w", err)
+	}
+	statusText := strings.ToLower(strings.TrimSpace(out.Status))
+	if statusText != "ok" && statusText != "alive" {
+		return nil, errors.New("executor alive response is invalid")
 	}
 	return &out, nil
 }

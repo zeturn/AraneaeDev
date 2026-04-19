@@ -8,10 +8,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -228,6 +231,21 @@ func (a *App) setupRoutes() {
 		})
 	})
 
+	// Public probe endpoint: allows control plane discovery even before pair-key matching.
+	a.http.Get("/node/alive", func(c *fiber.Ctx) error {
+		hostname, _ := os.Hostname()
+		ips := collectLocalIPv4s()
+		return c.JSON(fiber.Map{
+			"status":    "alive",
+			"queue":     a.cfg.RabbitQueue,
+			"hostname":  strings.TrimSpace(hostname),
+			"machine":   runtime.GOARCH,
+			"os":        runtime.GOOS,
+			"http_addr": strings.TrimSpace(a.cfg.HTTPAddr),
+			"ips":       ips,
+		})
+	})
+
 	a.http.Use(a.nodeAuthMiddleware)
 
 	a.http.Get("/node/verify", func(c *fiber.Ctx) error {
@@ -245,6 +263,36 @@ func (a *App) setupRoutes() {
 			"capabilities": caps,
 		})
 	})
+}
+
+func collectLocalIPv4s() []string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return []string{}
+	}
+	seen := make(map[string]struct{})
+	ips := make([]string, 0, len(addrs))
+	for _, addr := range addrs {
+		ipNet, ok := addr.(*net.IPNet)
+		if !ok || ipNet.IP == nil {
+			continue
+		}
+		ip := ipNet.IP.To4()
+		if ip == nil {
+			continue
+		}
+		if ip[0] == 127 {
+			continue
+		}
+		text := ip.String()
+		if _, exists := seen[text]; exists {
+			continue
+		}
+		seen[text] = struct{}{}
+		ips = append(ips, text)
+	}
+	sort.Strings(ips)
+	return ips
 }
 
 func collectRuntimeCapabilities() []runtimeCapability {

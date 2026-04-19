@@ -124,6 +124,8 @@ func roleFromClaims(payload map[string]any, claimKeys []string) string {
 			return "admin"
 		case "operator", "editor", "developer", "maintainer", "araneae_editor", "araneae_operator", "araneae.write":
 			return "operator"
+		case "member", "user":
+			return "operator"
 		case "viewer", "readonly", "read_only", "araneae_viewer", "araneae.read":
 			return "viewer"
 		}

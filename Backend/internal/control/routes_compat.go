@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"araneae-go/internal/common"
@@ -18,11 +21,15 @@ import (
 
 type discoverCandidate struct {
 	IP                string `json:"ip"`
+	Host              string `json:"host,omitempty"`
 	Name              string `json:"name"`
 	Port              int    `json:"port"`
 	GRPCPort          int    `json:"grpc_port"`
 	AlreadyRegistered bool   `json:"already_registered"`
 	RegisteredNodeID  *uint  `json:"registered_node_id"`
+	Alive             bool   `json:"alive"`
+	PairKeyMatched    bool   `json:"pair_key_matched"`
+	ProbeStatus       string `json:"probe_status,omitempty"`
 	Machine           string `json:"machine,omitempty"`
 	OS                string `json:"os,omitempty"`
 }
@@ -193,15 +200,21 @@ func (a *App) discoverNodes(c *fiber.Ctx) error {
 	if scope == "" {
 		scope = "local"
 	}
+	probePort := parseIntQueryWithDefault(c, "port", 4280)
+	probeGRPCPort := parseIntQueryWithDefault(c, "grpc_port", 9190)
+	pairKey := strings.TrimSpace(c.Query("pair_key"))
 
 	var nodes []common.Node
 	if err := a.db.Order("id asc").Find(&nodes).Error; err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}
 
+	nodeByEndpoint := make(map[string]common.Node, len(nodes))
 	candidates := make([]discoverCandidate, 0, len(nodes)+1)
 	for _, n := range nodes {
 		nID := n.ID
+		endpointKey := nodeEndpointKey(n.IPAddress, n.Port)
+		nodeByEndpoint[endpointKey] = n
 		candidates = append(candidates, discoverCandidate{
 			IP:                n.IPAddress,
 			Name:              n.Name,
@@ -209,9 +222,141 @@ func (a *App) discoverNodes(c *fiber.Ctx) error {
 			GRPCPort:          n.GRPCPort,
 			AlreadyRegistered: true,
 			RegisteredNodeID:  &nID,
+			Alive:             false,
+			PairKeyMatched:    false,
+			ProbeStatus:       "registered",
 			Machine:           "worknode",
 			OS:                "linux",
 		})
+	}
+
+	targets, err := discoveryTargets(scope, c.Query("cidr"), c.Query("domain"), c.Query("target"), c.Query("hosts"))
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+
+	if len(targets) > 0 {
+		type discoveredProbe struct {
+			Host           string
+			Alive          *nodeAliveResponse
+			PairKeyMatched bool
+		}
+
+		results := make([]discoveredProbe, 0, len(targets))
+		resultsCh := make(chan discoveredProbe, len(targets))
+		sem := make(chan struct{}, 24)
+		var wg sync.WaitGroup
+
+		for _, target := range targets {
+			target := target
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+
+				aliveResp, aliveErr := a.probeExecutorAlive(target, probePort)
+				if aliveErr != nil {
+					return
+				}
+
+				pairMatched := false
+				if pairKey != "" {
+					if _, verifyErr := a.verifyExecutorNodeKey(target, probePort, pairKey); verifyErr == nil {
+						pairMatched = true
+					}
+				}
+
+				resultsCh <- discoveredProbe{
+					Host:           target,
+					Alive:          aliveResp,
+					PairKeyMatched: pairMatched,
+				}
+			}()
+		}
+
+		wg.Wait()
+		close(resultsCh)
+		for item := range resultsCh {
+			results = append(results, item)
+		}
+
+		candidateIdxByEndpoint := make(map[string]int, len(candidates))
+		for i, cand := range candidates {
+			candidateIdxByEndpoint[nodeEndpointKey(cand.IP, cand.Port)] = i
+		}
+
+		for _, probe := range results {
+			ips := normalizeProbeIPs(probe.Host, probe.Alive.IPs)
+			candidateName := strings.TrimSpace(probe.Alive.Hostname)
+			if candidateName == "" {
+				candidateName = "node-" + strings.ReplaceAll(strings.TrimSpace(probe.Host), ".", "-")
+			}
+
+			chosenIP := ""
+			registeredID := (*uint)(nil)
+			registeredGRPC := probeGRPCPort
+			for _, ip := range ips {
+				if existing, ok := nodeByEndpoint[nodeEndpointKey(ip, probePort)]; ok {
+					chosenIP = ip
+					id := existing.ID
+					registeredID = &id
+					if existing.GRPCPort > 0 {
+						registeredGRPC = existing.GRPCPort
+					}
+					break
+				}
+			}
+			if chosenIP == "" {
+				if len(ips) > 0 {
+					chosenIP = ips[0]
+				} else {
+					chosenIP = strings.TrimSpace(probe.Host)
+				}
+			}
+
+			status := "alive_unmatched"
+			if probe.PairKeyMatched {
+				status = "alive_matched"
+			}
+
+			endpointKey := nodeEndpointKey(chosenIP, probePort)
+			if idx, exists := candidateIdxByEndpoint[endpointKey]; exists {
+				cand := &candidates[idx]
+				cand.Host = strings.TrimSpace(probe.Host)
+				cand.Alive = true
+				cand.PairKeyMatched = probe.PairKeyMatched
+				cand.ProbeStatus = status
+				if cand.Name == "" {
+					cand.Name = candidateName
+				}
+				if cand.Machine == "" {
+					cand.Machine = strings.TrimSpace(probe.Alive.Machine)
+				}
+				if cand.OS == "" {
+					cand.OS = strings.TrimSpace(probe.Alive.OS)
+				}
+				continue
+			}
+
+			alreadyRegistered := registeredID != nil
+			newCand := discoverCandidate{
+				IP:                chosenIP,
+				Host:              strings.TrimSpace(probe.Host),
+				Name:              candidateName,
+				Port:              probePort,
+				GRPCPort:          registeredGRPC,
+				AlreadyRegistered: alreadyRegistered,
+				RegisteredNodeID:  registeredID,
+				Alive:             true,
+				PairKeyMatched:    probe.PairKeyMatched,
+				ProbeStatus:       status,
+				Machine:           strings.TrimSpace(probe.Alive.Machine),
+				OS:                strings.TrimSpace(probe.Alive.OS),
+			}
+			candidateIdxByEndpoint[endpointKey] = len(candidates)
+			candidates = append(candidates, newCand)
+		}
 	}
 
 	hasLocal := false
@@ -229,15 +374,210 @@ func (a *App) discoverNodes(c *fiber.Ctx) error {
 			GRPCPort:          9190,
 			AlreadyRegistered: false,
 			RegisteredNodeID:  nil,
+			Alive:             false,
+			PairKeyMatched:    false,
+			ProbeStatus:       "seed",
 			Machine:           "localhost",
 			OS:                "windows",
 		})
 	}
 
+	sort.SliceStable(candidates, func(i, j int) bool {
+		if candidates[i].AlreadyRegistered != candidates[j].AlreadyRegistered {
+			return candidates[i].AlreadyRegistered
+		}
+		if candidates[i].Alive != candidates[j].Alive {
+			return candidates[i].Alive
+		}
+		if candidates[i].PairKeyMatched != candidates[j].PairKeyMatched {
+			return candidates[i].PairKeyMatched
+		}
+		if candidates[i].IP == candidates[j].IP {
+			return candidates[i].Port < candidates[j].Port
+		}
+		return candidates[i].IP < candidates[j].IP
+	})
+
 	return c.JSON(fiber.Map{
 		"scope":      scope,
 		"candidates": candidates,
 	})
+}
+
+func parseIntQueryWithDefault(c *fiber.Ctx, key string, fallback int) int {
+	raw := strings.TrimSpace(c.Query(key))
+	if raw == "" {
+		return fallback
+	}
+	v, err := strconv.Atoi(raw)
+	if err != nil || v <= 0 {
+		return fallback
+	}
+	return v
+}
+
+func nodeEndpointKey(ip string, port int) string {
+	return strings.ToLower(strings.TrimSpace(ip)) + ":" + strconv.Itoa(port)
+}
+
+func normalizeProbeIPs(host string, raw []string) []string {
+	seen := make(map[string]struct{})
+	out := make([]string, 0, len(raw)+1)
+	appendIP := func(v string) {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			return
+		}
+		if parsed := net.ParseIP(v); parsed != nil {
+			if v4 := parsed.To4(); v4 != nil {
+				v = v4.String()
+			}
+		}
+		if _, ok := seen[v]; ok {
+			return
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+	}
+	appendIP(host)
+	for _, ip := range raw {
+		appendIP(ip)
+	}
+	return out
+}
+
+func discoveryTargets(scope, cidrRaw, domainRaw, targetRaw, hostsRaw string) ([]string, error) {
+	scope = strings.ToLower(strings.TrimSpace(scope))
+	if scope == "" {
+		scope = "local"
+	}
+
+	seen := make(map[string]struct{})
+	targets := make([]string, 0, 64)
+	add := func(value string) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return
+		}
+		key := strings.ToLower(value)
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		targets = append(targets, value)
+	}
+
+	add(targetRaw)
+	for _, item := range strings.Split(strings.TrimSpace(hostsRaw), ",") {
+		add(item)
+	}
+
+	if domain := strings.TrimSpace(domainRaw); domain != "" {
+		add(domain)
+	}
+
+	if scope == "domain" && strings.TrimSpace(domainRaw) == "" && strings.TrimSpace(targetRaw) == "" && strings.TrimSpace(hostsRaw) == "" {
+		return nil, errors.New("domain scope requires domain/target/hosts parameter")
+	}
+
+	if scope == "custom" {
+		cidr := strings.TrimSpace(cidrRaw)
+		if cidr == "" && len(targets) == 0 {
+			return nil, errors.New("custom scope requires cidr or target/hosts parameter")
+		}
+		if cidr != "" {
+			if parsedIP := net.ParseIP(cidr); parsedIP != nil {
+				if v4 := parsedIP.To4(); v4 != nil {
+					add(v4.String())
+				} else {
+					add(parsedIP.String())
+				}
+			} else {
+				hosts, err := expandIPv4CIDRHosts(cidr, 512)
+				if err != nil {
+					return nil, err
+				}
+				for _, host := range hosts {
+					add(host)
+				}
+			}
+		}
+	}
+
+	if scope == "local" && len(targets) == 0 {
+		add("127.0.0.1")
+		add("localhost")
+	}
+
+	if hasLoopbackTarget(targets) {
+		add("host.docker.internal")
+	}
+
+	return targets, nil
+}
+
+func hasLoopbackTarget(targets []string) bool {
+	for _, target := range targets {
+		value := strings.TrimSpace(strings.ToLower(target))
+		switch value {
+		case "127.0.0.1", "localhost", "::1":
+			return true
+		}
+		if ip := net.ParseIP(value); ip != nil && ip.IsLoopback() {
+			return true
+		}
+	}
+	return false
+}
+
+func expandIPv4CIDRHosts(cidr string, maxHosts int) ([]string, error) {
+	if maxHosts <= 0 {
+		maxHosts = 256
+	}
+	baseIP, ipNet, err := net.ParseCIDR(strings.TrimSpace(cidr))
+	if err != nil {
+		return nil, errors.New("invalid cidr")
+	}
+	baseV4 := baseIP.To4()
+	if baseV4 == nil {
+		return nil, errors.New("only ipv4 cidr is supported")
+	}
+
+	network := ipv4ToUint32(baseV4)
+	mask := ipv4ToUint32(net.IP(ipNet.Mask).To4())
+	broadcast := network | (^mask)
+
+	start := network
+	end := broadcast
+	if broadcast-network >= 2 {
+		start = network + 1
+		end = broadcast - 1
+	}
+
+	hosts := make([]string, 0, minInt(maxHosts, int(end-start+1)))
+	for current := start; current <= end && len(hosts) < maxHosts; current++ {
+		hosts = append(hosts, uint32ToIPv4(current).String())
+	}
+	return hosts, nil
+}
+
+func ipv4ToUint32(ip net.IP) uint32 {
+	v4 := ip.To4()
+	if v4 == nil {
+		return 0
+	}
+	return uint32(v4[0])<<24 | uint32(v4[1])<<16 | uint32(v4[2])<<8 | uint32(v4[3])
+}
+
+func uint32ToIPv4(raw uint32) net.IP {
+	return net.IPv4(byte(raw>>24), byte(raw>>16), byte(raw>>8), byte(raw))
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func (a *App) registerNode(c *fiber.Ctx) error {
@@ -656,329 +996,78 @@ func (a *App) getUser(c *fiber.Ctx) error {
 }
 
 func (a *App) listMyTeams(c *fiber.Ctx) error {
-	uid, _ := c.Locals("uid").(string)
-	var memberships []common.TeamMember
-	if err := a.db.Where("user_id = ?", uid).Find(&memberships).Error; err != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	email, _ := c.Locals("email").(string)
+	if strings.TrimSpace(email) == "" {
+		return fiber.NewError(fiber.StatusBadRequest, "email is required for BasaltPass team lookup")
 	}
-	results := make([]fiber.Map, 0, len(memberships))
-	for _, m := range memberships {
-		var team common.Team
-		if err := a.db.Where("id = ?", m.TeamID).First(&team).Error; err != nil {
-			continue
-		}
-		results = append(results, fiber.Map{
-			"id":          team.ID,
-			"name":        team.Name,
-			"description": team.Description,
-			"join_able":   team.JoinAble,
-			"is_personal": team.IsPersonal,
-			"role":        m.Role,
-			"created_at":  team.CreatedAt,
-			"updated_at":  team.UpdatedAt,
-		})
+	results, err := a.basaltGetUserTeams(email)
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadGateway, err.Error())
 	}
 	return c.JSON(fiber.Map{"results": results, "count": len(results)})
 }
 
 func (a *App) createTeam(c *fiber.Ctx) error {
+	if !a.cfg.BasaltOAuthEnabled {
+		return fiber.NewError(fiber.StatusNotImplemented, "team management is delegated to BasaltPass tenant APIs")
+	}
+
 	var req createTeamRequest
 	if err := c.BodyParser(&req); err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+		return fiber.NewError(fiber.StatusBadRequest, "invalid request body")
 	}
 	req.Name = strings.TrimSpace(req.Name)
 	req.Description = strings.TrimSpace(req.Description)
 	if req.Name == "" {
-		return fiber.NewError(fiber.StatusBadRequest, "team name is required")
+		return fiber.NewError(fiber.StatusBadRequest, "name is required")
 	}
 
-	uid, _ := c.Locals("uid").(string)
-	now := time.Now()
-	team := common.Team{
-		Name:        req.Name,
-		Description: req.Description,
-		JoinAble:    req.JoinAble,
-		CreatedBy:   uid,
-		CreatedAt:   now,
-		UpdatedAt:   now,
+	email, _ := c.Locals("email").(string)
+	data, err := a.basaltCreateTeam(req.Name, req.Description, email)
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadGateway, err.Error())
 	}
-	if err := a.db.Create(&team).Error; err != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
-	}
-	member := common.TeamMember{TeamID: team.ID, UserID: uid, Role: "owner", CreatedAt: now}
-	_ = a.db.Create(&member).Error
-
-	return c.JSON(fiber.Map{
-		"id":          team.ID,
-		"name":        team.Name,
-		"description": team.Description,
-		"join_able":   team.JoinAble,
-		"is_personal": team.IsPersonal,
-		"role":        "owner",
-		"created_at":  team.CreatedAt,
-		"updated_at":  team.UpdatedAt,
-	})
+	return c.Status(fiber.StatusCreated).JSON(data)
 }
 
 func (a *App) getTeam(c *fiber.Ctx) error {
-	teamID, err := parseUintParam(c, "id")
-	if err != nil {
+	teamID := strings.TrimSpace(c.Params("id"))
+	if teamID == "" {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid team id")
 	}
-	var team common.Team
-	if err := a.db.Where("id = ?", teamID).First(&team).Error; err != nil {
-		return fiber.NewError(fiber.StatusNotFound, "team not found")
+	data, err := a.basaltGetTeamDetail(teamID)
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadGateway, err.Error())
 	}
-
-	uid, _ := c.Locals("uid").(string)
-	roleName, _ := c.Locals("role").(string)
-	if !isPrivilegedRole(roleName) {
-		var membershipCount int64
-		if err := a.db.Model(&common.TeamMember{}).Where("team_id = ? AND user_id = ?", teamID, uid).Count(&membershipCount).Error; err != nil {
-			return fiber.NewError(fiber.StatusInternalServerError, err.Error())
-		}
-		if membershipCount == 0 {
-			return fiber.NewError(fiber.StatusNotFound, "team not found")
-		}
-	}
-
-	role := ""
-	if uid != "" {
-		var member common.TeamMember
-		if err := a.db.Where("team_id = ? AND user_id = ?", team.ID, uid).First(&member).Error; err == nil {
-			role = member.Role
-		}
-	}
-
-	var membersCount int64
-	if err := a.db.Model(&common.TeamMember{}).Where("team_id = ?", team.ID).Count(&membersCount).Error; err != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
-	}
-
-	return c.JSON(fiber.Map{
-		"id":            team.ID,
-		"name":          team.Name,
-		"description":   team.Description,
-		"join_able":     team.JoinAble,
-		"is_personal":   team.IsPersonal,
-		"created_by":    team.CreatedBy,
-		"created_at":    team.CreatedAt,
-		"updated_at":    team.UpdatedAt,
-		"role":          role,
-		"members_count": membersCount,
-	})
+	return c.JSON(data)
 }
 
 func (a *App) updateTeam(c *fiber.Ctx) error {
-	teamID, err := parseUintParam(c, "id")
-	if err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "invalid team id")
-	}
-	var team common.Team
-	if err := a.db.Where("id = ?", teamID).First(&team).Error; err != nil {
-		return fiber.NewError(fiber.StatusNotFound, "team not found")
-	}
-	canManage, accessErr := a.canManageTeam(c, team)
-	if accessErr != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
-	}
-	if !canManage {
-		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
-	}
-	var req updateTeamRequest
-	if err := c.BodyParser(&req); err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, err.Error())
-	}
-	if req.Name != nil {
-		team.Name = strings.TrimSpace(*req.Name)
-	}
-	if req.Description != nil {
-		team.Description = strings.TrimSpace(*req.Description)
-	}
-	if req.JoinAble != nil {
-		team.JoinAble = *req.JoinAble
-	}
-	team.UpdatedAt = time.Now()
-	if err := a.db.Save(&team).Error; err != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
-	}
-	return c.JSON(team)
+	return fiber.NewError(fiber.StatusNotImplemented, "team management is delegated to BasaltPass tenant APIs")
 }
 
 func (a *App) deleteTeam(c *fiber.Ctx) error {
-	teamID, err := parseUintParam(c, "id")
-	if err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "invalid team id")
-	}
-
-	var team common.Team
-	if err := a.db.Where("id = ?", teamID).First(&team).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return fiber.NewError(fiber.StatusNotFound, "team not found")
-		}
-		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
-	}
-	canManage, accessErr := a.canManageTeam(c, team)
-	if accessErr != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
-	}
-	if !canManage {
-		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
-	}
-	if team.IsPersonal {
-		return fiber.NewError(fiber.StatusBadRequest, "personal team cannot be deleted")
-	}
-
-	_ = a.db.Where("team_id = ?", teamID).Delete(&common.TeamMember{}).Error
-	_ = a.db.Where("team_id = ?", teamID).Delete(&common.WorkplaceTeam{}).Error
-	result := a.db.Delete(&common.Team{}, teamID)
-	if result.Error != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, result.Error.Error())
-	}
-	if result.RowsAffected == 0 {
-		return fiber.NewError(fiber.StatusNotFound, "team not found")
-	}
-	return c.JSON(fiber.Map{"ok": true})
+	return fiber.NewError(fiber.StatusNotImplemented, "team management is delegated to BasaltPass tenant APIs")
 }
 
 func (a *App) getTeamMembers(c *fiber.Ctx) error {
-	teamID, err := parseUintParam(c, "id")
-	if err != nil {
+	teamID := strings.TrimSpace(c.Params("id"))
+	if teamID == "" {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid team id")
 	}
-
-	var team common.Team
-	if err := a.db.Where("id = ?", teamID).First(&team).Error; err != nil {
-		return fiber.NewError(fiber.StatusNotFound, "team not found")
+	members, err := a.basaltGetTeamMembers(teamID)
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadGateway, err.Error())
 	}
-
-	uid, _ := c.Locals("uid").(string)
-	roleName, _ := c.Locals("role").(string)
-	if !isPrivilegedRole(roleName) {
-		var membershipCount int64
-		if err := a.db.Model(&common.TeamMember{}).Where("team_id = ? AND user_id = ?", teamID, uid).Count(&membershipCount).Error; err != nil {
-			return fiber.NewError(fiber.StatusInternalServerError, err.Error())
-		}
-		if membershipCount == 0 {
-			return fiber.NewError(fiber.StatusNotFound, "team not found")
-		}
-	}
-
-	var members []common.TeamMember
-	if err := a.db.Where("team_id = ?", teamID).Find(&members).Error; err != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
-	}
-	resp := make([]fiber.Map, 0, len(members))
-	for _, m := range members {
-		user := fiber.Map{"id": m.UserID, "username": "user-" + m.UserID, "email": ""}
-		var u common.User
-		if err := a.db.Where("id = ?", m.UserID).First(&u).Error; err == nil {
-			user = fiber.Map{"id": u.ID, "username": u.Username, "email": ""}
-		}
-		resp = append(resp, fiber.Map{"user": user, "role": m.Role})
-	}
-	return c.JSON(fiber.Map{"members": resp})
+	return c.JSON(fiber.Map{"members": members})
 }
 
 func (a *App) addTeamMembers(c *fiber.Ctx) error {
-	teamID, err := parseUintParam(c, "id")
-	if err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "invalid team id")
-	}
-	var team common.Team
-	if err := a.db.Where("id = ?", teamID).First(&team).Error; err != nil {
-		return fiber.NewError(fiber.StatusNotFound, "team not found")
-	}
-	canManage, accessErr := a.canManageTeam(c, team)
-	if accessErr != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
-	}
-	if !canManage {
-		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
-	}
-	var req addTeamMembersRequest
-	if err := c.BodyParser(&req); err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, err.Error())
-	}
-	now := time.Now()
-	added := 0
-	skipped := 0
-	notFound := make([]string, 0)
-	for _, userID := range req.UserIDs {
-		identifier := strings.TrimSpace(userID)
-		if identifier == "" {
-			continue
-		}
-
-		user, resolveErr := a.resolveUserIdentifier(identifier)
-		if resolveErr != nil {
-			notFound = append(notFound, identifier)
-			continue
-		}
-
-		var count int64
-		if err := a.db.Model(&common.TeamMember{}).Where("team_id = ? AND user_id = ?", teamID, user.ID).Count(&count).Error; err != nil {
-			return fiber.NewError(fiber.StatusInternalServerError, err.Error())
-		}
-		if count > 0 {
-			skipped++
-			continue
-		}
-		if err := a.db.Create(&common.TeamMember{TeamID: teamID, UserID: user.ID, Role: "member", CreatedAt: now}).Error; err != nil {
-			return fiber.NewError(fiber.StatusInternalServerError, err.Error())
-		}
-		added++
-	}
-	return c.JSON(fiber.Map{"ok": true, "added": added, "skipped": skipped, "not_found": notFound})
+	return fiber.NewError(fiber.StatusNotImplemented, "team management is delegated to BasaltPass tenant APIs")
 }
 
 func (a *App) removeTeamMember(c *fiber.Ctx) error {
-	teamID, err := parseUintParam(c, "id")
-	if err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "invalid team id")
-	}
-
-	identifier := strings.TrimSpace(c.Params("userID"))
-	if identifier == "" {
-		return fiber.NewError(fiber.StatusBadRequest, "user id is required")
-	}
-
-	user, resolveErr := a.resolveUserIdentifier(identifier)
-	if resolveErr != nil {
-		return fiber.NewError(fiber.StatusNotFound, "user not found")
-	}
-	var team common.Team
-	if err := a.db.Where("id = ?", teamID).First(&team).Error; err != nil {
-		return fiber.NewError(fiber.StatusNotFound, "team not found")
-	}
-	canManage, accessErr := a.canManageTeam(c, team)
-	if accessErr != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
-	}
-	if !canManage {
-		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
-	}
-
-	var member common.TeamMember
-	if err := a.db.Where("team_id = ? AND user_id = ?", teamID, user.ID).First(&member).Error; err != nil {
-		return fiber.NewError(fiber.StatusNotFound, "team member not found")
-	}
-
-	if member.Role == "owner" {
-		var owners int64
-		if err := a.db.Model(&common.TeamMember{}).Where("team_id = ? AND role = ?", teamID, "owner").Count(&owners).Error; err != nil {
-			return fiber.NewError(fiber.StatusInternalServerError, err.Error())
-		}
-		if owners <= 1 {
-			return fiber.NewError(fiber.StatusBadRequest, "cannot remove the last owner")
-		}
-	}
-
-	if err := a.db.Where("id = ?", member.ID).Delete(&common.TeamMember{}).Error; err != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
-	}
-
-	return c.JSON(fiber.Map{"ok": true})
+	return fiber.NewError(fiber.StatusNotImplemented, "team management is delegated to BasaltPass tenant APIs")
 }
 
 func (a *App) listWorkplaces(c *fiber.Ctx) error {

@@ -18,11 +18,15 @@ import EventBus from "@/utils/event-bus";
 
 interface DiscoveredNode {
 	ip: string;
+	host?: string;
 	name: string;
 	port: number;
 	grpc_port: number;
 	already_registered: boolean;
 	registered_node_id: number | null;
+	alive?: boolean;
+	pair_key_matched?: boolean;
+	probe_status?: string;
 	machine?: string | null;
 	os?: string | null;
 }
@@ -35,6 +39,7 @@ const discoverLoading = ref(false);
 const discoverError = ref("");
 const discoveredNodes = ref<DiscoveredNode[]>([]);
 const customCidr = ref("");
+const domainTarget = ref("");
 const router = useRouter(); // 获取 Vue Router 实例
 
 const applyCandidate = (candidate: DiscoveredNode) => {
@@ -44,24 +49,49 @@ const applyCandidate = (candidate: DiscoveredNode) => {
 	}
 };
 
-const discoverNodes = async (scope: 'local' | 'custom' = 'local') => {
+const discoverNodes = async (scope: 'local' | 'custom' | 'domain' = 'local') => {
 	discoverLoading.value = true;
 	discoverError.value = "";
 	try {
 		const params: Record<string, string> = {scope};
 		if (scope === 'custom') {
 			if (!customCidr.value.trim()) {
-				discoverError.value = "请输入 CIDR，例如 192.168.1.0/24";
+				discoverError.value = "请输入 CIDR 或单个 IP，例如 192.168.1.0/24 或 127.0.0.1";
 				discoverLoading.value = false;
 				return;
 			}
 			params.cidr = customCidr.value.trim();
 		}
+		if (scope === 'domain') {
+			if (!domainTarget.value.trim()) {
+				discoverError.value = "请输入域名或主机名，例如 worker-1.local";
+				discoverLoading.value = false;
+				return;
+			}
+			params.domain = domainTarget.value.trim();
+		}
 		const response = await ApiService.discoverNodes(params);
 		discoveredNodes.value = response?.data?.candidates || [];
 	} catch (error: any) {
 		discoveredNodes.value = [];
-		discoverError.value = error?.response?.data?.error || "扫描失败，请稍后重试";
+		const status = Number(error?.response?.status || 0);
+		const payload = error?.response?.data;
+		let detail = '';
+		if (typeof payload === 'string') {
+			detail = payload.trim();
+		} else if (payload && typeof payload === 'object') {
+			detail = String(payload.error || payload.detail || payload.message || '').trim();
+		}
+		if (!detail) {
+			if (status === 401) {
+				detail = '登录失效或未登录，请重新登录后重试。';
+			} else if (status === 403) {
+				detail = '权限不足：仅 admin/operator 可扫描节点。';
+			} else {
+				detail = '扫描失败，请稍后重试';
+			}
+		}
+		discoverError.value = detail;
 	}
 	discoverLoading.value = false;
 };
@@ -137,6 +167,20 @@ onMounted(() => {
 						>
 							扫描自定义网段
 						</button>
+						<input
+							v-model="domainTarget"
+							class="field-input min-w-[220px] flex-1"
+							type="text"
+							placeholder="域名/主机名，如 worker-a.internal"
+						/>
+						<button
+							class="btn-muted px-3 py-2 text-sm disabled:opacity-60"
+							type="button"
+							:disabled="discoverLoading"
+							@click="discoverNodes('domain')"
+						>
+							扫描域名
+						</button>
 					</div>
 					<p v-if="discoverLoading" class="mt-3 text-sm text-gray-500">正在扫描可用 worknode...</p>
 					<p v-if="discoverError" class="mt-3 text-sm text-red-600">{{ discoverError }}</p>
@@ -150,7 +194,20 @@ onMounted(() => {
 						>
 							<span class="text-sm text-gray-700">
 								{{ candidate.name }} · {{ candidate.ip }}:{{ candidate.port }}
+								<span v-if="candidate.host"> · host: {{ candidate.host }}</span>
 								<span v-if="candidate.os"> · {{ candidate.os }}</span>
+							</span>
+							<span
+								v-if="candidate.alive"
+								class="tag-pill"
+							>
+								alive
+							</span>
+							<span
+								v-if="candidate.pair_key_matched"
+								class="tag-pill"
+							>
+								密钥匹配
 							</span>
 							<span
 								v-if="candidate.already_registered"
@@ -163,6 +220,9 @@ onMounted(() => {
 								class="tag-pill"
 							>
 								匹配
+							</span>
+							<span v-if="candidate.probe_status" class="tag-pill">
+								{{ candidate.probe_status }}
 							</span>
 						</button>
 					</div>
