@@ -1,5 +1,5 @@
 <template>
-  <div class="w-screen" style="height: 100vh; display: flex;">
+  <div class="w-full" style="height: 100vh; display: flex; overflow-x: hidden;">
     <!-- 侧边栏 -->
     <aside style="width: 200px; overflow-y: auto; border-right: 1px solid #eaeaea;">
       <el-menu router>

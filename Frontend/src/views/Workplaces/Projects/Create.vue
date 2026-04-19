@@ -34,17 +34,19 @@
 						<label class="block mb-2 text-gray-700 text-sm font-medium" for="language">
 							语言
 						</label>
-						<select
+						<el-select
 							id="language"
 							v-model="projectData.language"
-							class="field-input"
-							required
+							class="w-full"
+							placeholder="请选择语言"
 						>
-							<option disabled value="">请选择语言</option>
-							<option value="python">Python</option>
-							<option value="js">JavaScript</option>
-							<option value="ts">TypeScript</option>
-						</select>
+							<el-option label="Python" value="python" />
+							<el-option label="JavaScript" value="js" />
+							<el-option label="TypeScript" value="ts" />
+							<el-option label="Go" value="go" />
+							<el-option label="Java" value="java" />
+							<el-option label="Shell" value="shell" />
+						</el-select>
 					</div>
 
 					<!-- 命令 -->
@@ -125,6 +127,11 @@ export default {
 		 * Submit project data and navigate to project detail page
 		 */
 		async submitProject() {
+			if (!this.projectData.language) {
+				alert("请选择语言。");
+				return;
+			}
+
 			// 调用 ApiService 创建项目
 			// Call ApiService to create project
 			try {

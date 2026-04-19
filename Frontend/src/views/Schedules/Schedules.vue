@@ -11,12 +11,12 @@
 
 <!-- App.vue -->
 <template>
-	<div class="flex flex-col h-screen w-screen">
+	<div class="flex h-screen w-full flex-col overflow-x-hidden">
 		<Header @toggleSidebar="toggleSidebar"/>
-		<div class="flex flex-row flex-1">
+		<div class="flex flex-1 flex-row overflow-x-hidden">
 			<Sidebar :isLargeScreen="isLargeScreen" :isSidebarCollapsed="!isSidebarOpen" :links="links"
 			         @toggleSidebar="toggleSidebar"/>
-			<main class="flex-1 p-4">
+			<main class="min-w-0 flex-1 overflow-x-hidden p-4">
 				<slot></slot>
 			</main>
 			<RightSidebar :isLargeScreen="isLargeScreen" :isRightSidebarCollapsed="!isSidebarOpen" :links="right_links"

@@ -10,7 +10,7 @@
   -->
 
 <template>
-	<div id="app" class="w-screen h-screen">
+  <div id="app" class="h-screen w-full overflow-x-hidden">
 		<router-view></router-view>
 		<NotificationContainer ref="notificationContainer" position="bottom-right"/>
 

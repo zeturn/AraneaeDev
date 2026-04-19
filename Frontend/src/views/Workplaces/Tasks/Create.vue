@@ -26,6 +26,82 @@
 							placeholder="请输入任务名称"
 						/>
 					</div>
+
+					<!-- 模式 -->
+					<div v-if="!isGoApi">
+						<label for="mode" class="block mb-2 text-gray-700 text-sm font-medium">模式</label>
+						<el-select
+							v-model="form.mode"
+							id="mode"
+							class="w-full"
+						>
+							<el-option label="一次性" value="once" />
+							<el-option label="循环" value="recurring" />
+						</el-select>
+					</div>
+					<div v-if="isGoApi" class="grid grid-cols-1 gap-5 md:grid-cols-2">
+						<div>
+							<label for="project_id" class="block mb-2 text-gray-700 text-sm font-medium">项目</label>
+							<el-select
+								v-model="goForm.project_id"
+								id="project_id"
+								class="w-full"
+								placeholder="请选择项目"
+								:loading="goProjectLoading"
+							>
+								<el-option
+									v-for="project in goProjects"
+									:key="project.id"
+									:label="formatProjectLabel(project)"
+									:value="project.id"
+								/>
+							</el-select>
+							<p v-if="!goProjectLoading && goProjects.length === 0" class="mt-2 text-xs text-slate-500">暂无可用项目，请先创建项目。</p>
+						</div>
+						<div>
+							<label for="version_id" class="block mb-2 text-gray-700 text-sm font-medium">版本</label>
+							<el-select
+								v-model="goForm.version_id"
+								id="version_id"
+								:disabled="!goForm.project_id || goVersionLoading"
+								class="w-full"
+								:placeholder="goForm.project_id ? '请选择版本' : '请先选择项目'"
+								:loading="goVersionLoading"
+							>
+								<el-option
+									v-for="version in goVersions"
+									:key="version.id"
+									:label="formatVersionLabel(version)"
+									:value="version.id"
+								/>
+							</el-select>
+							<p v-if="goForm.project_id && !goVersionLoading && goVersions.length === 0" class="mt-2 text-xs text-slate-500">该项目暂无可用版本，请先上传版本。</p>
+						</div>
+					</div>
+					<div v-if="isGoApi" class="grid grid-cols-1 gap-5 md:grid-cols-2">
+						<div>
+							<label for="entry_command" class="block mb-2 text-gray-700 text-sm font-medium">执行命令</label>
+							<input
+								v-model="goForm.entry_command"
+								id="entry_command"
+								type="text"
+								required
+								class="field-input"
+								placeholder="例如: bash run.sh"
+							/>
+						</div>
+						<div>
+							<label for="node_queue" class="block mb-2 text-gray-700 text-sm font-medium">节点队列</label>
+							<input
+								v-model="goForm.node_queue"
+								id="node_queue"
+								type="text"
+								class="field-input"
+								placeholder="默认 default"
+							/>
+						</div>
+					</div>
+
 					<!-- 描述 -->
 					<div>
 						<label for="description" class="block mb-2 text-gray-700 text-sm font-medium">描述</label>
@@ -36,71 +112,6 @@
 							class="field-input resize-none"
 							placeholder="请输入任务描述"
 						></textarea>
-					</div>
-					<!-- 模式 -->
-					<div v-if="!isGoApi">
-						<label for="mode" class="block mb-2 text-gray-700 text-sm font-medium">模式</label>
-						<select
-							v-model="form.mode"
-							id="mode"
-							required
-							class="field-input"
-						>
-							<option value="once">一次性</option>
-							<option value="recurring">循环</option>
-						</select>
-					</div>
-					<div v-if="isGoApi">
-						<label for="project_id" class="block mb-2 text-gray-700 text-sm font-medium">项目</label>
-						<select
-							v-model="goForm.project_id"
-							id="project_id"
-							required
-							class="field-input"
-						>
-							<option disabled value="">请选择项目</option>
-							<option v-for="project in goProjects" :key="project.id" :value="project.id">
-								{{ formatProjectLabel(project) }}
-							</option>
-						</select>
-						<p v-if="!goProjectLoading && goProjects.length === 0" class="mt-2 text-xs text-slate-500">暂无可用项目，请先创建项目。</p>
-					</div>
-					<div v-if="isGoApi">
-						<label for="version_id" class="block mb-2 text-gray-700 text-sm font-medium">版本</label>
-						<select
-							v-model="goForm.version_id"
-							id="version_id"
-							required
-							:disabled="!goForm.project_id || goVersionLoading"
-							class="field-input disabled:opacity-60"
-						>
-							<option disabled value="">{{ goForm.project_id ? '请选择版本' : '请先选择项目' }}</option>
-							<option v-for="version in goVersions" :key="version.id" :value="version.id">
-								{{ formatVersionLabel(version) }}
-							</option>
-						</select>
-						<p v-if="goForm.project_id && !goVersionLoading && goVersions.length === 0" class="mt-2 text-xs text-slate-500">该项目暂无可用版本，请先上传版本。</p>
-					</div>
-					<div v-if="isGoApi">
-						<label for="entry_command" class="block mb-2 text-gray-700 text-sm font-medium">执行命令</label>
-						<input
-							v-model="goForm.entry_command"
-							id="entry_command"
-							type="text"
-							required
-							class="field-input"
-							placeholder="例如: bash run.sh"
-						/>
-					</div>
-					<div v-if="isGoApi">
-						<label for="node_queue" class="block mb-2 text-gray-700 text-sm font-medium">节点队列</label>
-						<input
-							v-model="goForm.node_queue"
-							id="node_queue"
-							type="text"
-							class="field-input"
-							placeholder="默认 default"
-						/>
 					</div>
 					<!-- 启用 -->
 					<div v-if="!isGoApi" class="mb-2">
@@ -252,6 +263,21 @@ onMounted(async () => {
 async function submitForm() {
 	loading.value = true;
 	error.value = null;
+	if (!isGoApi && !form.mode) {
+		error.value = '请选择模式';
+		loading.value = false;
+		return;
+	}
+	if (isGoApi && !goForm.project_id) {
+		error.value = '请选择项目';
+		loading.value = false;
+		return;
+	}
+	if (isGoApi && !goForm.version_id) {
+		error.value = '请选择版本';
+		loading.value = false;
+		return;
+	}
 	try {
 		const taskPayload = isGoApi
 			? {

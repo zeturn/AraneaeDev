@@ -13,10 +13,10 @@
 	<Workplace>
 		<Schedules>
 			<div class="mx-auto w-full max-w-5xl px-4 pb-10">
-				<div class="rounded-2xl bg-white px-4 py-5 sm:px-6">
+				<div class="rounded-2xl bg-white py-5">
 					<form @submit.prevent="handleCreateSchedule">
 						<div class="space-y-2">
-							<label class="block text-lg font-medium text-gray-800" for="name">
+							<label class="block text-sm font-normal text-gray-600" for="name">
 								Schedule Name
 								<span class="ml-1 text-red-500">*</span>
 							</label>
@@ -30,7 +30,7 @@
 							/>
 						</div>
 						<div class="space-y-2">
-							<label class="block text-lg font-medium text-gray-800" for="description">Description</label>
+							<label class="block text-sm font-normal text-gray-600" for="description">Description</label>
 							<textarea
 								id="description"
 								v-model="newSchedule.description"
@@ -41,7 +41,7 @@
 
 						<div class="space-y-2 py-4">
 							<div>
-								<label for="enabled" class="block text-lg font-medium text-gray-800 mb-2">
+								<label for="enabled" class="mb-2 block text-sm font-normal text-gray-600">
 									<span>Enabled</span>
 									<span class="ml-1 text-red-500">*</span>
 								</label>
@@ -53,14 +53,14 @@
 
 
 						<div class="space-y-2">
-							<div class="rounded-2xl bg-slate-50/70 p-5 space-y-6">
-								<div class="space-y-4">
-									<label class="text-lg font-medium text-gray-800">Order Configuration</label>
-									<div class="space-y-4">
+							<div class="rounded-2xl bg-slate-50/70 p-4 sm:p-5 space-y-8">
+								<div class="space-y-6">
+									<label class="text-sm font-normal text-gray-600">Order Configuration</label>
+									<div class="space-y-6">
 										<div
 											v-for="(schedule, index) in schedulesConfig"
 											:key="index"
-											class="rounded-xl bg-white p-4 space-y-3"
+											class="rounded-xl bg-white p-4 sm:p-5 space-y-5"
 										>
 											<!-- Order Item -->
 											<div>
@@ -77,7 +77,7 @@
 											</div>
 
 											<!-- trigger config-->
-											<div class="flex flex-col gap-4 md:flex-row md:items-center">
+											<div class="flex flex-col gap-6 md:flex-row md:items-center">
 												<div class="w-full md:w-1/2" v-if="index === 0">
 													<label
 														class="block text-sm font-medium text-gray-600">Trigger</label>

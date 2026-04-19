@@ -48,11 +48,11 @@ const links = computed(() => {
 	return [
 		{name: '返回', url: `/aprons/workplaces`},
 		{name: '概览', url: `/aprons/workplaces/${id}`},
-    {name: '分析与日志', url: `/aprons/workplaces/${id}/AnalyticsAndLogging`},
-		{name: '程序项目', url: `/aprons/workplaces/${id}/projects`},
-    {name: '运行任务', url: `/aprons/workplaces/${id}/tasks`},
-		{name: '运行计划', url: `/aprons/workplaces/${id}/schedules`},
-		{name: '工作区设置', url: `/aprons/workplaces/${id}/settings`},
+    {name: '项目', url: `/aprons/workplaces/${id}/projects`},
+    {name: '任务', url: `/aprons/workplaces/${id}/tasks`},
+    {name: '计划', url: `/aprons/workplaces/${id}/schedules`},
+    {name: '分析和日志', url: `/aprons/workplaces/${id}/AnalyticsAndLogging`},
+    {name: '设置', url: `/aprons/workplaces/${id}/settings`},
 	];
 });
 

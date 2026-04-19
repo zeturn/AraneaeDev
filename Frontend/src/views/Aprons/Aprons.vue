@@ -11,18 +11,18 @@
 
 <!-- App.vue -->
 <template>
-	<div class="flex flex-col h-screen w-full overflow-x-hidden">
+	<div class="flex h-screen w-full flex-col overflow-x-hidden">
 		<Header @toggleSidebar="toggleSidebar"/>
-		<div class="flex flex-row flex-1">
+		<div class="flex flex-1 flex-row overflow-x-hidden">
 			<Sidebar
 				:isLargeScreen="isLargeScreen"
 				:isSidebarCollapsed="!isSidebarOpen"
 				:links="links"
 				@toggleSidebar="toggleSidebar"
 			/>
-			<main class="flex-1 p-4 overflow-auto">
+			<main class="min-w-0 flex-1 overflow-y-auto overflow-x-hidden p-4">
 				<!-- Wrap slot in a max-width container -->
-				<div class="max-w-full">
+				<div class="min-w-0 max-w-full">
 					<slot></slot>
 				</div>
 			</main>
