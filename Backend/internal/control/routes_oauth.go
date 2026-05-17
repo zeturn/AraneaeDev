@@ -25,6 +25,7 @@ import (
 const (
 	basaltStateCookie    = "araneae_basalt_state"
 	basaltVerifierCookie = "araneae_basalt_verifier"
+	basaltNonceCookie    = "araneae_basalt_nonce"
 	basaltNextCookie     = "araneae_basalt_next"
 	basaltCookiePath     = "/api/auth/basaltpass"
 	basaltCookieMaxAge   = 600
@@ -73,7 +74,7 @@ func createPKCEPair() (string, string, error) {
 	return verifier, base64.RawURLEncoding.EncodeToString(challengeBytes[:]), nil
 }
 
-func (a *App) setBasaltOAuthCookies(c *fiber.Ctx, state, verifier, next string) {
+func (a *App) setBasaltOAuthCookies(c *fiber.Ctx, state, verifier, nonce, next string) {
 	secure := strings.HasPrefix(strings.ToLower(strings.TrimSpace(a.cfg.FrontendBaseURL)), "https://")
 	for _, entry := range []struct {
 		name  string
@@ -81,6 +82,7 @@ func (a *App) setBasaltOAuthCookies(c *fiber.Ctx, state, verifier, next string) 
 	}{
 		{name: basaltStateCookie, value: state},
 		{name: basaltVerifierCookie, value: verifier},
+		{name: basaltNonceCookie, value: nonce},
 		{name: basaltNextCookie, value: next},
 	} {
 		c.Cookie(&fiber.Cookie{
@@ -97,7 +99,7 @@ func (a *App) setBasaltOAuthCookies(c *fiber.Ctx, state, verifier, next string) 
 
 func (a *App) clearBasaltOAuthCookies(c *fiber.Ctx) {
 	secure := strings.HasPrefix(strings.ToLower(strings.TrimSpace(a.cfg.FrontendBaseURL)), "https://")
-	for _, name := range []string{basaltStateCookie, basaltVerifierCookie, basaltNextCookie} {
+	for _, name := range []string{basaltStateCookie, basaltVerifierCookie, basaltNonceCookie, basaltNextCookie} {
 		c.Cookie(&fiber.Cookie{
 			Name:     name,
 			Value:    "",
@@ -111,7 +113,7 @@ func (a *App) clearBasaltOAuthCookies(c *fiber.Ctx) {
 	}
 }
 
-func (a *App) buildBasaltAuthorizeURL(state, challenge string) (string, error) {
+func (a *App) buildBasaltAuthorizeURL(state, challenge, nonce string) (string, error) {
 	if !a.cfg.BasaltOAuthEnabled {
 		return "", errors.New("BasaltPass OAuth is disabled")
 	}
@@ -124,9 +126,32 @@ func (a *App) buildBasaltAuthorizeURL(state, challenge string) (string, error) {
 	values.Set("redirect_uri", strings.TrimSpace(a.cfg.BasaltRedirectURI))
 	values.Set("scope", strings.TrimSpace(a.cfg.BasaltScope))
 	values.Set("state", state)
+	values.Set("nonce", nonce)
 	values.Set("code_challenge", challenge)
 	values.Set("code_challenge_method", "S256")
 	return trimBasaltURL(a.cfg.BasaltBaseURL) + "/api/v1/oauth/authorize?" + values.Encode(), nil
+}
+
+func validateBasaltIDTokenNonce(idToken, expectedNonce string) error {
+	if expectedNonce == "" {
+		return errors.New("missing expected nonce")
+	}
+	parts := strings.Split(idToken, ".")
+	if len(parts) < 2 {
+		return errors.New("invalid id_token")
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return err
+	}
+	var claims map[string]any
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return err
+	}
+	if nonce, _ := claims["nonce"].(string); nonce != expectedNonce {
+		return errors.New("nonce mismatch")
+	}
+	return nil
 }
 
 func (a *App) exchangeBasaltCode(code, verifier string) (map[string]any, error) {
@@ -364,15 +389,19 @@ func (a *App) basaltPassLogin(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}
+	nonce, err := randomURLSafeToken(24)
+	if err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
 	verifier, challenge, err := createPKCEPair()
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}
-	loginURL, err := a.buildBasaltAuthorizeURL(state, challenge)
+	loginURL, err := a.buildBasaltAuthorizeURL(state, challenge, nonce)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}
-	a.setBasaltOAuthCookies(c, state, verifier, safeNext)
+	a.setBasaltOAuthCookies(c, state, verifier, nonce, safeNext)
 	return c.Redirect(loginURL, fiber.StatusFound)
 }
 
@@ -391,6 +420,7 @@ func (a *App) basaltPassCallback(c *fiber.Ctx) error {
 	code := strings.TrimSpace(c.Query("code"))
 	cookieState := strings.TrimSpace(c.Cookies(basaltStateCookie))
 	verifier := strings.TrimSpace(c.Cookies(basaltVerifierCookie))
+	expectedNonce := strings.TrimSpace(c.Cookies(basaltNonceCookie))
 	next := safeFrontendNext(c.Cookies(basaltNextCookie))
 	if state == "" || cookieState == "" || state != cookieState {
 		return fiber.NewError(fiber.StatusBadRequest, "invalid oauth state")
@@ -409,6 +439,11 @@ func (a *App) basaltPassCallback(c *fiber.Ctx) error {
 	accessToken := extractStringValue(tokenPayload, "access_token", "accessToken", "access", "token")
 	if accessToken == "" {
 		return fiber.NewError(fiber.StatusBadGateway, "missing access token")
+	}
+	if idToken := extractStringValue(tokenPayload, "id_token", "idToken"); idToken != "" {
+		if err := validateBasaltIDTokenNonce(idToken, expectedNonce); err != nil {
+			return fiber.NewError(fiber.StatusUnauthorized, "invalid id_token nonce")
+		}
 	}
 
 	userInfo, err := a.fetchBasaltUserInfo(accessToken)

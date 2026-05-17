@@ -68,6 +68,9 @@ func TestBasaltPassLoginRedirectsToAuthorizeURL(t *testing.T) {
 	if query.Get("state") == "" {
 		t.Fatal("missing state")
 	}
+	if query.Get("nonce") == "" {
+		t.Fatal("missing nonce")
+	}
 
 	cookies := resp.Cookies()
 	if len(cookies) == 0 {
