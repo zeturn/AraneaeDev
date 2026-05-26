@@ -60,7 +60,7 @@ spec:
         - name: grpc
           port: 9190
           protocol: grpc
-          exposure: private
+          exposure: internal-only
 
       healthCheck:
         type: http
@@ -86,7 +86,7 @@ spec:
         CONTROL_DB_PATH: /data/control.db
         ARTIFACT_ROOT: /data/artifacts
         CONTROL_CORS_ALLOW_ORIGINS: "*"
-        FRONTEND_BASE_URL: https://araneae-front.example.com
+        FRONTEND_BASE_URL: https://araneae-front.hollowdata.com
 
       secrets:
         - name: INIT_ADMIN_PASSWORD
@@ -128,7 +128,7 @@ spec:
         - name: http
           port: 4280
           protocol: http
-          exposure: private
+          exposure: internal-only
 
       healthCheck:
         type: http
@@ -182,7 +182,7 @@ spec:
         dockerfile: Frontend/Dockerfile
         args:
           VITE_API_FLAVOR: go
-          VITE_BACKEND_BASE_URL: https://araneae-control.example.com
+          VITE_BACKEND_BASE_URL: https://araneae-control.hollowdata.com
 
       image:
         repository: araneae-front

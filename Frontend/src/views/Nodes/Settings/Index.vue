@@ -54,7 +54,7 @@ const fetchNode = async () => {
 		form.rpc_url = data.rpc_url;
 		form.celery_queue = data.celery_queue;
 		form.is_enabled = data.is_enabled;
-	} catch (error) {
+	} catch (error: any) {
 		console.error('Error fetching node:', error);
 		message.value = 'Failed to load node.';
 	}
@@ -77,7 +77,7 @@ const updateNode = async () => {
 			is_enabled: form.is_enabled,
 		});
 		message.value = 'Node updated successfully!';
-	} catch (error) {
+	} catch (error: any) {
 		console.error('Error updating node:', error);
 		message.value = 'Failed to update node.';
 	}
@@ -92,7 +92,7 @@ const deleteNode = async () => {
 	try {
 		await ApiService.deleteNode(nodeId);
 		deleted = true;
-	} catch (error) {
+	} catch (error: any) {
 		const status = error?.response?.status;
 		if (status === 404) {
 			// Node is already gone on the backend; keep UI flow idempotent.

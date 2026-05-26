@@ -1,4 +1,4 @@
-name: GoRefactor Integration
+name: Backend Integration
 
 on:
   workflow_dispatch:
@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: GoRefactor
+        working-directory: Backend
     services:
       rabbitmq:
         image: rabbitmq:3.13
@@ -27,9 +27,9 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: GoRefactor/go.mod
+          go-version-file: Backend/go.mod
           cache: true
-          cache-dependency-path: GoRefactor/go.sum
+          cache-dependency-path: Backend/go.sum
 
       - name: Run RabbitMQ integration test
         env:
