@@ -1,0 +1,210 @@
+apiVersion: beancs.io/v1alpha1
+kind: Application
+
+metadata:
+  name: araneae
+  displayName: Araneae
+  description: Araneae control/executor/frontend deployment for BeanCS
+  labels:
+    app.kubernetes.io/part-of: araneae
+
+spec:
+  type: monorepo
+
+  repo:
+    provider: github
+    name: zeturn/AraneaeDev
+    branch: main
+
+  namespace:
+    strategy: shared
+    name: app-araneae
+
+  autoDeploy:
+    enabled: true
+    mode: affected-components
+
+  dependencies:
+    - name: rabbitmq
+      type: rabbitmq
+      deployMethod: helm
+      version: "3"
+      config:
+        username: araneae
+        persistence:
+          enabled: true
+          size: 8Gi
+        managementUI:
+          enabled: false
+
+  components:
+    - name: control
+      kind: service
+      projectName: araneae-control
+
+      build:
+        context: Backend
+        dockerfile: Backend/Dockerfile
+        args:
+          TARGET: control
+
+      image:
+        repository: araneae-control
+        tagPolicy: git-sha
+
+      ports:
+        - name: http
+          port: 8180
+          protocol: http
+          exposure: public
+        - name: grpc
+          port: 9190
+          protocol: grpc
+          exposure: private
+
+      healthCheck:
+        type: http
+        path: /healthz
+        port: http
+        initialDelaySeconds: 10
+        periodSeconds: 10
+        timeoutSeconds: 5
+
+      dependsOn:
+        - rabbitmq
+
+      envFromDependencies:
+        - dependency: rabbitmq
+          preset: rabbitmq_default
+
+      env:
+        ARANEAE_ENV: development
+        CONTROL_HTTP_ADDR: ":8180"
+        CONTROL_GRPC_ADDR: ":9190"
+        CONTROL_GRPC_TLS_ENABLED: "false"
+        CONTROL_NODE_VERIFY_SCHEME: http
+        CONTROL_DB_PATH: /data/control.db
+        ARTIFACT_ROOT: /data/artifacts
+        CONTROL_CORS_ALLOW_ORIGINS: "*"
+        FRONTEND_BASE_URL: https://araneae-front.example.com
+
+      secrets:
+        - name: INIT_ADMIN_PASSWORD
+          generate:
+            length: 32
+        - name: CONTROL_JWT_SECRET
+          generate:
+            length: 64
+        - name: EXECUTION_CALLBACK_KEY
+          generate:
+            length: 64
+
+      volumes:
+        - name: data
+          type: pvc
+          mountPath: /data
+          size: 10Gi
+
+      watchPaths:
+        - Backend/**
+        - Backend/go.mod
+        - Backend/go.sum
+
+    - name: executor
+      kind: worker
+      projectName: araneae-executor
+
+      build:
+        context: Backend
+        dockerfile: Backend/Dockerfile
+        args:
+          TARGET: executor
+
+      image:
+        repository: araneae-executor
+        tagPolicy: git-sha
+
+      ports:
+        - name: http
+          port: 4280
+          protocol: http
+          exposure: private
+
+      healthCheck:
+        type: http
+        path: /healthz
+        port: http
+        initialDelaySeconds: 10
+        periodSeconds: 10
+        timeoutSeconds: 5
+
+      dependsOn:
+        - rabbitmq
+        - control
+
+      envFromDependencies:
+        - dependency: rabbitmq
+          preset: rabbitmq_default
+
+      env:
+        ARANEAE_ENV: development
+        EXECUTOR_HTTP_ADDR: ":4280"
+        EXECUTOR_DB_PATH: /data/executor.db
+        EXECUTOR_WORKDIR: /data/workdir
+        EXECUTOR_TASK_TIMEOUT_SECONDS: "1800"
+        EXECUTOR_QUEUE: default
+        EXECUTOR_NODE_KEY_FILE: /data/executor.node.key
+        CONTROL_GRPC_TARGET: araneae-control:9190
+        EXECUTOR_CONTROL_GRPC_TLS_ENABLED: "false"
+        CONTROL_HTTP_BASE: http://araneae-control:8180
+
+      secrets:
+        - name: EXECUTION_CALLBACK_KEY
+          fromComponent: control
+
+      volumes:
+        - name: data
+          type: pvc
+          mountPath: /data
+          size: 20Gi
+
+      watchPaths:
+        - Backend/**
+        - Backend/go.mod
+        - Backend/go.sum
+
+    - name: front
+      kind: frontend
+      projectName: araneae-front
+
+      build:
+        context: Frontend
+        dockerfile: Frontend/Dockerfile
+        args:
+          VITE_API_FLAVOR: go
+          VITE_BACKEND_BASE_URL: https://araneae-control.example.com
+
+      image:
+        repository: araneae-front
+        tagPolicy: git-sha
+
+      ports:
+        - name: http
+          port: 80
+          protocol: http
+          exposure: public
+
+      healthCheck:
+        type: tcp
+        port: http
+
+      dependsOn:
+        - control
+
+      env:
+        VITE_API_FLAVOR: go
+
+      watchPaths:
+        - Frontend/**
+        - Frontend/package.json
+        - Frontend/package-lock.json
