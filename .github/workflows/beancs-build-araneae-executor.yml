@@ -46,7 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       BEANCS_PROJECT: araneae-executor
-      BEANCS_IMAGE_BASE: registry.beancs.hollowdata.com/hollowdata/araneaedev
+      BEANCS_IMAGE_BASE: registry.beancs.hollowdata.com/hollowdata/araneae-executor
       BEANCS_GHCR_IMAGE_BASE: ghcr.io/zeturn/araneaedev
     steps:
       - uses: actions/checkout@v4
