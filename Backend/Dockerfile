@@ -7,9 +7,9 @@ RUN go mod download
 COPY . .
 
 ARG TARGET=control
-ARG TARGETOS=linux
-ARG TARGETARCH=amd64
-RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -o /out/app ./cmd/${TARGET}
+ARG TARGETOS
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -o /out/app ./cmd/${TARGET}
 
 FROM alpine:3.20
 WORKDIR /app
