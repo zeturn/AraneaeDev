@@ -89,6 +89,33 @@ type Schedule struct {
 	UpdatedAt       time.Time  `gorm:"not null" json:"updated_at"`
 }
 
+type RSSSubscription struct {
+	ID            string     `gorm:"primaryKey;size:36" json:"id"`
+	URL           string     `gorm:"uniqueIndex;size:1024;not null" json:"url"`
+	Title         string     `gorm:"size:255" json:"title"`
+	Description   string     `gorm:"size:1024" json:"description"`
+	Link          string     `gorm:"size:1024" json:"link"`
+	StorageDir    string     `gorm:"size:512;not null" json:"storage_dir"`
+	CreatedBy     string     `gorm:"size:36;not null" json:"created_by"`
+	LastFetchedAt *time.Time `json:"last_fetched_at"`
+	CreatedAt     time.Time  `gorm:"not null" json:"created_at"`
+	UpdatedAt     time.Time  `gorm:"not null" json:"updated_at"`
+}
+
+type RSSItem struct {
+	ID             string     `gorm:"primaryKey;size:36" json:"id"`
+	SubscriptionID string     `gorm:"index;uniqueIndex:idx_rss_item_identity;size:36;not null" json:"subscription_id"`
+	GUID           string     `gorm:"uniqueIndex:idx_rss_item_identity;size:512;not null" json:"guid"`
+	Title          string     `gorm:"size:512" json:"title"`
+	Link           string     `gorm:"size:1024" json:"link"`
+	Author         string     `gorm:"size:255" json:"author"`
+	Summary        string     `gorm:"type:text" json:"summary"`
+	Content        string     `gorm:"type:text" json:"content"`
+	ContentPath    string     `gorm:"size:512;not null" json:"content_path"`
+	PublishedAt    *time.Time `json:"published_at"`
+	FetchedAt      time.Time  `gorm:"not null" json:"fetched_at"`
+}
+
 type Node struct {
 	ID               uint      `gorm:"primaryKey" json:"id"`
 	Name             string    `gorm:"size:128;not null" json:"name"`
@@ -213,6 +240,8 @@ func AutoMigrateModels() []interface{} {
 		&Task{},
 		&Schedule{},
 		&TaskRun{},
+		&RSSSubscription{},
+		&RSSItem{},
 		&Node{},
 		&NodeInstallJob{},
 		&Team{},

@@ -298,6 +298,12 @@ func (a *App) setupRoutes() {
 	api.Post("/schedules/:id/trigger", a.requireRoles("admin", "operator"), a.requireAppScope("araneae.write"), manualTriggerRateLimit, a.triggerSchedule)
 	api.Get("/schedules/:id/runs", a.requireAppScope("araneae.read"), a.listScheduleRuns)
 	api.Get("/runs", a.requireAppScope("araneae.read"), a.listRecentRuns)
+	api.Post("/rss/subscriptions", a.requireRoles("admin", "operator"), a.requireAppScope("araneae.write"), a.createRSSSubscription)
+	api.Get("/rss/subscriptions", a.requireAppScope("araneae.read"), a.listRSSSubscriptions)
+	api.Get("/rss/subscriptions/:id", a.requireAppScope("araneae.read"), a.getRSSSubscription)
+	api.Post("/rss/subscriptions/:id/refresh", a.requireRoles("admin", "operator"), a.requireAppScope("araneae.write"), a.refreshRSSSubscription)
+	api.Get("/rss/subscriptions/:id/items", a.requireAppScope("araneae.read"), a.listRSSItems)
+	api.Delete("/rss/subscriptions/:id", a.requireRoles("admin", "operator"), a.requireAppScope("araneae.write"), a.deleteRSSSubscription)
 
 	api.Get("/users/", a.requireAppScope("araneae.read"), a.listUsers)
 	api.Get("/users", a.requireAppScope("araneae.read"), a.listUsers)

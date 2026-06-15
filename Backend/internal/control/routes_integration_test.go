@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -34,6 +35,7 @@ func newTestControlApp(t *testing.T) *App {
 		JWTSecret:       "test-jwt-secret",
 		ExecutionAPIKey: "test-callback-key",
 		ArtifactRoot:    filepath.Join(tmp, "artifacts"),
+		RSSRoot:         filepath.Join(tmp, "rss"),
 		DBPath:          filepath.Join(tmp, "control.db"),
 	}
 
@@ -1121,6 +1123,90 @@ func TestControlRoutes_ProjectUploadAndTaskFlow(t *testing.T) {
 	}
 	if len(tasks) != 1 {
 		t.Fatalf("expected 1 task, got %d", len(tasks))
+	}
+}
+
+func TestControlRoutes_RSSSubscriptionFetchesAndStoresItems(t *testing.T) {
+	app := newTestControlApp(t)
+	token := loginAndGetToken(t, app)
+
+	feed := `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Demo Feed</title>
+    <description>Demo feed description</description>
+    <link>https://example.test/</link>
+    <item>
+      <title>First Item</title>
+      <link>https://example.test/first</link>
+      <guid>first-guid</guid>
+      <description>First summary</description>
+      <pubDate>Mon, 15 Jun 2026 10:00:00 +0000</pubDate>
+    </item>
+    <item>
+      <title>Second Item</title>
+      <link>https://example.test/second</link>
+      <guid>second-guid</guid>
+      <description>Second summary</description>
+    </item>
+  </channel>
+</rss>`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/rss+xml")
+		_, _ = w.Write([]byte(feed))
+	}))
+	defer server.Close()
+
+	createRec := doJSONRequest(t, app, http.MethodPost, "/api/v1/rss/subscriptions", token, map[string]string{
+		"url": server.URL + "/feed.xml",
+	})
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("create rss subscription failed: status=%d body=%s", createRec.Code, createRec.Body.String())
+	}
+	var result rssFetchResult
+	if err := json.Unmarshal(createRec.Body.Bytes(), &result); err != nil {
+		t.Fatalf("decode rss create response: %v", err)
+	}
+	if result.Subscription.ID == "" || result.Subscription.Title != "Demo Feed" {
+		t.Fatalf("unexpected subscription: %+v", result.Subscription)
+	}
+	if result.Created != 2 || len(result.Items) != 2 {
+		t.Fatalf("expected two created rss items, got created=%d len=%d", result.Created, len(result.Items))
+	}
+	if _, err := os.Stat(filepath.Join(result.Subscription.StorageDir, "feed.xml")); err != nil {
+		t.Fatalf("feed xml was not stored locally: %v", err)
+	}
+	for _, item := range result.Items {
+		if item.ContentPath == "" {
+			t.Fatalf("missing rss item content path: %+v", item)
+		}
+		if _, err := os.Stat(item.ContentPath); err != nil {
+			t.Fatalf("rss item was not stored locally: %v", err)
+		}
+	}
+
+	refreshRec := doJSONRequest(t, app, http.MethodPost, "/api/v1/rss/subscriptions/"+result.Subscription.ID+"/refresh", token, nil)
+	if refreshRec.Code != http.StatusOK {
+		t.Fatalf("refresh rss subscription failed: status=%d body=%s", refreshRec.Code, refreshRec.Body.String())
+	}
+	var refreshed rssFetchResult
+	if err := json.Unmarshal(refreshRec.Body.Bytes(), &refreshed); err != nil {
+		t.Fatalf("decode rss refresh response: %v", err)
+	}
+	if refreshed.Created != 0 || refreshed.Updated != 2 {
+		t.Fatalf("expected refresh to update two existing items, got created=%d updated=%d", refreshed.Created, refreshed.Updated)
+	}
+
+	itemsRec := doJSONRequest(t, app, http.MethodGet, "/api/v1/rss/subscriptions/"+result.Subscription.ID+"/items", token, nil)
+	if itemsRec.Code != http.StatusOK {
+		t.Fatalf("list rss items failed: status=%d body=%s", itemsRec.Code, itemsRec.Body.String())
+	}
+	var items []common.RSSItem
+	if err := json.Unmarshal(itemsRec.Body.Bytes(), &items); err != nil {
+		t.Fatalf("decode rss items: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected two rss items, got %d", len(items))
 	}
 }
 

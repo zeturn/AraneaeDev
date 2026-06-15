@@ -236,6 +236,9 @@ func NewApp(cfg common.ControlConfig) (*App, error) {
 	if err := os.MkdirAll(cfg.ArtifactRoot, 0o755); err != nil {
 		return nil, err
 	}
+	if err := os.MkdirAll(cfg.RSSRoot, 0o755); err != nil {
+		return nil, err
+	}
 
 	db, err := gorm.Open(sqlite.Open(cfg.DBPath), &gorm.Config{})
 	if err != nil {

@@ -21,6 +21,7 @@ type ControlConfig struct {
 	InitAdminPassword     string
 	JWTSecret             string
 	ArtifactRoot          string
+	RSSRoot               string
 	ExecutionAPIKey       string
 	CORSAllowOrigins      string
 	FrontendBaseURL       string
@@ -113,6 +114,7 @@ func LoadControlConfig() ControlConfig {
 		InitAdminPassword:     GetEnv("INIT_ADMIN_PASSWORD", ""),
 		JWTSecret:             GetEnv("CONTROL_JWT_SECRET", ""),
 		ArtifactRoot:          GetEnv("ARTIFACT_ROOT", "./data/artifacts"),
+		RSSRoot:               GetEnv("RSS_ROOT", "./data/rss"),
 		ExecutionAPIKey:       GetEnv("EXECUTION_CALLBACK_KEY", ""),
 		CORSAllowOrigins:      GetEnv("CONTROL_CORS_ALLOW_ORIGINS", "http://localhost:5109,http://127.0.0.1:5109"),
 		FrontendBaseURL:       GetEnv("FRONTEND_BASE_URL", "http://localhost:5109"),
