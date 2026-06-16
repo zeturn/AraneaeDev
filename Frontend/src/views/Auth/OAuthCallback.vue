@@ -11,6 +11,7 @@
 <script>
 import axios from 'axios';
 import { setAccessToken, setRefreshToken } from '@/utils/authStorage';
+import { resolveBackendBase } from '@/utils/backendBase';
 
 export default {
   data() {
@@ -43,9 +44,7 @@ export default {
       this.message = '请返回登录页重试。';
       return;
     }
-    const apiFlavor = (import.meta.env.VITE_API_FLAVOR || 'django').toLowerCase();
-    const isGoApi = apiFlavor === 'go';
-    const backendBase = import.meta.env.VITE_BACKEND_BASE_URL || (isGoApi ? 'http://localhost:8180' : 'http://localhost:8107');
+    const backendBase = resolveBackendBase();
 
     try {
       const response = await axios.post(`${backendBase}/api/v1/auth/basaltpass/exchange`, {

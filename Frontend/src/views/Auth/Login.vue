@@ -62,6 +62,7 @@
 <script>
 import ApiService from '@/services/ApiService';
 import { setAccessToken, setCsrfTokenValue, setRefreshToken } from '@/utils/authStorage';
+import { resolveBackendBase } from '@/utils/backendBase';
 
 export default {
   data() {
@@ -87,7 +88,7 @@ export default {
     },
     loginWithBasaltPass() {
       this.loginError = '';
-      const backendBase = import.meta.env.VITE_BACKEND_BASE_URL || 'http://localhost:8180';
+      const backendBase = resolveBackendBase();
       const next = encodeURIComponent(this.resolveNextRoute());
       window.location.href = `${backendBase}/api/auth/basaltpass/login/?next=${next}`;
     },

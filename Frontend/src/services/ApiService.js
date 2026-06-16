@@ -17,11 +17,12 @@ import {
     hasStoredAuth,
     setCsrfTokenValue,
 } from '@/utils/authStorage';
+import { getApiFlavor, resolveBackendBase } from '@/utils/backendBase';
 
 
-const apiFlavor = (import.meta.env.VITE_API_FLAVOR || 'django').toLowerCase();
+const apiFlavor = getApiFlavor();
 const isGoApi = apiFlavor === 'go';
-const backendBase = import.meta.env.VITE_BACKEND_BASE_URL || (isGoApi ? 'http://localhost:8180' : 'http://localhost:8107');
+const backendBase = resolveBackendBase();
 const apiClient = axios.create({
     baseURL: isGoApi ? `${backendBase}/api/v1` : `${backendBase}/api`,
     withCredentials: !isGoApi,

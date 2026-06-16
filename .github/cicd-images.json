@@ -20,6 +20,7 @@
       "name": "front",
       "context": "./Frontend",
       "dockerfile": "./Frontend/Dockerfile",
+      "build_args": "VITE_API_FLAVOR=go\nVITE_BACKEND_BASE_URL=https://araneae-control.hollowdata.com",
       "port": 80
     }
   ]
