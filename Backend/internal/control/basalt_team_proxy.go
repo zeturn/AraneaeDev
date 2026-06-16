@@ -19,7 +19,7 @@ func (a *App) basaltS2SCredentials() (string, string, error) {
 	clientID := strings.TrimSpace(a.cfg.BasaltClientID)
 	clientSecret := strings.TrimSpace(a.cfg.BasaltClientSecret)
 	if clientID == "" || clientSecret == "" {
-		return "", "", errors.New("missing BASALTPASS_OAUTH_CLIENT_ID or BASALTPASS_OAUTH_CLIENT_SECRET")
+		return "", "", errors.New("missing BASALTPASS_CLIENT_ID or BASALTPASS_CLIENT_SECRET")
 	}
 	// BasaltPass /api/v1/s2s/* uses client headers directly instead of OAuth client_credentials.
 	return clientID, clientSecret, nil

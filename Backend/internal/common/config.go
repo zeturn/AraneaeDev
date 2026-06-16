@@ -71,6 +71,15 @@ func GetEnv(key, fallback string) string {
 	return v
 }
 
+func GetEnvAny(keys []string, fallback string) string {
+	for _, key := range keys {
+		if v := os.Getenv(key); v != "" {
+			return v
+		}
+	}
+	return fallback
+}
+
 func GetEnvInt(key string, fallback int) int {
 	v := os.Getenv(key)
 	if v == "" {
@@ -120,11 +129,11 @@ func LoadControlConfig() ControlConfig {
 		FrontendBaseURL:       GetEnv("FRONTEND_BASE_URL", "http://localhost:5109"),
 		BasaltBaseURL:         GetEnv("BASALTPASS_BASE_URL", "http://localhost:8101"),
 		BasaltInternalBaseURL: GetEnv("BASALTPASS_INTERNAL_BASE_URL", GetEnv("BASALTPASS_BASE_URL", "http://localhost:8101")),
-		BasaltOAuthEnabled:    GetEnvBool("BASALTPASS_OAUTH_ENABLED", false),
-		BasaltClientID:        GetEnv("BASALTPASS_OAUTH_CLIENT_ID", ""),
-		BasaltClientSecret:    GetEnv("BASALTPASS_OAUTH_CLIENT_SECRET", ""),
-		BasaltRedirectURI:     GetEnv("BASALTPASS_OAUTH_REDIRECT_URI", "http://localhost:8180/api/auth/basaltpass/callback/"),
-		BasaltScope:           GetEnv("BASALTPASS_OAUTH_SCOPE", "openid profile email"),
+		BasaltOAuthEnabled:    GetEnvBool("BASALTPASS_ENABLED", GetEnvBool("BASALTPASS_OAUTH_ENABLED", false)),
+		BasaltClientID:        GetEnvAny([]string{"BASALTPASS_CLIENT_ID", "BASALTPASS_OAUTH_CLIENT_ID"}, ""),
+		BasaltClientSecret:    GetEnvAny([]string{"BASALTPASS_CLIENT_SECRET", "BASALTPASS_OAUTH_CLIENT_SECRET"}, ""),
+		BasaltRedirectURI:     GetEnvAny([]string{"BASALTPASS_REDIRECT_URI", "BASALTPASS_OAUTH_REDIRECT_URI"}, "http://localhost:8180/api/auth/basaltpass/callback/"),
+		BasaltScope:           GetEnvAny([]string{"BASALTPASS_SCOPES", "BASALTPASS_OAUTH_SCOPE"}, "openid profile email"),
 		BasaltCallbackPath:    GetEnv("BASALTPASS_FRONTEND_CALLBACK_PATH", "/oauth/callback"),
 		BasaltRoleClaimKeys:   GetEnv("BASALTPASS_ROLE_CLAIM_KEYS", "roles,role,app_roles"),
 		BasaltGroupClaimKeys:  GetEnv("BASALTPASS_GROUP_CLAIM_KEYS", "groups,group,teams,team"),

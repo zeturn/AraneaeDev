@@ -118,7 +118,7 @@ func (a *App) buildBasaltAuthorizeURL(state, challenge, nonce string) (string, e
 		return "", errors.New("BasaltPass OAuth is disabled")
 	}
 	if strings.TrimSpace(a.cfg.BasaltClientID) == "" {
-		return "", errors.New("missing BASALTPASS_OAUTH_CLIENT_ID")
+		return "", errors.New("missing BASALTPASS_CLIENT_ID")
 	}
 	values := url.Values{}
 	values.Set("response_type", "code")
