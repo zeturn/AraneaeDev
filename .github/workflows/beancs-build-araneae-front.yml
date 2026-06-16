@@ -90,7 +90,9 @@ jobs:
         with:
           context: ${{ github.event_name == 'workflow_dispatch' && inputs.context || 'Frontend' }}
           file: ${{ github.event_name == 'workflow_dispatch' && inputs.dockerfile_path || 'Frontend/Dockerfile' }}
-          build-args: ${{ github.event_name == 'workflow_dispatch' && inputs.build_args || 'VITE_API_FLAVOR=go\nVITE_BACKEND_BASE_URL=https://araneae-control.hollowdata.com' }}
+          build-args: |
+            VITE_API_FLAVOR=go
+            VITE_BACKEND_BASE_URL=https://araneae-control.hollowdata.com
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
