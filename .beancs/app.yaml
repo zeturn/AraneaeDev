@@ -41,6 +41,8 @@ spec:
     - name: control
       kind: service
       projectName: araneae-control
+      basaltPass:
+        callbackPath: /api/auth/basaltpass/callback/
 
       build:
         context: Backend
