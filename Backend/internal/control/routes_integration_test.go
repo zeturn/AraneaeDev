@@ -76,6 +76,7 @@ func newTestControlApp(t *testing.T) *App {
 		cron:            cron.New(cron.WithSeconds()),
 		cronEntries:     map[string]cron.EntryID{},
 		scheduleEntries: map[string]cron.EntryID{},
+		scheduleTimers:  map[string]*time.Timer{},
 		oauthCodes:      map[string]oauthExchangeState{},
 	}
 	a.setupRoutes()
@@ -249,6 +250,23 @@ func createProjectVersionTask(t *testing.T, app *App, token, cronExpr string) (c
 	}
 
 	return project, version, task
+}
+
+func createWorkplaceForTest(t *testing.T, app *App, token, name string) uint {
+	t.Helper()
+	rec := doJSONRequest(t, app, http.MethodPost, "/api/v1/workplaces", token, map[string]any{
+		"name":        name,
+		"description": "test workplace",
+		"status":      "active",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create workplace failed: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode workplace: %v", err)
+	}
+	return uint(payload["id"].(float64))
 }
 
 func TestUserCreate_AutoCreatesPersonalTeam(t *testing.T) {
@@ -1129,6 +1147,7 @@ func TestControlRoutes_ProjectUploadAndTaskFlow(t *testing.T) {
 func TestControlRoutes_RSSSubscriptionFetchesAndStoresItems(t *testing.T) {
 	app := newTestControlApp(t)
 	token := loginAndGetToken(t, app)
+	workplaceID := createWorkplaceForTest(t, app, token, "rss-workplace")
 
 	feed := `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0">
@@ -1158,7 +1177,8 @@ func TestControlRoutes_RSSSubscriptionFetchesAndStoresItems(t *testing.T) {
 	defer server.Close()
 
 	createRec := doJSONRequest(t, app, http.MethodPost, "/api/v1/rss/subscriptions", token, map[string]string{
-		"url": server.URL + "/feed.xml",
+		"url":          server.URL + "/feed.xml",
+		"workplace_id": fmt.Sprintf("%d", workplaceID),
 	})
 	if createRec.Code != http.StatusCreated {
 		t.Fatalf("create rss subscription failed: status=%d body=%s", createRec.Code, createRec.Body.String())
@@ -1207,6 +1227,52 @@ func TestControlRoutes_RSSSubscriptionFetchesAndStoresItems(t *testing.T) {
 	}
 	if len(items) != 2 {
 		t.Fatalf("expected two rss items, got %d", len(items))
+	}
+}
+
+func TestControlRoutes_CreateScheduleWithDatetimeTrigger(t *testing.T) {
+	app := newTestControlApp(t)
+	token := loginAndGetToken(t, app)
+	_, _, task := createProjectVersionTask(t, app, token, "")
+	runAt := time.Now().Add(2 * time.Minute).UTC().Format(time.RFC3339)
+
+	scheduleRec := doJSONRequest(t, app, http.MethodPost, "/api/v1/schedules", token, map[string]any{
+		"name":         "datetime-schedule",
+		"task_id":      task.ID,
+		"trigger_type": "datetime",
+		"run_at":       runAt,
+		"enabled":      true,
+		"order": map[string]any{
+			"name": "datetime-schedule",
+			"schedule": []map[string]any{
+				{
+					"task_id": task.ID,
+					"trigger": "datetime",
+					"run_at":  runAt,
+					"node":    []string{"default"},
+				},
+			},
+		},
+	})
+	if scheduleRec.Code != http.StatusOK {
+		t.Fatalf("create datetime schedule failed: status=%d body=%s", scheduleRec.Code, scheduleRec.Body.String())
+	}
+
+	var schedule common.Schedule
+	if err := json.Unmarshal(scheduleRec.Body.Bytes(), &schedule); err != nil {
+		t.Fatalf("decode schedule: %v", err)
+	}
+	if schedule.TriggerType != "datetime" {
+		t.Fatalf("expected trigger_type datetime, got %q", schedule.TriggerType)
+	}
+	if schedule.RunAt == nil {
+		t.Fatalf("expected run_at for datetime schedule")
+	}
+	if len(app.scheduleEntries) != 0 {
+		t.Fatalf("expected no cron entries for datetime schedule, got %d", len(app.scheduleEntries))
+	}
+	if len(app.scheduleTimers) != 1 {
+		t.Fatalf("expected one timer registration for datetime schedule, got %d", len(app.scheduleTimers))
 	}
 }
 

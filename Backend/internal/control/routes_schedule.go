@@ -40,8 +40,14 @@ func (a *App) createSchedule(c *fiber.Ctx) error {
 			if req.ProjectID == "" {
 				req.ProjectID = strings.TrimSpace(step.ProjectID)
 			}
+			if req.TriggerType == "" {
+				req.TriggerType = strings.TrimSpace(step.Trigger)
+			}
 			if req.CronExpr == "" && strings.EqualFold(strings.TrimSpace(step.Trigger), "crons") {
 				req.CronExpr = strings.TrimSpace(step.Crons)
+			}
+			if req.RunAt == "" && strings.EqualFold(strings.TrimSpace(step.Trigger), "datetime") {
+				req.RunAt = strings.TrimSpace(step.RunAt)
 			}
 			if req.NodeQueue == "" && len(step.Node) > 0 {
 				req.NodeQueue = laxString(strings.TrimSpace(step.Node[0]))
@@ -78,6 +84,8 @@ func (a *App) createSchedule(c *fiber.Ctx) error {
 	req.VersionID = strings.TrimSpace(req.VersionID)
 	req.EntryCommand = strings.TrimSpace(req.EntryCommand)
 	req.CronExpr = strings.TrimSpace(req.CronExpr)
+	req.TriggerType = strings.ToLower(strings.TrimSpace(req.TriggerType))
+	req.RunAt = strings.TrimSpace(req.RunAt)
 	req.NodeQueue = laxString(sanitizeNodeQueue(string(req.NodeQueue)))
 	req.Name = strings.TrimSpace(req.Name)
 
@@ -90,6 +98,12 @@ func (a *App) createSchedule(c *fiber.Ctx) error {
 	if req.ProjectID == "" || req.VersionID == "" || req.EntryCommand == "" {
 		return fiber.NewError(fiber.StatusBadRequest, "project_id, version_id and entry_command are required")
 	}
+	triggerType, cronExpr, runAt, err := normalizeScheduleTrigger(req.TriggerType, req.CronExpr, req.RunAt)
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+	req.TriggerType = triggerType
+	req.CronExpr = cronExpr
 
 	var project common.Project
 	if err := a.db.Where("id = ?", req.ProjectID).First(&project).Error; err != nil {
@@ -131,10 +145,7 @@ func (a *App) createSchedule(c *fiber.Ctx) error {
 		}
 	}
 	if orderJSON == "" {
-		trigger := "api"
-		if req.CronExpr != "" {
-			trigger = "crons"
-		}
+		trigger := req.TriggerType
 		fallback := legacyScheduleOrder{
 			Name: req.Name,
 			Schedule: []legacyScheduleStep{{
@@ -145,6 +156,7 @@ func (a *App) createSchedule(c *fiber.Ctx) error {
 				Node:       []string{string(req.NodeQueue)},
 				Trigger:    trigger,
 				Crons:      req.CronExpr,
+				RunAt:      formatScheduleRunAt(runAt),
 			}},
 		}
 		if b, err := json.Marshal(fallback); err == nil {
@@ -163,6 +175,8 @@ func (a *App) createSchedule(c *fiber.Ctx) error {
 		VersionID:    req.VersionID,
 		EntryCommand: req.EntryCommand,
 		CronExpr:     req.CronExpr,
+		TriggerType:  req.TriggerType,
+		RunAt:        runAt,
 		NodeQueue:    string(req.NodeQueue),
 		OrderJSON:    orderJSON,
 		Enabled:      enabled,
@@ -258,6 +272,7 @@ func (a *App) updateSchedule(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	}
+	runAtRaw := formatScheduleRunAt(schedule.RunAt)
 
 	taskRebind := false
 	if req.Name != nil {
@@ -282,6 +297,12 @@ func (a *App) updateSchedule(c *fiber.Ctx) error {
 	if req.CronExpr != nil {
 		schedule.CronExpr = strings.TrimSpace(*req.CronExpr)
 	}
+	if req.TriggerType != nil {
+		schedule.TriggerType = strings.ToLower(strings.TrimSpace(*req.TriggerType))
+	}
+	if req.RunAt != nil {
+		runAtRaw = strings.TrimSpace(*req.RunAt)
+	}
 	if req.NodeQueue != nil {
 		schedule.NodeQueue = sanitizeNodeQueue(string(*req.NodeQueue))
 	}
@@ -289,12 +310,40 @@ func (a *App) updateSchedule(c *fiber.Ctx) error {
 		schedule.Enabled = *req.Enabled
 	}
 	if req.Order != nil {
+		if legacy, ok := parseLegacyOrder(req.Order); ok {
+			normalized, err := a.validateAndNormalizeLegacyOrder(legacy)
+			if err != nil {
+				return fiber.NewError(fiber.StatusBadRequest, err.Error())
+			}
+			req.Order = normalized
+			if len(normalized.Schedule) > 0 {
+				step := normalized.Schedule[0]
+				if req.TriggerType == nil {
+					value := strings.TrimSpace(step.Trigger)
+					req.TriggerType = &value
+					schedule.TriggerType = strings.ToLower(value)
+				}
+				if req.CronExpr == nil && strings.EqualFold(strings.TrimSpace(step.Trigger), "crons") {
+					schedule.CronExpr = strings.TrimSpace(step.Crons)
+				}
+				if req.RunAt == nil && strings.EqualFold(strings.TrimSpace(step.Trigger), "datetime") {
+					runAtRaw = strings.TrimSpace(step.RunAt)
+				}
+			}
+		}
 		orderJSON, err := marshalOrderJSON(req.Order)
 		if err != nil {
 			return fiber.NewError(fiber.StatusBadRequest, err.Error())
 		}
 		schedule.OrderJSON = orderJSON
 	}
+	triggerType, cronExpr, runAt, triggerErr := normalizeScheduleTrigger(schedule.TriggerType, schedule.CronExpr, runAtRaw)
+	if triggerErr != nil {
+		return fiber.NewError(fiber.StatusBadRequest, triggerErr.Error())
+	}
+	schedule.TriggerType = triggerType
+	schedule.CronExpr = cronExpr
+	schedule.RunAt = runAt
 
 	if schedule.TaskID != "" {
 		var task common.Task
@@ -552,18 +601,32 @@ func (a *App) validateAndNormalizeLegacyOrder(order legacyScheduleOrder) (legacy
 			if trigger == "" {
 				if strings.TrimSpace(step.Crons) != "" {
 					trigger = "crons"
+				} else if strings.TrimSpace(step.RunAt) != "" {
+					trigger = "datetime"
 				} else {
 					trigger = "api"
 				}
 			}
-			if trigger != "crons" && trigger != "api" {
-				return legacyScheduleOrder{}, errors.New("first schedule step trigger must be crons or api")
+			if trigger != "crons" && trigger != "api" && trigger != "datetime" {
+				return legacyScheduleOrder{}, errors.New("first schedule step trigger must be crons, api or datetime")
 			}
 
 			step.Trigger = trigger
 			step.Crons = strings.TrimSpace(step.Crons)
+			step.RunAt = strings.TrimSpace(step.RunAt)
 			if trigger == "crons" && step.Crons == "" {
 				return legacyScheduleOrder{}, errors.New("cron expression is required when first step trigger is crons")
+			}
+			if trigger == "datetime" {
+				runAt, err := parseScheduleRunAt(step.RunAt)
+				if err != nil {
+					return legacyScheduleOrder{}, err
+				}
+				step.RunAt = runAt.Format(time.RFC3339)
+				step.Crons = ""
+			}
+			if trigger == "api" || trigger == "crons" {
+				step.RunAt = ""
 			}
 			if trigger == "api" {
 				step.Crons = ""
@@ -580,6 +643,7 @@ func (a *App) validateAndNormalizeLegacyOrder(order legacyScheduleOrder) (legacy
 			}
 			step.Trigger = "previous"
 			step.Crons = ""
+			step.RunAt = ""
 			step.Previous = prevName
 		}
 
@@ -605,4 +669,61 @@ func marshalOrderJSON(raw any) (string, error) {
 		}
 		return string(b), nil
 	}
+}
+
+func normalizeScheduleTrigger(triggerType, cronExpr, runAtRaw string) (string, string, *time.Time, error) {
+	trigger := strings.ToLower(strings.TrimSpace(triggerType))
+	cron := strings.TrimSpace(cronExpr)
+	runAtRaw = strings.TrimSpace(runAtRaw)
+	if trigger == "" {
+		if cron != "" {
+			trigger = "crons"
+		} else if runAtRaw != "" {
+			trigger = "datetime"
+		} else {
+			trigger = "api"
+		}
+	}
+	switch trigger {
+	case "crons":
+		if cron == "" {
+			return "", "", nil, errors.New("cron expression is required when trigger_type is crons")
+		}
+		return trigger, cron, nil, nil
+	case "datetime":
+		runAt, err := parseScheduleRunAt(runAtRaw)
+		if err != nil {
+			return "", "", nil, err
+		}
+		return trigger, "", runAt, nil
+	case "api":
+		return trigger, "", nil, nil
+	default:
+		return "", "", nil, errors.New("trigger_type must be one of: api, crons, datetime")
+	}
+}
+
+func parseScheduleRunAt(raw string) (*time.Time, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return nil, errors.New("run_at is required when trigger_type is datetime")
+	}
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		parsed, err = time.Parse(time.RFC3339Nano, value)
+		if err != nil {
+			return nil, errors.New("run_at must be RFC3339 with timezone and seconds (example: 2026-06-18T09:30:00+08:00)")
+		}
+	}
+	if !strings.Contains(value, "T") {
+		return nil, errors.New("run_at must be RFC3339 with timezone and seconds (example: 2026-06-18T09:30:00+08:00)")
+	}
+	return &parsed, nil
+}
+
+func formatScheduleRunAt(runAt *time.Time) string {
+	if runAt == nil {
+		return ""
+	}
+	return runAt.Format(time.RFC3339)
 }

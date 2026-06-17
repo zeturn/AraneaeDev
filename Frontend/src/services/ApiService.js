@@ -204,6 +204,8 @@ const normalizeGoSchedule = (schedule, workplaceId = 'go-workspace') => {
                 project_id: schedule?.project_id || '',
                 node: [schedule?.node_queue || 'default'],
                 crons: schedule?.cron_expr || '',
+                run_at: schedule?.run_at || '',
+                trigger: schedule?.trigger_type || (schedule?.run_at ? 'datetime' : (schedule?.cron_expr ? 'crons' : 'api')),
             },
         ],
     };
@@ -220,6 +222,12 @@ const buildGoSchedulePayload = schedule => {
     const parsedOrder = normalizeOrderForGo(schedule?.order);
     const firstStep = parsedOrder?.schedule?.[0] || {};
     const nodeQueue = asNodeQueue(schedule?.node_queue) || asNodeQueue(firstStep?.node?.[0]) || 'default';
+    const firstTrigger = String(firstStep?.trigger || '').trim().toLowerCase();
+    const triggerType = String(schedule?.trigger_type || firstTrigger || (schedule?.run_at ? 'datetime' : (schedule?.cron_expr || firstStep?.crons ? 'crons' : 'api')))
+        .trim()
+        .toLowerCase();
+    const runAt = schedule?.run_at || firstStep?.run_at || undefined;
+    const cronExpr = triggerType === 'crons' ? (schedule?.cron_expr || firstStep?.crons || undefined) : undefined;
 
     return {
         name: schedule?.name || firstStep?.name || 'schedule',
@@ -229,7 +237,9 @@ const buildGoSchedulePayload = schedule => {
         project_id: schedule?.project_id || firstStep?.project_id || undefined,
         version_id: schedule?.version_id || undefined,
         entry_command: schedule?.entry_command || undefined,
-        cron_expr: schedule?.cron_expr || firstStep?.crons || undefined,
+        trigger_type: triggerType,
+        cron_expr: cronExpr,
+        run_at: triggerType === 'datetime' ? runAt : undefined,
         node_queue: nodeQueue,
         order: parsedOrder || schedule?.order || undefined,
     };
@@ -309,6 +319,23 @@ const toLegacyProfileResponse = response => {
 };
 
 const ApiService = {
+    getSystemInfo() {
+        if (isGoApi) {
+            return apiClient.get('/system/info');
+        }
+        return Promise.resolve({
+            data: {
+                name: 'araneae',
+                version: 'unknown',
+                git: {
+                    short_commit: 'unknown',
+                    commit: 'unknown',
+                    modified: false,
+                },
+                build_time: '',
+            },
+        });
+    },
     getUsers() {
         return apiClient.get('/users/');
     },
@@ -504,17 +531,22 @@ const ApiService = {
             };
         });
     },
-    createRSSSubscription(url) {
+    createRSSSubscription(url, workplaceId) {
         if (!isGoApi) {
             return Promise.reject(new Error('RSS subscriptions are only supported in Go API mode.'));
         }
-        return apiClient.post('/rss/subscriptions', {url});
+        return apiClient.post('/rss/subscriptions', {
+            url,
+            workplace_id: workplaceId,
+        });
     },
-    getRSSSubscriptions() {
+    getRSSSubscriptions(workplaceId) {
         if (!isGoApi) {
             return Promise.reject(new Error('RSS subscriptions are only supported in Go API mode.'));
         }
-        return apiClient.get('/rss/subscriptions');
+        return apiClient.get('/rss/subscriptions', {
+            params: workplaceId ? {workplace_id: workplaceId} : undefined,
+        });
     },
     refreshRSSSubscription(subscriptionId) {
         if (!isGoApi) {

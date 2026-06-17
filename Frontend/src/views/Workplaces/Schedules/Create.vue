@@ -87,6 +87,7 @@
 													>
 														<option value="crons">Crons</option>
 														<option value="api">API Trigger</option>
+														<option value="datetime">Specific Time</option>
 													</select>
 												</div>
 												<div class="w-full md:w-1/2" v-else>
@@ -103,6 +104,22 @@
 														class="field-input"
 														placeholder="* * * * * *"
 													/>
+												</div>
+												<div v-if="index === 0 && schedule.trigger === 'datetime'" class="w-full md:w-1/2">
+													<label class="block text-sm font-medium text-gray-600">Run At</label>
+													<div class="flex flex-col gap-2">
+														<input
+															v-model.trim="schedule.run_at_local"
+															class="field-input"
+															type="datetime-local"
+															step="1"
+														/>
+														<select v-model="schedule.run_at_tz" class="field-input">
+															<option v-for="tz in timezoneOptions" :key="tz.value" :value="tz.value">
+																{{ tz.label }}
+															</option>
+														</select>
+													</div>
 												</div>
 											</div>
 											<div v-if="index > 0">
@@ -158,6 +175,11 @@
 import {ref, reactive, computed, onMounted} from 'vue';
 import {useRoute} from 'vue-router';
 import ApiService from '@/services/ApiService.js';
+import {
+	buildTimezoneOptions,
+	currentTimezoneOffset,
+	toRunAtRFC3339,
+} from '@/utils/scheduleTime';
 import CheckboxSquareField from '@/components/BeansDesign/Checkbox/CheckboxSquareField.vue';
 import Schedules from '@/views/Workplaces/Schedules/Schedules.vue';
 import Workplace from '@/views/Workplaces/Workplace.vue';
@@ -173,12 +195,16 @@ const tabsList = computed(() => [
 
 const schedules = ref([]);
 const newSchedule = reactive({name: '', description: '', order: '', enabled: true});
+const timezoneOptions = buildTimezoneOptions();
+const defaultTimezoneOffset = currentTimezoneOffset();
 const schedulesConfig = ref([
 	{
 		task_id: '',
 		node: [],
 		trigger: 'crons',
 		crons: '',
+		run_at_local: '',
+		run_at_tz: defaultTimezoneOffset,
 		previous: ''
 	}
 ]);
@@ -203,6 +229,9 @@ const buildOrderSteps = () => {
 			node: Array.isArray(s.node) ? s.node : [],
 			trigger: index === 0 ? s.trigger : 'previous',
 			crons: index === 0 && s.trigger === 'crons' ? s.crons : undefined,
+			run_at: index === 0 && s.trigger === 'datetime'
+				? toRunAtRFC3339(s.run_at_local, s.run_at_tz)
+				: undefined,
 			previous: index > 0 ? previousTaskName : undefined,
 		};
 	});
@@ -249,6 +278,8 @@ const addScheduleConfig = () => {
 		node: [],
 		trigger: 'previous',
 		crons: '',
+		run_at_local: '',
+		run_at_tz: defaultTimezoneOffset,
 		previous: ''
 	});
 };
@@ -267,12 +298,20 @@ const handleCreateSchedule = async () => {
 	}
 
 	const firstStepTrigger = schedulesConfig.value[0].trigger;
-	if (firstStepTrigger !== 'crons' && firstStepTrigger !== 'api') {
-		window.alert('The first task can only be triggered by cron or API.');
+	if (firstStepTrigger !== 'crons' && firstStepTrigger !== 'api' && firstStepTrigger !== 'datetime') {
+		window.alert('The first task can only be triggered by cron, API, or specific time.');
 		return;
 	}
 	if (firstStepTrigger === 'crons' && !String(schedulesConfig.value[0].crons || '').trim()) {
 		window.alert('Please provide a cron expression for the first step.');
+		return;
+	}
+	const firstStepRunAt = toRunAtRFC3339(
+		schedulesConfig.value[0].run_at_local,
+		schedulesConfig.value[0].run_at_tz
+	);
+	if (firstStepTrigger === 'datetime' && !firstStepRunAt) {
+		window.alert('Please provide run_at for the first step in RFC3339 format.');
 		return;
 	}
 
@@ -287,6 +326,8 @@ const handleCreateSchedule = async () => {
 		name: newSchedule.name,
 		description: newSchedule.description,
 		enabled: newSchedule.enabled,
+		trigger_type: firstStepTrigger,
+		run_at: firstStepTrigger === 'datetime' ? firstStepRunAt : undefined,
 		workplace: workplaceId.value,
 		order: JSON.stringify(orderPayload)
 	};
@@ -295,7 +336,15 @@ const handleCreateSchedule = async () => {
 		const res = await ApiService.createSchedule(schedulePayload);
 		schedules.value.push(res.data);
 		Object.assign(newSchedule, {name: '', description: '', order: '', enabled: true});
-		schedulesConfig.value = [{task_id: '', node: [], trigger: 'crons', crons: '', previous: ''}];
+		schedulesConfig.value = [{
+			task_id: '',
+			node: [],
+			trigger: 'crons',
+			crons: '',
+			run_at_local: '',
+			run_at_tz: defaultTimezoneOffset,
+			previous: ''
+		}];
 	} catch (err) {
 		console.error('Error creating schedule:', err.response?.data || err);
 	}

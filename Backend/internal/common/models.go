@@ -80,6 +80,8 @@ type Schedule struct {
 	VersionID       string     `gorm:"index;size:36;not null" json:"version_id"`
 	EntryCommand    string     `gorm:"size:512;not null" json:"entry_command"`
 	CronExpr        string     `gorm:"size:128;not null" json:"cron_expr"`
+	TriggerType     string     `gorm:"size:32;not null;default:api" json:"trigger_type"`
+	RunAt           *time.Time `json:"run_at"`
 	NodeQueue       string     `gorm:"size:64;not null" json:"node_queue"`
 	OrderJSON       string     `gorm:"type:text" json:"order"`
 	Enabled         bool       `gorm:"not null;default:true" json:"enabled"`
@@ -91,7 +93,8 @@ type Schedule struct {
 
 type RSSSubscription struct {
 	ID            string     `gorm:"primaryKey;size:36" json:"id"`
-	URL           string     `gorm:"uniqueIndex;size:1024;not null" json:"url"`
+	WorkplaceID   *uint      `gorm:"index;uniqueIndex:idx_rss_workplace_url" json:"workplace_id,omitempty"`
+	URL           string     `gorm:"size:1024;not null;uniqueIndex:idx_rss_workplace_url" json:"url"`
 	Title         string     `gorm:"size:255" json:"title"`
 	Description   string     `gorm:"size:1024" json:"description"`
 	Link          string     `gorm:"size:1024" json:"link"`

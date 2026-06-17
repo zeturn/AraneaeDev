@@ -26,8 +26,10 @@ import (
 const maxRSSFeedBytes = 10 * 1024 * 1024
 
 type createRSSSubscriptionRequest struct {
-	URL   string `json:"url"`
-	Title string `json:"title"`
+	URL         string     `json:"url"`
+	Title       string     `json:"title"`
+	WorkplaceID *laxString `json:"workplace_id"`
+	Workplace   *laxString `json:"workplace"`
 }
 
 type rssFetchResult struct {
@@ -113,6 +115,24 @@ func (a *App) createRSSSubscription(c *fiber.Ctx) error {
 	if err := c.BodyParser(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	}
+	workplaceID, err := parseOptionalWorkplaceID(req.WorkplaceID, req.Workplace)
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
+	if workplaceID == nil {
+		return fiber.NewError(fiber.StatusBadRequest, "workplace_id is required")
+	}
+	var workplace common.Workplace
+	if err := a.db.Select("id").Where("id = ?", *workplaceID).First(&workplace).Error; err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, "workplace not found")
+	}
+	allowed, accessErr := a.canBindWorkplace(c, *workplaceID)
+	if accessErr != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+	}
+	if !allowed {
+		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
+	}
 	feedURL, err := normalizeRSSURL(req.URL)
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
@@ -120,17 +140,18 @@ func (a *App) createRSSSubscription(c *fiber.Ctx) error {
 
 	uid, _ := c.Locals("uid").(string)
 	var sub common.RSSSubscription
-	err = a.db.Where("url = ?", feedURL).First(&sub).Error
+	err = a.db.Where("url = ? AND workplace_id = ?", feedURL, *workplaceID).First(&sub).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		now := time.Now()
 		sub = common.RSSSubscription{
-			ID:         uuid.NewString(),
-			URL:        feedURL,
-			Title:      strings.TrimSpace(req.Title),
-			StorageDir: filepath.Join(a.cfg.RSSRoot, uuid.NewString()),
-			CreatedBy:  uid,
-			CreatedAt:  now,
-			UpdatedAt:  now,
+			ID:          uuid.NewString(),
+			WorkplaceID: workplaceID,
+			URL:         feedURL,
+			Title:       strings.TrimSpace(req.Title),
+			StorageDir:  filepath.Join(a.cfg.RSSRoot, fmt.Sprintf("workplace-%d", *workplaceID), uuid.NewString()),
+			CreatedBy:   uid,
+			CreatedAt:   now,
+			UpdatedAt:   now,
 		}
 		if err := a.db.Create(&sub).Error; err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, err.Error())
@@ -148,11 +169,34 @@ func (a *App) createRSSSubscription(c *fiber.Ctx) error {
 
 func (a *App) listRSSSubscriptions(c *fiber.Ctx) error {
 	var subs []common.RSSSubscription
+	workplaceID, err := parseOptionalWorkplaceQueryID(c)
+	if err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	}
 	query := a.db.Order("created_at desc")
+	if workplaceID != nil {
+		query = query.Where("workplace_id = ?", *workplaceID)
+	}
 	role, _ := c.Locals("role").(string)
+	uid, _ := c.Locals("uid").(string)
 	if !isPrivilegedRole(role) {
-		uid, _ := c.Locals("uid").(string)
-		query = query.Where("created_by = ?", uid)
+		if workplaceID != nil {
+			allowed, accessErr := a.userCanAccessWorkplace(uid, *workplaceID)
+			if accessErr != nil {
+				return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+			}
+			if !allowed {
+				return c.JSON([]common.RSSSubscription{})
+			}
+		}
+		accessibleWorkplaceIDs, scopeErr := a.userAccessibleWorkplaceIDs(uid)
+		if scopeErr != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, scopeErr.Error())
+		}
+		if len(accessibleWorkplaceIDs) == 0 {
+			return c.JSON([]common.RSSSubscription{})
+		}
+		query = query.Where("workplace_id IN ?", accessibleWorkplaceIDs)
 	}
 	if err := query.Find(&subs).Error; err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
@@ -225,8 +269,17 @@ func (a *App) loadAccessibleRSSSubscription(c *fiber.Ctx) (common.RSSSubscriptio
 	}
 	role, _ := c.Locals("role").(string)
 	uid, _ := c.Locals("uid").(string)
-	if !isPrivilegedRole(role) && sub.CreatedBy != uid {
-		return sub, fiber.NewError(fiber.StatusNotFound, "rss subscription not found")
+	if !isPrivilegedRole(role) {
+		if sub.WorkplaceID == nil {
+			return sub, fiber.NewError(fiber.StatusNotFound, "rss subscription not found")
+		}
+		allowed, accessErr := a.userCanAccessWorkplace(uid, *sub.WorkplaceID)
+		if accessErr != nil {
+			return sub, fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+		}
+		if !allowed {
+			return sub, fiber.NewError(fiber.StatusNotFound, "rss subscription not found")
+		}
 	}
 	return sub, nil
 }

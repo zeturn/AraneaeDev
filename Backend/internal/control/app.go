@@ -47,6 +47,7 @@ type App struct {
 	cron            *cron.Cron
 	cronEntries     map[string]cron.EntryID
 	scheduleEntries map[string]cron.EntryID
+	scheduleTimers  map[string]*time.Timer
 	oauthCodes      map[string]oauthExchangeState
 	cronMu          sync.Mutex
 	oauthMu         sync.Mutex
@@ -248,6 +249,9 @@ func NewApp(cfg common.ControlConfig) (*App, error) {
 	if err := db.AutoMigrate(common.AutoMigrateModels()...); err != nil {
 		return nil, err
 	}
+	if err := reconcileSchema(db); err != nil {
+		return nil, err
+	}
 
 	app := &App{
 		cfg:             cfg,
@@ -257,6 +261,7 @@ func NewApp(cfg common.ControlConfig) (*App, error) {
 		cron:            cron.New(cron.WithSeconds()),
 		cronEntries:     make(map[string]cron.EntryID),
 		scheduleEntries: make(map[string]cron.EntryID),
+		scheduleTimers:  make(map[string]*time.Timer),
 		oauthCodes:      make(map[string]oauthExchangeState),
 	}
 

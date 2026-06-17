@@ -139,6 +139,8 @@ type createScheduleRequest struct {
 	VersionID    string    `json:"version_id"`
 	EntryCommand string    `json:"entry_command"`
 	CronExpr     string    `json:"cron_expr"`
+	TriggerType  string    `json:"trigger_type"`
+	RunAt        string    `json:"run_at"`
 	NodeQueue    laxString `json:"node_queue"`
 	Enabled      *bool     `json:"enabled"`
 	Order        any       `json:"order"`
@@ -152,6 +154,8 @@ type updateScheduleRequest struct {
 	VersionID    *string    `json:"version_id"`
 	EntryCommand *string    `json:"entry_command"`
 	CronExpr     *string    `json:"cron_expr"`
+	TriggerType  *string    `json:"trigger_type"`
+	RunAt        *string    `json:"run_at"`
 	NodeQueue    *laxString `json:"node_queue"`
 	Enabled      *bool      `json:"enabled"`
 	Order        any        `json:"order"`
@@ -214,6 +218,7 @@ type legacyScheduleStep struct {
 	Node       []string `json:"node"`
 	Trigger    string   `json:"trigger"`
 	Crons      string   `json:"crons"`
+	RunAt      string   `json:"run_at"`
 	Previous   string   `json:"previous"`
 }
 
@@ -271,6 +276,7 @@ func (a *App) setupRoutes() {
 	a.http.Post("/api/v1/runs/:id/callback", callbackRateLimit, a.runCallback)
 
 	api := a.http.Group("/api/v1", a.authMiddleware)
+	api.Get("/system/info", a.requireAppScope("araneae.read"), a.getSystemInfo)
 	api.Post("/projects", a.requireRoles("admin", "operator"), a.requireAppScope("araneae.write"), a.createProject)
 	api.Get("/projects", a.requireAppScope("araneae.read"), a.listProjects)
 	api.Get("/projects/:id", a.requireAppScope("araneae.read"), a.getProject)
@@ -366,6 +372,20 @@ func (a *App) setupRoutes() {
 	api.Post("/workplaces/:id/add_teams", a.requireRoles("admin", "operator"), a.requireAppScope("araneae.write"), a.addWorkplaceTeams)
 	api.Post("/workplaces/:id/add_people/", a.requireRoles("admin", "operator"), a.requireAppScope("araneae.write"), a.addWorkplacePeople)
 	api.Post("/workplaces/:id/add_people", a.requireRoles("admin", "operator"), a.requireAppScope("araneae.write"), a.addWorkplacePeople)
+}
+
+func (a *App) getSystemInfo(c *fiber.Ctx) error {
+	info := resolveVersionInfo()
+	return c.JSON(fiber.Map{
+		"name":    "araneae-control",
+		"version": info["version"],
+		"git": fiber.Map{
+			"commit":       info["commit"],
+			"short_commit": info["short_commit"],
+			"modified":     info["modified"],
+		},
+		"build_time": info["build_time"],
+	})
 }
 
 func (a *App) login(c *fiber.Ctx) error {

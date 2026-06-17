@@ -7,6 +7,16 @@
 			</header>
 
 			<form class="flex flex-col gap-3 rounded border border-gray-200 bg-white p-4 md:flex-row" @submit.prevent="createSubscription">
+				<select
+					v-model="selectedWorkplaceId"
+					class="rounded border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 md:w-56"
+					required
+				>
+					<option disabled value="">选择工作区</option>
+					<option v-for="workplace in workplaces" :key="workplace.id" :value="String(workplace.id)">
+						{{ workplace.name }}
+					</option>
+				</select>
 				<input
 					v-model.trim="rssUrl"
 					class="min-w-0 flex-1 rounded border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
@@ -68,12 +78,14 @@
 </template>
 
 <script setup>
-import {onMounted, ref} from 'vue';
+import {onMounted, ref, watch} from 'vue';
 import Aprons from './Aprons.vue';
 import ApiService from '@/services/ApiService.js';
 
 const rssUrl = ref('');
 const subscriptions = ref([]);
+const workplaces = ref([]);
+const selectedWorkplaceId = ref('');
 const items = ref([]);
 const activeSubscriptionId = ref('');
 const loading = ref(false);
@@ -87,10 +99,14 @@ const setError = err => {
 };
 
 const loadSubscriptions = async () => {
+	if (!selectedWorkplaceId.value) {
+		subscriptions.value = [];
+		return;
+	}
 	loading.value = true;
 	error.value = '';
 	try {
-		const response = await ApiService.getRSSSubscriptions();
+		const response = await ApiService.getRSSSubscriptions(selectedWorkplaceId.value);
 		subscriptions.value = Array.isArray(response.data) ? response.data : [];
 	} catch (err) {
 		setError(err);
@@ -103,11 +119,15 @@ const createSubscription = async () => {
 	if (!rssUrl.value) {
 		return;
 	}
+	if (!selectedWorkplaceId.value) {
+		setError(new Error('请先选择工作区'));
+		return;
+	}
 	submitting.value = true;
 	error.value = '';
 	message.value = '';
 	try {
-		const response = await ApiService.createRSSSubscription(rssUrl.value);
+		const response = await ApiService.createRSSSubscription(rssUrl.value, selectedWorkplaceId.value);
 		const created = response?.data?.created || 0;
 		const updated = response?.data?.updated || 0;
 		message.value = `抓取完成：新增 ${created} 条，更新 ${updated} 条。`;
@@ -165,5 +185,27 @@ const deleteSubscription = async id => {
 	}
 };
 
-onMounted(loadSubscriptions);
+const loadWorkplaces = async () => {
+	try {
+		const response = await ApiService.getMyWorkplaces();
+		const list = Array.isArray(response?.data?.results) ? response.data.results : [];
+		workplaces.value = list;
+		if (!selectedWorkplaceId.value && list.length > 0) {
+			selectedWorkplaceId.value = String(list[0].id);
+		}
+	} catch (err) {
+		setError(err);
+	}
+};
+
+onMounted(async () => {
+	await loadWorkplaces();
+	await loadSubscriptions();
+});
+
+watch(selectedWorkplaceId, async () => {
+	activeSubscriptionId.value = '';
+	items.value = [];
+	await loadSubscriptions();
+});
 </script>

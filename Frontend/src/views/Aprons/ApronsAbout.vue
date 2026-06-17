@@ -13,6 +13,33 @@
 import {ref, onMounted} from 'vue';
 import ApiService from '@/services/ApiService.js';
 import Aprons from "@/views/Aprons/Aprons.vue";
+
+const loading = ref(false);
+const version = ref('loading...');
+const shortCommit = ref('');
+const buildTime = ref('');
+const loadError = ref('');
+
+const loadVersionInfo = async () => {
+	loading.value = true;
+	loadError.value = '';
+	try {
+		const response = await ApiService.getSystemInfo();
+		const payload = response?.data || {};
+		version.value = payload?.version || 'unknown';
+		shortCommit.value = payload?.git?.short_commit || '';
+		buildTime.value = payload?.build_time || '';
+	} catch (err) {
+		version.value = 'unknown';
+		loadError.value = err?.response?.data?.message || err?.message || '无法获取版本信息';
+	} finally {
+		loading.value = false;
+	}
+};
+
+onMounted(() => {
+	loadVersionInfo();
+});
 </script>
 
 <template>
@@ -25,15 +52,26 @@ import Aprons from "@/views/Aprons/Aprons.vue";
 		</p>
 
 		<h2 class="text-gray-500 text-2xl m-4">
-			许可证
+			版本信息
 		</h2>
 		<p class="text-green-400  m-4">
-			Demo V0.0.1
+			{{ version }}
+		</p>
+		<p class="text-gray-500 text-sm m-4" v-if="shortCommit">
+			Git Commit: {{ shortCommit }}
+		</p>
+		<p class="text-gray-500 text-sm m-4" v-if="buildTime">
+			Build Time: {{ buildTime }}
+		</p>
+		<p class="text-gray-400 text-sm m-4" v-if="loading">
+			版本信息加载中...
+		</p>
+		<p class="text-red-500 text-sm m-4" v-if="loadError">
+			{{ loadError }}
 		</p>
 
 		<p class="text-gray-500 text-sm m-4">
-			Demo 版本是一个演示版本，旨在展示 Aprons 的基本功能和交互设计。
-			不包含所有功能。
+			版本号来自当前服务端构建，自动跟随 git revision。
 		</p>
 
 	</Aprons>

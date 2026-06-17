@@ -93,6 +93,7 @@
                         >
                           <option value="crons">Crons</option>
                           <option value="api">API Trigger</option>
+                          <option value="datetime">Specific Time</option>
                         </select>
                       </div>
                       <div class="w-1/2" v-else>
@@ -108,6 +109,22 @@
                           class="field-input"
                           placeholder="* * * * * *"
                         />
+                      </div>
+                      <div v-if="index === 0 && step.trigger === 'datetime'" class="w-1/2">
+                        <label class="block text-sm font-medium text-gray-600">Run At</label>
+                        <div class="flex flex-col gap-2">
+                          <input
+                            v-model.trim="step.run_at_local"
+                            class="field-input"
+                            type="datetime-local"
+                            step="1"
+                          />
+                          <select v-model="step.run_at_tz" class="field-input">
+                            <option v-for="tz in timezoneOptions" :key="tz.value" :value="tz.value">
+                              {{ tz.label }}
+                            </option>
+                          </select>
+                        </div>
                       </div>
                     </div>
 
@@ -171,6 +188,12 @@
 import {ref, reactive, computed, onMounted} from 'vue';
 import {useRoute} from 'vue-router';
 import ApiService from '@/services/ApiService';
+import {
+  buildTimezoneOptions,
+  currentTimezoneOffset,
+  fromRunAtRFC3339,
+  toRunAtRFC3339,
+} from '@/utils/scheduleTime';
 import CheckboxSquareField from '@/components/BeansDesign/Checkbox/CheckboxSquareField.vue';
 import Schedules from '@/views/Schedules/Schedules.vue';
 
@@ -184,6 +207,8 @@ const successMessage = ref('');
 
 const nodesList = ref([]);
 const tasksList = ref([]);
+const timezoneOptions = buildTimezoneOptions();
+const defaultTimezoneOffset = currentTimezoneOffset();
 const form = reactive({
   name: '',
   description: '',
@@ -192,7 +217,7 @@ const form = reactive({
 });
 
 const schedulesConfig = ref([
-  {task_id: '', node: [], trigger: 'crons', crons: '', previous: ''},
+  {task_id: '', node: [], trigger: 'crons', crons: '', run_at_local: '', run_at_tz: defaultTimezoneOffset, previous: ''},
 ]);
 
 const parseMaybeJSON = raw => {
@@ -241,6 +266,9 @@ const buildOrderSteps = () => {
       node: Array.isArray(s.node) ? s.node : [],
       trigger: index === 0 ? s.trigger : 'previous',
       crons: index === 0 && s.trigger === 'crons' ? s.crons : undefined,
+      run_at: index === 0 && s.trigger === 'datetime'
+        ? toRunAtRFC3339(s.run_at_local, s.run_at_tz)
+        : undefined,
       previous: index > 0 ? previousTaskName : undefined,
     };
   });
@@ -257,6 +285,8 @@ const addScheduleConfig = () => {
     node: [],
     trigger: 'previous',
     crons: '',
+    run_at_local: '',
+    run_at_tz: defaultTimezoneOffset,
     previous: '',
   });
 };
@@ -281,24 +311,31 @@ const fillFormFromSchedule = schedule => {
       task_id: schedule?.task_id || '',
       node: schedule?.node_queue ? [schedule.node_queue] : [],
       crons: schedule?.cron_expr || '',
+      run_at: schedule?.run_at || '',
+      trigger: schedule?.trigger_type || '',
     }];
 
   const nextSteps = rawSteps.map((item, index) => {
     const triggerRaw = String(item?.trigger || '').toLowerCase();
-    const firstTrigger = triggerRaw === 'crons' || triggerRaw === 'api'
+    const firstTrigger = triggerRaw === 'crons' || triggerRaw === 'api' || triggerRaw === 'datetime'
       ? triggerRaw
-      : (String(item?.crons || '').trim() ? 'crons' : 'api');
+      : (String(item?.run_at || schedule?.run_at || '').trim() ? 'datetime' : (String(item?.crons || '').trim() ? 'crons' : 'api'));
+    const parsedRunAt = fromRunAtRFC3339(String(item?.run_at || schedule?.run_at || ''));
 
     return {
       task_id: item?.task_id || (index === 0 ? (schedule?.task_id || '') : ''),
       node: normalizeNodeList(item?.node, schedule?.node_queue),
       trigger: index === 0 ? firstTrigger : 'previous',
       crons: index === 0 && firstTrigger === 'crons' ? String(item?.crons || schedule?.cron_expr || '') : '',
+      run_at_local: index === 0 && firstTrigger === 'datetime' ? parsedRunAt.localDateTime : '',
+      run_at_tz: index === 0 && firstTrigger === 'datetime' ? parsedRunAt.timezoneOffset : defaultTimezoneOffset,
       previous: '',
     };
   });
 
-  schedulesConfig.value = nextSteps.length > 0 ? nextSteps : [{task_id: '', node: [], trigger: 'crons', crons: '', previous: ''}];
+  schedulesConfig.value = nextSteps.length > 0
+    ? nextSteps
+    : [{task_id: '', node: [], trigger: 'crons', crons: '', run_at_local: '', run_at_tz: defaultTimezoneOffset, previous: ''}];
 };
 
 const fetchNodes = async () => {
@@ -335,11 +372,18 @@ const validateForm = () => {
   }
 
   const firstStepTrigger = schedulesConfig.value[0].trigger;
-  if (firstStepTrigger !== 'crons' && firstStepTrigger !== 'api') {
-    return 'The first task can only be triggered by cron or API.';
+  if (firstStepTrigger !== 'crons' && firstStepTrigger !== 'api' && firstStepTrigger !== 'datetime') {
+    return 'The first task can only be triggered by cron, API, or specific time.';
   }
   if (firstStepTrigger === 'crons' && !String(schedulesConfig.value[0].crons || '').trim()) {
     return 'Please provide a cron expression for the first step.';
+  }
+  const firstStepRunAt = toRunAtRFC3339(
+    schedulesConfig.value[0].run_at_local,
+    schedulesConfig.value[0].run_at_tz
+  );
+  if (firstStepTrigger === 'datetime' && !firstStepRunAt) {
+    return 'Please provide run_at for the first step in RFC3339 format.';
   }
 
   return '';
@@ -367,6 +411,10 @@ const handleUpdateSchedule = async () => {
       description: form.description,
       enabled: form.enabled,
       workplace: form.workplace,
+      trigger_type: schedulesConfig.value[0].trigger,
+      run_at: schedulesConfig.value[0].trigger === 'datetime'
+        ? toRunAtRFC3339(schedulesConfig.value[0].run_at_local, schedulesConfig.value[0].run_at_tz)
+        : undefined,
       order: JSON.stringify(orderPayload),
     });
     successMessage.value = 'Schedule updated successfully.';
