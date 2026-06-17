@@ -341,8 +341,8 @@ func (a *App) setupRoutes() {
 
 	api.Get("/teams/my_teams/", a.requireAppScope("araneae.read"), a.listMyTeams)
 	api.Get("/teams/my_teams", a.requireAppScope("araneae.read"), a.listMyTeams)
-	api.Post("/teams/", a.requireRoles("admin", "operator"), a.requireAppScope("araneae.write"), a.createTeam)
-	api.Post("/teams", a.requireRoles("admin", "operator"), a.requireAppScope("araneae.write"), a.createTeam)
+	api.Post("/teams/", a.requireAppScope("araneae.write"), a.createTeam)
+	api.Post("/teams", a.requireAppScope("araneae.write"), a.createTeam)
 	api.Get("/teams/:id/", a.requireAppScope("araneae.read"), a.getTeam)
 	api.Get("/teams/:id", a.requireAppScope("araneae.read"), a.getTeam)
 	api.Put("/teams/:id/", a.requireRoles("admin", "operator"), a.requireAppScope("araneae.write"), a.updateTeam)

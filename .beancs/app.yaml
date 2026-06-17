@@ -47,6 +47,9 @@ spec:
           - openid
           - profile
           - email
+          - araneae.read
+          - araneae.write
+          - araneae.admin
           - s2s.user.read
           - s2s.team.read
           - s2s.team.write
