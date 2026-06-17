@@ -187,25 +187,27 @@ func TestBasaltPassCallbackRedirectsToFrontendCallback(t *testing.T) {
 		t.Fatalf("unexpected exchange next: %v", exchangePayload["next"])
 	}
 
-	profileReq := httptest.NewRequest(http.MethodGet, "/api/v1/users/"+claims.UserID, nil)
-	profileReq.Header.Set("Authorization", "Bearer "+issuedToken)
-	profileResp, err := app.http.Test(profileReq, -1)
-	if err != nil {
-		t.Fatalf("profile request failed: %v", err)
-	}
-	defer profileResp.Body.Close()
-	if profileResp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200 from profile api, got %d", profileResp.StatusCode)
-	}
-	var profilePayload map[string]any
-	if err := json.NewDecoder(profileResp.Body).Decode(&profilePayload); err != nil {
-		t.Fatalf("decode profile response: %v", err)
-	}
-	if got, _ := profilePayload["name"].(string); got != "Basalt Demo User" {
-		t.Fatalf("unexpected profile name: %q", got)
-	}
-	if got, _ := profilePayload["email"].(string); got != "demo.user@example.com" {
-		t.Fatalf("unexpected profile email: %q", got)
+	for _, profilePath := range []string{"/api/v1/users/" + claims.UserID, "/api/v1/users/me"} {
+		profileReq := httptest.NewRequest(http.MethodGet, profilePath, nil)
+		profileReq.Header.Set("Authorization", "Bearer "+issuedToken)
+		profileResp, err := app.http.Test(profileReq, -1)
+		if err != nil {
+			t.Fatalf("profile request failed: %v", err)
+		}
+		defer profileResp.Body.Close()
+		if profileResp.StatusCode != http.StatusOK {
+			t.Fatalf("expected 200 from profile api %s, got %d", profilePath, profileResp.StatusCode)
+		}
+		var profilePayload map[string]any
+		if err := json.NewDecoder(profileResp.Body).Decode(&profilePayload); err != nil {
+			t.Fatalf("decode profile response: %v", err)
+		}
+		if got, _ := profilePayload["name"].(string); got != "Basalt Demo User" {
+			t.Fatalf("unexpected profile name: %q", got)
+		}
+		if got, _ := profilePayload["email"].(string); got != "demo.user@example.com" {
+			t.Fatalf("unexpected profile email: %q", got)
+		}
 	}
 
 	var userCount int64

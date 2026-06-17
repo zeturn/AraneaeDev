@@ -964,6 +964,9 @@ func (a *App) listUsers(c *fiber.Ctx) error {
 
 func (a *App) getUser(c *fiber.Ctx) error {
 	identifier := strings.TrimSpace(c.Params("id"))
+	if strings.EqualFold(identifier, "me") {
+		identifier, _ = c.Locals("uid").(string)
+	}
 	user, err := a.resolveUserIdentifier(identifier)
 	if err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "user not found")

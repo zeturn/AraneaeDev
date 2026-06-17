@@ -212,12 +212,22 @@ func (a *App) basaltListTeams() ([]fiber.Map, error) {
 }
 
 func (a *App) basaltCreateTeam(name, description, ownerEmail string) (fiber.Map, error) {
-	reqBody := map[string]any{
-		"name":        strings.TrimSpace(name),
-		"description": strings.TrimSpace(description),
+	ownerEmail = strings.TrimSpace(ownerEmail)
+	if ownerEmail == "" {
+		return nil, errors.New("email is required to create a BasaltPass team owner")
 	}
-	if ownerID, err := a.basaltLookupUserIDByEmail(ownerEmail); err == nil && ownerID > 0 {
-		reqBody["owner_user_id"] = ownerID
+	ownerID, err := a.basaltLookupUserIDByEmail(ownerEmail)
+	if err != nil {
+		return nil, err
+	}
+	if ownerID == 0 {
+		return nil, errors.New("invalid BasaltPass owner user id")
+	}
+
+	reqBody := map[string]any{
+		"name":          strings.TrimSpace(name),
+		"description":   strings.TrimSpace(description),
+		"owner_user_id": ownerID,
 	}
 
 	payload, err := a.basaltS2SPost("/api/v1/s2s/teams", reqBody)
