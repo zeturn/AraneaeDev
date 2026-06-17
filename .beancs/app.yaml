@@ -100,6 +100,7 @@ spec:
         CONTROL_CORS_ALLOW_ORIGINS: "*"
         FRONTEND_BASE_URL: https://araneae-front.hollowdata.com
         BASALTPASS_ADMIN_EMAILS: testbeancsbasaltpass-tenant@hollowdata.com
+        BASALTPASS_OAUTH_SCOPE: "openid profile email araneae.read araneae.write araneae.admin"
         BASALTPASS_INTERNAL_BASE_URL: http://backend.testbeancsbasaltpass.svc.cluster.local:8101
 
       secrets:

@@ -365,6 +365,21 @@ func TestControlRoutes_RequireAuth(t *testing.T) {
 	}
 }
 
+func TestControlRoutes_AdminEmailPromotesStaleViewerJWT(t *testing.T) {
+	app := newTestControlApp(t)
+	app.cfg.BasaltAdminEmails = "tenant@example.com"
+
+	token, err := app.issueTokenWithIdentity("stale-tenant-admin", "viewer", "Tenant Admin", "tenant@example.com")
+	if err != nil {
+		t.Fatalf("issue stale token: %v", err)
+	}
+
+	rec := doJSONRequest(t, app, http.MethodGet, "/api/v1/nodes", token, nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admin email should promote stale viewer token, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestControlRoutes_ViewerSeesOnlySelfInUsersList(t *testing.T) {
 	app := newTestControlApp(t)
 

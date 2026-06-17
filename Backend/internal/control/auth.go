@@ -116,9 +116,13 @@ func (a *App) authMiddleware(c *fiber.Ctx) error {
 	if err != nil {
 		return fiber.NewError(fiber.StatusUnauthorized, "invalid bearer token")
 	}
+	role := claims.Role
+	if role != "admin" && a.isBasaltAdminEmail(claims.Email) {
+		role = "admin"
+	}
 	c.Locals("uid", claims.UserID)
-	c.Locals("role", claims.Role)
-	c.Locals("scopes", defaultScopesForRole(claims.Role))
+	c.Locals("role", role)
+	c.Locals("scopes", defaultScopesForRole(role))
 	if name := strings.TrimSpace(claims.Name); name != "" {
 		c.Locals("name", name)
 	}
