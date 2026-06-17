@@ -89,6 +89,7 @@ spec:
         ARTIFACT_ROOT: /data/artifacts
         CONTROL_CORS_ALLOW_ORIGINS: "*"
         FRONTEND_BASE_URL: https://araneae-front.hollowdata.com
+        BASALTPASS_ADMIN_EMAILS: testbeancsbasaltpass-tenant@hollowdata.com
 
       secrets:
         - name: INIT_ADMIN_PASSWORD
