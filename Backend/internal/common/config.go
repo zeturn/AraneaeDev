@@ -61,6 +61,18 @@ type ExecutorConfig struct {
 	ControlCallbackKey       string
 	TaskTimeoutSeconds       int
 	WorkDir                  string
+	SinkEnabled              bool
+	SinkStrict               bool
+	SinkDirName              string
+	HashSlipBaseURL          string
+	HashSlipTimeoutSeconds   int
+	HashSlipTimeseriesPath   string
+	HashSlipTextPath         string
+	HashSlipStructuredPath   string
+	BasaltTokenURL           string
+	BasaltClientID           string
+	BasaltClientSecret       string
+	BasaltClientScope        string
 }
 
 func GetEnv(key, fallback string) string {
@@ -156,5 +168,17 @@ func LoadExecutorConfig() ExecutorConfig {
 		ControlCallbackKey:       GetEnv("EXECUTION_CALLBACK_KEY", ""),
 		TaskTimeoutSeconds:       GetEnvInt("EXECUTOR_TASK_TIMEOUT_SECONDS", 1800),
 		WorkDir:                  GetEnv("EXECUTOR_WORKDIR", "./data/workdir"),
+		SinkEnabled:              GetEnvBool("EXECUTOR_SINK_ENABLED", true),
+		SinkStrict:               GetEnvBool("EXECUTOR_SINK_STRICT", false),
+		SinkDirName:              GetEnv("EXECUTOR_SINK_DIRNAME", ".araneae/sink"),
+		HashSlipBaseURL:          strings.TrimRight(GetEnv("HASHSLIP_BASE_URL", "http://localhost:8106"), "/"),
+		HashSlipTimeoutSeconds:   GetEnvInt("HASHSLIP_TIMEOUT_SECONDS", 15),
+		HashSlipTimeseriesPath:   GetEnv("HASHSLIP_TIMESERIES_PATH", "/api/v1/timeseries/records"),
+		HashSlipTextPath:         GetEnv("HASHSLIP_TEXT_PATH", "/api/v1/text/records"),
+		HashSlipStructuredPath:   GetEnv("HASHSLIP_STRUCTURED_PATH", "/api/v1/data"),
+		BasaltTokenURL:           GetEnv("BASALTPASS_TOKEN_URL", ""),
+		BasaltClientID:           GetEnv("BASALTPASS_OAUTH_CLIENT_ID", ""),
+		BasaltClientSecret:       GetEnv("BASALTPASS_OAUTH_CLIENT_SECRET", ""),
+		BasaltClientScope:        GetEnv("BASALTPASS_S2S_SCOPE", "hashslip.write"),
 	}
 }

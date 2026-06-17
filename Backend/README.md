@@ -138,3 +138,40 @@
 GitHub Actions：
 
 - 使用独立工作流 `GoRefactor Integration`（手动触发，不影响主 CI）。
+
+## Araneae Sink -> HashSlip（新增）
+
+Executor 现在支持在任务运行目录中收集 sink 接收区文件并自动转存到 HashSlip：
+
+- 接收区默认目录：`.araneae/sink`
+- 文件格式：`*.jsonl`，每行一个 envelope
+- 支持类型：`timeseries`、`text`、`structured`
+
+### Envelope 示例
+
+```json
+{"type":"timeseries","data":{"source":"araneae.fed","metric":"fed_overnight_rate","timestamp":"2026-06-17T15:00:00Z","value":5.25,"hash_key":"fed_overnight_rate_daily","bucket_date":"2026-06-17"}}
+```
+
+### Executor 环境变量
+
+- `EXECUTOR_SINK_ENABLED`：是否启用 sink 转存（默认 `true`）
+- `EXECUTOR_SINK_STRICT`：转存失败是否让任务失败（默认 `false`）
+- `HASHSLIP_BASE_URL`：HashSlip 地址（例如 `http://hashslip:8106`）
+- `HASHSLIP_TIMESERIES_PATH`：默认 `/api/v1/timeseries/records`
+- `HASHSLIP_TEXT_PATH`：默认 `/api/v1/text/records`
+- `HASHSLIP_STRUCTURED_PATH`：默认 `/api/v1/data`
+- 可选 BasaltPass S2S：`BASALTPASS_TOKEN_URL` + `BASALTPASS_OAUTH_CLIENT_ID` + `BASALTPASS_OAUTH_CLIENT_SECRET`
+
+### Python 爬虫使用方式
+
+Executor 会自动在任务运行目录注入 `araneae_sink.py`，脚本可直接：
+
+- `import araneae_sink`
+- 调用 `araneae_sink.emit_timeseries(...)` / `emit_text(...)` / `emit_structured(...)`
+
+示例脚本：`examples/simple-job/fed_overnight_rate.py`
+
+联调脚本（本地 RabbitMQ + HashSlip）：
+
+- `python scripts/e2e_sink_hashslip.py`

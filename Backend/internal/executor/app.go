@@ -16,6 +16,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"araneae-go/gen/pb"
@@ -44,6 +45,9 @@ type App struct {
 	grpcConn   *grpc.ClientConn
 	grpcClient pb.ArtifactServiceClient
 	httpClient *http.Client
+	tokenMu    sync.Mutex
+	tokenValue string
+	tokenUntil time.Time
 }
 
 type runtimeCapability struct {
@@ -411,8 +415,19 @@ func (a *App) processMessage(ctx context.Context, raw []byte) error {
 		return err
 	}
 
-	output, exitCode, execErr := a.executeTask(ctx, m)
+	output, exitCode, runDir, execErr := a.executeTask(ctx, m)
 	output = truncateOutput(output, maxExecutorOutputBytes)
+	sinkSummary, sinkErr := a.processSinkArtifacts(ctx, m, runDir)
+	if sinkSummary != "" {
+		output = truncateOutput(output+"\n"+sinkSummary, maxExecutorOutputBytes)
+	}
+	if sinkErr != nil {
+		output = truncateOutput(output+"\n"+"sink error: "+sinkErr.Error(), maxExecutorOutputBytes)
+		if execErr == nil && a.cfg.SinkStrict {
+			execErr = fmt.Errorf("sink transfer failed: %w", sinkErr)
+			exitCode = 1
+		}
+	}
 	finishedAt := time.Now()
 	status := "success"
 	if execErr != nil {
@@ -442,7 +457,7 @@ func (a *App) processMessage(ctx context.Context, raw []byte) error {
 	})
 }
 
-func (a *App) executeTask(ctx context.Context, msg contracts.QueueTaskMessage) (string, int, error) {
+func (a *App) executeTask(ctx context.Context, msg contracts.QueueTaskMessage) (string, int, string, error) {
 	runCtx, cancel := context.WithTimeout(ctx, time.Duration(a.cfg.TaskTimeoutSeconds)*time.Second)
 	defer cancel()
 
@@ -451,21 +466,37 @@ func (a *App) executeTask(ctx context.Context, msg contracts.QueueTaskMessage) (
 		&pb.GetArtifactRequest{ProjectId: msg.ProjectID, VersionId: msg.VersionID},
 	)
 	if err != nil {
-		return "", 1, err
+		return "", 1, "", err
 	}
 	if len(resp.Content) == 0 {
-		return "", 1, errors.New("empty artifact content")
+		return "", 1, "", errors.New("empty artifact content")
 	}
 	sha := runtimeexec.ComputeSHA256(resp.Content)
 	if sha != resp.Sha256 {
-		return "", 1, fmt.Errorf("artifact checksum mismatch expected=%s actual=%s", resp.Sha256, sha)
+		return "", 1, "", fmt.Errorf("artifact checksum mismatch expected=%s actual=%s", resp.Sha256, sha)
 	}
 	runDir := filepath.Join(a.cfg.WorkDir, msg.RunID)
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
-		return "", 1, err
+		return "", 1, runDir, err
 	}
 	if err := runtimeexec.UnzipBytes(resp.Content, runDir); err != nil {
-		return "", 1, err
+		return "", 1, runDir, err
 	}
-	return runtimeexec.RunCommand(runCtx, runDir, msg.EntryCommand)
+	sinkDir := filepath.Join(runDir, filepath.FromSlash(strings.TrimSpace(a.cfg.SinkDirName)))
+	if sinkDir == runDir || strings.TrimSpace(a.cfg.SinkDirName) == "" {
+		sinkDir = filepath.Join(runDir, ".araneae", "sink")
+	}
+	if err := os.MkdirAll(sinkDir, 0o755); err != nil {
+		return "", 1, runDir, err
+	}
+	if err := ensureSinkSDK(runDir); err != nil {
+		a.log.Warn("write sink sdk failed", zap.Error(err), zap.String("run_id", msg.RunID))
+	}
+	env := map[string]string{
+		"ARANEAE_RUNTIME":   "1",
+		"ARANEAE_SINK_MODE": "araneae",
+		"ARANEAE_SINK_DIR":  sinkDir,
+	}
+	out, code, runErr := runtimeexec.RunCommand(runCtx, runDir, msg.EntryCommand, env)
+	return out, code, runDir, runErr
 }

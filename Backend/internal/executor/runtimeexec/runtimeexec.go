@@ -78,7 +78,7 @@ func extractZipEntry(f *zip.File, dest string) error {
 	return err
 }
 
-func RunCommand(ctx context.Context, workDir, command string) (string, int, error) {
+func RunCommand(ctx context.Context, workDir, command string, extraEnv map[string]string) (string, int, error) {
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
 		cmd = exec.CommandContext(ctx, "cmd", "/C", command)
@@ -86,6 +86,13 @@ func RunCommand(ctx context.Context, workDir, command string) (string, int, erro
 		cmd = exec.CommandContext(ctx, "bash", "-lc", command)
 	}
 	cmd.Dir = workDir
+	if len(extraEnv) > 0 {
+		env := os.Environ()
+		for k, v := range extraEnv {
+			env = append(env, k+"="+v)
+		}
+		cmd.Env = env
+	}
 	out, err := cmd.CombinedOutput()
 	exitCode := 0
 	if cmd.ProcessState != nil {

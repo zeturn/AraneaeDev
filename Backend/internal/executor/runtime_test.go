@@ -85,7 +85,7 @@ func TestUnzipBytesExtractsFiles(t *testing.T) {
 
 func TestRunCommand(t *testing.T) {
 	dir := t.TempDir()
-	out, code, err := runtimeexec.RunCommand(context.Background(), dir, "echo test-run")
+	out, code, err := runtimeexec.RunCommand(context.Background(), dir, "echo test-run", nil)
 	if err != nil {
 		t.Fatalf("runCommand failed: %v", err)
 	}
