@@ -2,6 +2,8 @@ package control
 
 import (
 	"errors"
+	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -279,6 +281,25 @@ func (a *App) canManageTeam(c *fiber.Ctx, team common.Team) (bool, error) {
 }
 
 func (a *App) canManageTeamByID(c *fiber.Ctx, teamID uint) (bool, error) {
+	role, _ := c.Locals("role").(string)
+	if isAdminRole(role) {
+		return true, nil
+	}
+	if a.cfg.BasaltOAuthEnabled {
+		email, _ := c.Locals("email").(string)
+		teams, err := a.basaltGetUserTeams(email)
+		if err != nil {
+			return false, err
+		}
+		for _, team := range teams {
+			if fmt.Sprint(team["id"]) == strconv.FormatUint(uint64(teamID), 10) {
+				teamRole := strings.ToLower(strings.TrimSpace(fmt.Sprint(team["role"])))
+				return teamRole == "owner" || teamRole == "admin", nil
+			}
+		}
+		return false, nil
+	}
+
 	var team common.Team
 	if err := a.db.Where("id = ?", teamID).First(&team).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
