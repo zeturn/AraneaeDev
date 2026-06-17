@@ -6,9 +6,6 @@ on:
       image:
         description: Target BeanCS registry image reference
         required: true
-      ghcr_image:
-        description: Target GHCR image reference
-        required: false
       dockerfile_path:
         description: Dockerfile path
         required: false
@@ -39,7 +36,6 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
   build:
@@ -47,7 +43,6 @@ jobs:
     env:
       BEANCS_PROJECT: araneae-control
       BEANCS_IMAGE_BASE: registry.beancs.hollowdata.com/hollowdata/araneae-control
-      BEANCS_GHCR_IMAGE_BASE: ghcr.io/zeturn/araneaedev
     steps:
       - uses: actions/checkout@v4
       - name: Resolve image
@@ -56,31 +51,38 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             IMAGE="${{ inputs.image }}"
-            GHCR_IMAGE="${{ inputs.ghcr_image }}"
           elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
             VERSION_TAG="$TAG"
             VERSION_TAG="${VERSION_TAG#${BEANCS_PROJECT}-}"
             VERSION_TAG="${VERSION_TAG#all-}"
             IMAGE="${BEANCS_IMAGE_BASE}:${VERSION_TAG}"
-            GHCR_IMAGE="${BEANCS_GHCR_IMAGE_BASE}:${VERSION_TAG}"
           else
             IMAGE="${BEANCS_IMAGE_BASE}:beancs-${GITHUB_SHA::12}"
-            GHCR_IMAGE="${BEANCS_GHCR_IMAGE_BASE}:beancs-${GITHUB_SHA::12}"
-          fi
-          if [ -z "$GHCR_IMAGE" ]; then
-            TAG="${IMAGE##*:}"
-            GHCR_IMAGE="${BEANCS_GHCR_IMAGE_BASE}:${TAG}"
           fi
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
-          echo "ghcr_image=$GHCR_IMAGE" >> "$GITHUB_OUTPUT"
+      - name: Resolve build args
+        id: build_args
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            {
+              echo "value<<EOF"
+              printf '%s\n' "${{ inputs.build_args }}"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            cat <<'EOF' >/tmp/beancs-build-args
+          TARGET=control
+          EOF
+            {
+              echo "value<<EOF"
+              cat /tmp/beancs-build-args
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/login-action@v3
         with:
           registry: ${{ secrets.BEANCS_REGISTRY_HOST }}
@@ -90,12 +92,11 @@ jobs:
         with:
           context: ${{ github.event_name == 'workflow_dispatch' && inputs.context || 'Backend' }}
           file: ${{ github.event_name == 'workflow_dispatch' && inputs.dockerfile_path || 'Backend/Dockerfile' }}
-          build-args: ${{ github.event_name == 'workflow_dispatch' && inputs.build_args || 'TARGET=control' }}
+          build-args: ${{ steps.build_args.outputs.value }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
             ${{ steps.meta.outputs.image }}
-            ${{ steps.meta.outputs.ghcr_image }}
       - name: Notify BeanCS
         if: always()
         env:
