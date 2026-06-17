@@ -43,6 +43,13 @@ spec:
       projectName: araneae-control
       basaltPass:
         callbackPath: /api/auth/basaltpass/callback/
+        scopes:
+          - openid
+          - profile
+          - email
+          - s2s.user.read
+          - s2s.team.read
+          - s2s.team.write
 
       build:
         context: Backend
@@ -90,6 +97,7 @@ spec:
         CONTROL_CORS_ALLOW_ORIGINS: "*"
         FRONTEND_BASE_URL: https://araneae-front.hollowdata.com
         BASALTPASS_ADMIN_EMAILS: testbeancsbasaltpass-tenant@hollowdata.com
+        BASALTPASS_INTERNAL_BASE_URL: http://backend.testbeancsbasaltpass.svc.cluster.local:8101
 
       secrets:
         - name: INIT_ADMIN_PASSWORD
