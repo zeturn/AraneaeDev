@@ -172,6 +172,8 @@ spec:
         CONTROL_GRPC_TARGET: araneae-control:9190
         EXECUTOR_CONTROL_GRPC_TLS_ENABLED: "false"
         CONTROL_HTTP_BASE: http://araneae-control:8180
+        EXECUTOR_SINK_ENABLED: "true"
+        HASHSLIP_BASE_URL: http://hashslip-backend.app-hashslip.svc.cluster.local:8106
 
       secrets:
         - name: EXECUTION_CALLBACK_KEY
