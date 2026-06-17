@@ -50,6 +50,7 @@ type App struct {
 	oauthCodes      map[string]oauthExchangeState
 	cronMu          sync.Mutex
 	oauthMu         sync.Mutex
+	rabbitMu        sync.Mutex
 	rabbitConn      *amqp.Connection
 	rabbitCh        *amqp.Channel
 	grpcSrv         *grpc.Server
@@ -355,23 +356,69 @@ func (a *App) seedAdmin() error {
 }
 
 func (a *App) initRabbit() error {
-	conn, err := amqp.Dial(a.cfg.RabbitURL)
+	conn, ch, err := a.openRabbit()
 	if err != nil {
 		return err
+	}
+	a.rabbitMu.Lock()
+	defer a.rabbitMu.Unlock()
+	a.rabbitConn = conn
+	a.rabbitCh = ch
+	return nil
+}
+
+func (a *App) openRabbit() (*amqp.Connection, *amqp.Channel, error) {
+	conn, err := amqp.Dial(a.cfg.RabbitURL)
+	if err != nil {
+		return nil, nil, err
 	}
 	ch, err := conn.Channel()
 	if err != nil {
 		_ = conn.Close()
-		return err
+		return nil, nil, err
 	}
 	if err := ch.ExchangeDeclare(a.cfg.RabbitExchange, "direct", true, false, false, false, nil); err != nil {
 		_ = ch.Close()
 		_ = conn.Close()
-		return err
+		return nil, nil, err
 	}
+	return conn, ch, nil
+}
+
+func (a *App) rabbitPublisher() (*amqp.Channel, error) {
+	a.rabbitMu.Lock()
+	if a.rabbitCh == nil && a.rabbitConn == nil {
+		a.rabbitMu.Unlock()
+		return nil, errQueueUnavailable
+	}
+	if a.rabbitCh != nil && !a.rabbitCh.IsClosed() && a.rabbitConn != nil && !a.rabbitConn.IsClosed() {
+		ch := a.rabbitCh
+		a.rabbitMu.Unlock()
+		return ch, nil
+	}
+	if a.rabbitCh != nil {
+		_ = a.rabbitCh.Close()
+	}
+	if a.rabbitConn != nil {
+		_ = a.rabbitConn.Close()
+	}
+	a.rabbitCh = nil
+	a.rabbitConn = nil
+	a.rabbitMu.Unlock()
+
+	return a.reconnectRabbitPublisher()
+}
+
+func (a *App) reconnectRabbitPublisher() (*amqp.Channel, error) {
+	conn, ch, err := a.openRabbit()
+	if err != nil {
+		return nil, err
+	}
+	a.rabbitMu.Lock()
+	defer a.rabbitMu.Unlock()
 	a.rabbitConn = conn
 	a.rabbitCh = ch
-	return nil
+	return ch, nil
 }
 
 func (a *App) publishTaskRun(task common.Task, source string, scheduleID string) (*common.TaskRun, error) {
@@ -445,13 +492,14 @@ func (a *App) publishRun(taskID, scheduleID, source, projectID, versionID, entry
 		return nil, err
 	}
 
-	if a.rabbitCh == nil {
+	ch, err := a.rabbitPublisher()
+	if err != nil {
 		_ = a.db.Model(&common.TaskRun{}).Where("id = ?", run.ID).Updates(map[string]interface{}{
 			"status":      "failed",
-			"output":      errQueueUnavailable.Error(),
+			"output":      err.Error(),
 			"finished_at": time.Now(),
 		}).Error
-		return nil, errQueueUnavailable
+		return nil, err
 	}
 
 	payload := contracts.QueueTaskMessage{
@@ -470,13 +518,20 @@ func (a *App) publishRun(taskID, scheduleID, source, projectID, versionID, entry
 	}
 
 	routingKey := "tasks." + nodeQueue
-	if err := a.rabbitCh.PublishWithContext(context.Background(), a.cfg.RabbitExchange, routingKey, false, false, amqp.Publishing{
+	publishing := amqp.Publishing{
 		ContentType:  "application/json",
 		DeliveryMode: amqp.Persistent,
 		Body:         body,
 		MessageId:    run.CorrelationID,
 		Timestamp:    time.Now(),
-	}); err != nil {
+	}
+	err = ch.PublishWithContext(context.Background(), a.cfg.RabbitExchange, routingKey, false, false, publishing)
+	if err != nil {
+		if retryCh, retryErr := a.reconnectRabbitPublisher(); retryErr == nil {
+			err = retryCh.PublishWithContext(context.Background(), a.cfg.RabbitExchange, routingKey, false, false, publishing)
+		}
+	}
+	if err != nil {
 		_ = a.db.Model(&common.TaskRun{}).Where("id = ?", run.ID).Updates(map[string]interface{}{
 			"status":      "failed",
 			"output":      err.Error(),
