@@ -97,3 +97,21 @@ docker compose -f docker-compose.executor.yml --env-file .env.executor ps
 ## More Docs
 
 后端多节点部署细节：Backend/deploy/MULTI_NODE_DEPLOYMENT.md
+
+## Security and Quality
+
+- CodeQL is configured to scan GitHub Actions, Go, Python, and JavaScript/TypeScript when those languages are present.
+- Keep secrets out of the repository. Use `.env` files locally and GitHub Actions secrets in CI.
+- Report vulnerabilities privately through the process in `SECURITY.md`.
+
+## Contributing
+
+Please read `CONTRIBUTING.md` before opening issues or pull requests. Contributions should include a clear description, relevant tests or manual verification, and updates to documentation when behavior changes.
+
+## Code of Conduct
+
+This project follows the community expectations in `CODE_OF_CONDUCT.md`.
+
+## License
+
+This project is licensed under the ISC License. See `LICENSE` for details.
