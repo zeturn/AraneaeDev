@@ -20,6 +20,20 @@ const shortCommit = ref('');
 const buildTime = ref('');
 const loadError = ref('');
 
+const getErrorMessage = (err: unknown): string => {
+	if (err && typeof err === 'object') {
+		const maybeAxiosError = err as { response?: { data?: { message?: unknown } }; message?: unknown };
+		const responseMessage = maybeAxiosError.response?.data?.message;
+		if (typeof responseMessage === 'string') {
+			return responseMessage;
+		}
+		if (typeof maybeAxiosError.message === 'string') {
+			return maybeAxiosError.message;
+		}
+	}
+	return '无法获取版本信息';
+};
+
 const loadVersionInfo = async () => {
 	loading.value = true;
 	loadError.value = '';
@@ -29,9 +43,9 @@ const loadVersionInfo = async () => {
 		version.value = payload?.version || 'unknown';
 		shortCommit.value = payload?.git?.short_commit || '';
 		buildTime.value = payload?.build_time || '';
-	} catch (err) {
+	} catch (err: unknown) {
 		version.value = 'unknown';
-		loadError.value = err?.response?.data?.message || err?.message || '无法获取版本信息';
+		loadError.value = getErrorMessage(err);
 	} finally {
 		loading.value = false;
 	}
