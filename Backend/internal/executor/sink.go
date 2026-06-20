@@ -207,7 +207,14 @@ func (a *App) getHashSlipBearerToken(ctx context.Context) (string, error) {
 	a.tokenMu.Unlock()
 
 	form := url.Values{}
-	form.Set("grant_type", "client_credentials")
+	if subjectToken := strings.TrimSpace(a.cfg.BasaltSubjectToken); subjectToken != "" {
+		form.Set("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange")
+		form.Set("subject_token", subjectToken)
+		form.Set("subject_token_type", "urn:ietf:params:oauth:token-type:access_token")
+		form.Set("resource", strings.TrimSpace(a.cfg.BasaltTargetResource))
+	} else {
+		form.Set("grant_type", "client_credentials")
+	}
 	if scope := strings.TrimSpace(a.cfg.BasaltClientScope); scope != "" {
 		form.Set("scope", scope)
 	}

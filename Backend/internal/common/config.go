@@ -73,6 +73,8 @@ type ExecutorConfig struct {
 	BasaltClientID           string
 	BasaltClientSecret       string
 	BasaltClientScope        string
+	BasaltSubjectToken       string
+	BasaltTargetResource     string
 }
 
 func GetEnv(key, fallback string) string {
@@ -180,5 +182,7 @@ func LoadExecutorConfig() ExecutorConfig {
 		BasaltClientID:           GetEnv("BASALTPASS_OAUTH_CLIENT_ID", ""),
 		BasaltClientSecret:       GetEnv("BASALTPASS_OAUTH_CLIENT_SECRET", ""),
 		BasaltClientScope:        GetEnv("BASALTPASS_S2S_SCOPE", "hashslip.write"),
+		BasaltSubjectToken:       GetEnv("BASALTPASS_SUBJECT_TOKEN", ""),
+		BasaltTargetResource:     GetEnv("BASALTPASS_TARGET_RESOURCE", "HashSlip"),
 	}
 }
