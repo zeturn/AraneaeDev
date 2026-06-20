@@ -45,10 +45,16 @@
       </form>
 
       <button
-        class="btn-muted mt-3 w-full"
+        class="btn-muted mt-3 w-full gap-2"
         type="button"
         @click="loginWithBasaltPass"
       >
+        <img
+          alt=""
+          aria-hidden="true"
+          class="h-5 w-5 shrink-0 object-contain"
+          src="@/assets/basaltpass-logo-symbol.svg"
+        />
         Sign In with BasaltPass
       </button>
 
