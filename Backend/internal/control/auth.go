@@ -77,7 +77,7 @@ func (a *App) authMiddleware(c *fiber.Ctx) error {
 
 		subject := extractStringValue(payload, "sub", "user_id")
 		scopes := normalizeScopes(extractStringValue(payload, "scope"))
-		user, err := a.findOrCreateBasaltUser(subject, scopes, payload)
+		user, err := a.findOrCreateBasaltUser(subject, scopes, payload, basaltTokenSet{})
 		if err != nil {
 			return fiber.NewError(fiber.StatusInternalServerError, "failed to map subject to user")
 		}

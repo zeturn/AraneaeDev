@@ -888,6 +888,16 @@ const ApiService = {
             },
         });
     },
+    // Objectary cross-app file browser / import
+    listObjectaryNodes(parentId = 'root', provider = '') {
+        const params = new URLSearchParams();
+        if (parentId) params.set('parentId', parentId);
+        if (provider) params.set('provider', provider);
+        return apiClient.get(`/objectary/nodes?${params.toString()}`);
+    },
+    importFromObjectary(payload) {
+        return apiClient.post('/objectary/import', payload);
+    },
     //  Schedule
     getSchedules() {
         if (isGoApi) {

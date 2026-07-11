@@ -16,6 +16,7 @@ services:
       start_period: 10s
 
   controlnode:
+    platform: linux/arm64
     image: golang:1.25
     working_dir: /app
     command: sh -c "go mod download && go run ./cmd/control"
@@ -50,6 +51,11 @@ services:
       BASALTPASS_FRONTEND_CALLBACK_PATH: ${BASALTPASS_FRONTEND_CALLBACK_PATH:-/oauth/callback}
       BASALTPASS_ADMIN_EMAILS: ${BASALTPASS_ADMIN_EMAILS:-}
       BASALTPASS_S2S_SCOPES: ${BASALTPASS_S2S_SCOPES:-}
+      OBJECTARY_ENABLED: ${OBJECTARY_ENABLED:-false}
+      OBJECTARY_BASE_URL: ${OBJECTARY_BASE_URL:-http://host.docker.internal:8105}
+      OBJECTARY_PROVIDER: ${OBJECTARY_PROVIDER:-datafs}
+      OBJECTARY_SCOPE: ${OBJECTARY_SCOPE:-objectary.files.read}
+      OBJECTARY_RESOURCE: ${OBJECTARY_RESOURCE:-objectary}
     ports:
       - "${CONTROL_HTTP_PORT:-8180}:8180"
       - "${CONTROL_GRPC_PORT:-9190}:9190"
@@ -66,6 +72,7 @@ services:
       start_period: 15s
 
   executionnode:
+    platform: linux/arm64
     build:
       context: ./Backend
       dockerfile: Dockerfile
@@ -121,6 +128,7 @@ services:
       start_period: 15s
 
   front:
+    platform: linux/arm64
     build:
       context: ./Frontend
       args:

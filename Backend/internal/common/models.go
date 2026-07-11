@@ -16,6 +16,12 @@ type User struct {
 	PasswordHash string    `gorm:"not null" json:"-"`
 	Role         string    `gorm:"size:32;not null" json:"role"`
 	CreatedAt    time.Time `gorm:"not null" json:"created_at"`
+
+	// BasaltPass user tokens (persisted so Araneae can perform cross-app token
+	// exchange on behalf of the user, e.g. to read their Objectary files).
+	BasaltAccessToken  string     `gorm:"size:1024" json:"-"`
+	BasaltRefreshToken string     `gorm:"size:1024" json:"-"`
+	BasaltTokenExpiry  *time.Time `json:"-"`
 }
 
 type Project struct {

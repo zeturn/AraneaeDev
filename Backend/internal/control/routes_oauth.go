@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"net/http"
 	"net/url"
 	"strings"
@@ -40,6 +41,14 @@ type oauthExchangeState struct {
 
 type basaltExchangeRequest struct {
 	Code string `json:"code"`
+}
+
+// basaltTokenSet holds the BasaltPass user tokens persisted on the Araneae user
+// record so Araneae can perform cross-app token exchange (e.g. for Objectary).
+type basaltTokenSet struct {
+	AccessToken  string
+	RefreshToken string
+	Expiry       *time.Time
 }
 
 func trimBasaltURL(raw string) string {
@@ -311,7 +320,7 @@ func basaltDisplayNameFromClaims(claims map[string]any) string {
 	return strings.TrimSpace(strings.TrimSpace(given) + " " + strings.TrimSpace(family))
 }
 
-func (a *App) findOrCreateBasaltUser(subject, scopeRaw string, claims map[string]any) (*common.User, error) {
+func (a *App) findOrCreateBasaltUser(subject, scopeRaw string, claims map[string]any, tokens basaltTokenSet) (*common.User, error) {
 	subject = strings.TrimSpace(subject)
 	if subject == "" {
 		return nil, errors.New("missing subject")
@@ -342,6 +351,18 @@ func (a *App) findOrCreateBasaltUser(subject, scopeRaw string, claims map[string
 			updates["email"] = email
 			user.Email = email
 		}
+		if tokens.AccessToken != "" {
+			updates["basalt_access_token"] = tokens.AccessToken
+			user.BasaltAccessToken = tokens.AccessToken
+		}
+		if tokens.RefreshToken != "" {
+			updates["basalt_refresh_token"] = tokens.RefreshToken
+			user.BasaltRefreshToken = tokens.RefreshToken
+		}
+		if tokens.Expiry != nil {
+			updates["basalt_token_expiry"] = tokens.Expiry
+			user.BasaltTokenExpiry = tokens.Expiry
+		}
 		if len(updates) > 0 {
 			if updateErr := a.db.Model(&common.User{}).Where("id = ?", user.ID).Updates(updates).Error; updateErr != nil {
 				return nil, updateErr
@@ -366,13 +387,16 @@ func (a *App) findOrCreateBasaltUser(subject, scopeRaw string, claims map[string
 	}
 
 	user = common.User{
-		ID:           uuid.NewString(),
-		Username:     username,
-		Name:         profileName,
-		Email:        email,
-		PasswordHash: passwordHash,
-		Role:         role,
-		CreatedAt:    time.Now(),
+		ID:                uuid.NewString(),
+		Username:          username,
+		Name:              profileName,
+		Email:             email,
+		PasswordHash:      passwordHash,
+		Role:              role,
+		CreatedAt:         time.Now(),
+		BasaltAccessToken:  tokens.AccessToken,
+		BasaltRefreshToken: tokens.RefreshToken,
+		BasaltTokenExpiry:  tokens.Expiry,
 	}
 	if err := a.db.Create(&user).Error; err != nil {
 		return nil, err
@@ -440,6 +464,30 @@ func (a *App) basaltPassCallback(c *fiber.Ctx) error {
 	if accessToken == "" {
 		return fiber.NewError(fiber.StatusBadGateway, "missing access token")
 	}
+
+	// Persist the user's BasaltPass tokens so Araneae can perform cross-app
+	// token exchange later (e.g. browsing the user's Objectary files).
+	tokenSet := basaltTokenSet{
+		AccessToken:  accessToken,
+		RefreshToken: extractStringValue(tokenPayload, "refresh_token", "refreshToken"),
+	}
+	if expiresInRaw, ok := tokenPayload["expires_in"]; ok {
+		var seconds int
+		switch v := expiresInRaw.(type) {
+		case float64:
+			seconds = int(v)
+		case int:
+			seconds = v
+		case string:
+			if parsed, perr := strconv.Atoi(strings.TrimSpace(v)); perr == nil {
+				seconds = parsed
+			}
+		}
+		if seconds > 0 {
+			expiry := time.Now().Add(time.Duration(seconds) * time.Second)
+			tokenSet.Expiry = &expiry
+		}
+	}
 	if idToken := extractStringValue(tokenPayload, "id_token", "idToken"); idToken != "" {
 		if err := validateBasaltIDTokenNonce(idToken, expectedNonce); err != nil {
 			return fiber.NewError(fiber.StatusUnauthorized, "invalid id_token nonce")
@@ -457,7 +505,7 @@ func (a *App) basaltPassCallback(c *fiber.Ctx) error {
 
 	scopeRaw := normalizeScopes(extractStringValue(tokenPayload, "scope"))
 	identityClaims := mergeClaims(tokenPayload, userInfo)
-	user, err := a.findOrCreateBasaltUser(subject, scopeRaw, identityClaims)
+	user, err := a.findOrCreateBasaltUser(subject, scopeRaw, identityClaims, tokenSet)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}

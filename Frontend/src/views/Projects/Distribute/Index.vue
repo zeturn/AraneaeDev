@@ -12,6 +12,15 @@
 <template>
 	<Project>
 		<Distribute>
+			<div class="flex items-center justify-between mb-4">
+				<h2 class="text-lg font-semibold text-gray-700">分发记录</h2>
+				<button
+					class="border border-indigo-300 text-indigo-600 rounded py-2 px-4 hover:bg-indigo-50"
+					@click="showObjectaryPicker = true"
+				>
+					从 Objectary 导入
+				</button>
+			</div>
 			<div class="overflow-x-auto">
 				<table class="bg-white rounded-lg overflow-hidden">
 					<thead>
@@ -42,6 +51,12 @@
 				</table>
 			</div>
 		</Distribute>
+		<ObjectaryFilePicker
+			:project-id="project_id"
+			:visible="showObjectaryPicker"
+			@close="showObjectaryPicker = false"
+			@imported="onObjectaryImported"
+		/>
 	</Project>
 </template>
 
@@ -49,17 +64,20 @@
 import ApiService from "@/services/ApiService.js";
 import Project from "@/views/Projects/Project.vue";
 import Distribute from "@/views/Projects/Distribute/Distribute.vue";
-
+import ObjectaryFilePicker from "@/components/ObjectaryFilePicker.vue";
+import EventBus from '@/utils/event-bus'
 
 export default {
 	components: {
 		Project,
 		Distribute,
+		ObjectaryFilePicker,
 	},
 	data() {
 		return {
 			project_id: this.$route.params.id,
-			sourceDistribution: []
+			sourceDistribution: [],
+			showObjectaryPicker: false,
 		};
 	},
 	created() {
@@ -73,7 +91,19 @@ export default {
 			} catch (error) {
 				console.error('Error fetching source distribution:', error);
 			}
-		}
+		},
+
+		/**
+		 * 处理从 Objectary 导入成功
+		 * Handle successful import from Objectary
+		 */
+		onObjectaryImported(version) {
+			EventBus.emit('notify', {
+				type: 'success',
+				title: '导入成功',
+				message: '已从 Objectary 导入新版本：' + (version?.file_name || '')
+			});
+		},
 	}
 };
 </script>

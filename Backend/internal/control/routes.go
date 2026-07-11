@@ -287,6 +287,10 @@ func (a *App) setupRoutes() {
 	api.Put("/projects/:projectID/versions/:versionID", a.requireRoles("admin", "operator"), a.requireAppScope("araneae.write"), a.updateProjectVersion)
 	api.Delete("/projects/:projectID/versions/:versionID", a.requireRoles("admin", "operator"), a.requireAppScope("araneae.write"), a.deleteProjectVersion)
 	api.Post("/projects/:id/upload", a.requireRoles("admin", "operator"), a.requireAppScope("araneae.write"), a.uploadArtifact)
+
+	// Objectary cross-app file browser / import (token exchanged via BasaltPass)
+	api.Get("/objectary/nodes", a.requireAppScope("araneae.read"), a.objectaryListNodesHandler)
+	api.Post("/objectary/import", a.requireRoles("admin", "operator"), a.requireAppScope("araneae.write"), a.objectaryImportHandler)
 	api.Post("/tasks", a.requireRoles("admin", "operator"), a.requireAppScope("araneae.write"), a.createTask)
 	api.Get("/tasks", a.requireAppScope("araneae.read"), a.listTasks)
 	api.Get("/tasks/:id", a.requireAppScope("araneae.read"), a.getTask)

@@ -41,6 +41,12 @@
 				>
 					上传
 				</button>
+				<button
+					class="mt-3 w-full border border-indigo-300 text-indigo-600 rounded py-2 hover:bg-indigo-50"
+					@click="showObjectaryPicker = true"
+				>
+					从 Objectary 导入
+				</button>
 				<p
 					v-if="message"
 					:class="messageType === 'success' ? 'text-green-500' : 'text-red-500'"
@@ -50,6 +56,12 @@
 				</p>
 			</div>
 		</Repo>
+		<ObjectaryFilePicker
+			:project-id="projectId"
+			:visible="showObjectaryPicker"
+			@close="showObjectaryPicker = false"
+			@imported="onObjectaryImported"
+		/>
 	</Project>
 </template>
 
@@ -57,6 +69,7 @@
 import ApiService from '@/services/ApiService';
 import Project from "@/views/Projects/Project.vue";
 import Repo from "@/views/Projects/Repo/Repo.vue";
+import ObjectaryFilePicker from "@/components/ObjectaryFilePicker.vue";
 import EventBus from '@/utils/event-bus'
 
 /**
@@ -65,7 +78,7 @@ import EventBus from '@/utils/event-bus'
  */
 export default {
 	name: 'RepoUpload',
-	components: {Repo, Project},
+	components: {Repo, Project, ObjectaryFilePicker},
 	data() {
 		return {
 			selectedFile: null,
@@ -73,6 +86,7 @@ export default {
 			messageType: '',      // 'success' or 'error'
 			projectId: this.getProjectIdFromURL(),
 			isDragging: false,
+			showObjectaryPicker: false,
 		};
 	},
 	methods: {
@@ -155,6 +169,20 @@ export default {
 				this.messageType = 'error';
 				this.message = error.response?.data?.error || '文件上传失败';
 			}
+		},
+
+		/**
+		 * 处理从 Objectary 导入成功
+		 * Handle successful import from Objectary
+		 */
+		onObjectaryImported(version) {
+			this.messageType = 'success';
+			this.message = '已从 Objectary 导入文件：' + (version?.file_name || '');
+			EventBus.emit('notify', {
+				type: 'success',
+				title: '导入成功',
+				message: '已从 Objectary 导入新版本'
+			});
 		},
 	},
 };

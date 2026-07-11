@@ -40,6 +40,13 @@ type ControlConfig struct {
 	BasaltTeamSyncEnabled bool
 	BasaltTeamSyncPrune   bool
 	BasaltTeamPrefix      string
+
+	// Objectary integration (cross-app file browser/import via BasaltPass token exchange)
+	ObjectaryEnabled  bool
+	ObjectaryBaseURL  string
+	ObjectaryProvider string
+	ObjectaryScope    string
+	ObjectaryResource string
 }
 
 type ExecutorConfig struct {
@@ -147,6 +154,12 @@ func LoadControlConfig() ControlConfig {
 		BasaltTeamSyncEnabled: GetEnvBool("BASALTPASS_TEAM_SYNC_ENABLED", true),
 		BasaltTeamSyncPrune:   GetEnvBool("BASALTPASS_TEAM_SYNC_PRUNE", false),
 		BasaltTeamPrefix:      GetEnv("BASALTPASS_TEAM_PREFIX", "Basalt::"),
+
+		ObjectaryEnabled:  GetEnvBool("OBJECTARY_ENABLED", false),
+		ObjectaryBaseURL:  GetEnv("OBJECTARY_BASE_URL", "http://localhost:8105"),
+		ObjectaryProvider: GetEnv("OBJECTARY_PROVIDER", "datafs"),
+		ObjectaryScope:    GetEnv("OBJECTARY_SCOPE", "objectary.files.read"),
+		ObjectaryResource: GetEnv("OBJECTARY_RESOURCE", "objectary"),
 	}
 }
 
