@@ -49,22 +49,7 @@
 						</el-select>
 					</div>
 
-					<!-- 命令 -->
-					<div>
-						<label class="block mb-2 text-gray-700 text-sm font-medium" for="command">
-							命令
-						</label>
-						<input
-							id="command"
-							v-model="projectData.command"
-							class="field-input"
-							placeholder="请输入项目命令"
-							required
-							type="text"
-						/>
-					</div>
-
-					<!-- 描述（跨两列） -->
+				<!-- 描述（跨两列） -->
 					<div class="col-span-1 md:col-span-2">
 						<label class="block mb-2 text-gray-700 text-sm font-medium" for="description">
 							描述
@@ -113,7 +98,6 @@ export default {
 				name: "",
 				description: "",
 				language: "",
-				command: "",
 				workplace: null,
 			},
 		};

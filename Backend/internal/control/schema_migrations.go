@@ -23,5 +23,10 @@ func reconcileSchema(db *gorm.DB) error {
 		Update("trigger_type", "api").Error; err != nil {
 		return err
 	}
+	if migrator.HasColumn(&common.Project{}, "Command") {
+		if err := migrator.DropColumn(&common.Project{}, "Command"); err != nil {
+			return err
+		}
+	}
 	return nil
 }

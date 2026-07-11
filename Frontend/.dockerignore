@@ -1,4 +1,11 @@
-node_modules/
-dist/
-.vscode/
-.idea/
+# Build output and dependency caches must not pollute the build context
+node_modules
+dist
+coverage
+
+# VCS / editor / logs
+.git
+.gitignore
+.vscode
+.idea
+*.log

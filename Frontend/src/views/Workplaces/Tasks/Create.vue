@@ -168,7 +168,7 @@ const error = ref<string | null>(null);
 const isGoApi = ((import.meta.env.VITE_API_FLAVOR || 'django').toLowerCase() === 'go');
 const goProjectLoading = ref(false);
 const goVersionLoading = ref(false);
-const goProjects = ref<Array<{id: string; name?: string; command?: string}>>([]);
+const goProjects = ref<Array<{id: string; name?: string}>>([]);
 const goVersions = ref<Array<{id: string; file_name?: string; version_hash?: string; created_at?: string; release_date?: string}>>([]);
 const goForm = reactive({
 	project_id: '',
@@ -241,11 +241,6 @@ watch(
 			goForm.version_id = '';
 		}
 		await loadGoVersions(projectId);
-
-		const selectedProject = goProjects.value.find(item => String(item.id) === String(projectId));
-		if (selectedProject?.command && (!goForm.entry_command || goForm.entry_command === 'bash run.sh')) {
-			goForm.entry_command = selectedProject.command;
-		}
 	}
 );
 

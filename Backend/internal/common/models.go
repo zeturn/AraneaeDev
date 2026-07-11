@@ -29,7 +29,6 @@ type Project struct {
 	Name        string    `gorm:"size:128;not null" json:"name"`
 	Description string    `gorm:"size:512" json:"description"`
 	Language    string    `gorm:"size:64" json:"language"`
-	Command     string    `gorm:"size:512" json:"command"`
 	WorkplaceID *uint     `gorm:"index" json:"workplace_id,omitempty"`
 	CreatedBy   string    `gorm:"size:36;not null" json:"created_by"`
 	CreatedAt   time.Time `gorm:"not null" json:"created_at"`

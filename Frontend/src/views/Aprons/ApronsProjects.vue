@@ -20,7 +20,6 @@ interface Project {
   name: string;
   description: string | null;
   language: string;
-  command: string;
   created_at: string;
   updated_at: string;
 }
@@ -79,8 +78,6 @@ onMounted(() => {
                   project.language
                 }}</span>
             </div>
-            <p class="text-sm text-gray-600 mt-2">命令: <code
-                class="rounded bg-gray-100 px-2 py-1 text-gray-800">{{ project.command }}</code></p>
             <div class="mt-4 text-sm text-gray-500">
               <p>创建于: {{ project.created_at }}</p>
               <p>更新于: {{ project.updated_at }}</p>

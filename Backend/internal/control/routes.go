@@ -24,7 +24,6 @@ type createProjectRequest struct {
 	Name        string     `json:"name"`
 	Description string     `json:"description"`
 	Language    string     `json:"language"`
-	Command     string     `json:"command"`
 	WorkplaceID *laxString `json:"workplace_id"`
 	Workplace   *laxString `json:"workplace"`
 }
@@ -33,7 +32,6 @@ type updateProjectRequest struct {
 	Name        *string    `json:"name"`
 	Description *string    `json:"description"`
 	Language    *string    `json:"language"`
-	Command     *string    `json:"command"`
 	WorkplaceID *laxString `json:"workplace_id"`
 	Workplace   *laxString `json:"workplace"`
 }
@@ -457,7 +455,6 @@ func (a *App) createProject(c *fiber.Ctx) error {
 		Name:        strings.TrimSpace(req.Name),
 		Description: strings.TrimSpace(req.Description),
 		Language:    strings.TrimSpace(req.Language),
-		Command:     strings.TrimSpace(req.Command),
 		WorkplaceID: workplaceID,
 		CreatedBy:   uid,
 		CreatedAt:   now,
@@ -550,10 +547,6 @@ func (a *App) updateProject(c *fiber.Ctx) error {
 
 	if req.Language != nil {
 		project.Language = strings.TrimSpace(*req.Language)
-	}
-
-	if req.Command != nil {
-		project.Command = strings.TrimSpace(*req.Command)
 	}
 
 	if req.WorkplaceID != nil || req.Workplace != nil {

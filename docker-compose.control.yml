@@ -8,6 +8,8 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:-guest}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-guest}
+    volumes:
+      - ./Backend/data/rabbitmq:/var/lib/rabbitmq
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
       interval: 10s
@@ -16,12 +18,14 @@ services:
       start_period: 10s
 
   controlnode:
-    image: golang:1.25
-    working_dir: /app
-    command: sh -c "go mod download && go run ./cmd/control"
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+      args:
+        TARGET: control
+    image: araneae-control:local
     restart: unless-stopped
     volumes:
-      - ./Backend:/app
       - ./Backend/data:/data
     environment:
       ARANEAE_ENV: ${ARANEAE_ENV:-production}
@@ -58,9 +62,16 @@ services:
       args:
         VITE_BACKEND_BASE_URL: ${FRONT_VITE_BACKEND_BASE_URL:-http://localhost:8180}
         VITE_API_FLAVOR: ${FRONT_VITE_API_FLAVOR:-go}
+    image: araneae-front:local
     restart: unless-stopped
     ports:
       - "${FRONT_HTTP_PORT:-5109}:80"
     depends_on:
       controlnode:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

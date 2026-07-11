@@ -9,8 +9,13 @@
 **/.pytest_cache/
 
 # Node artifacts
-Front/node_modules/
-Front/dist/
+Frontend/node_modules/
+Frontend/dist/
+
+# Go build artifacts / runtime data
+Backend/data/
+Backend/bin/
+Backend/*.db*
 
 # local DB / logs
 **/db.sqlite*

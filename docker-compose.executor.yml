@@ -5,6 +5,7 @@ services:
       dockerfile: Dockerfile
       args:
         TARGET: executor
+    image: araneae-executor:local
     restart: unless-stopped
     volumes:
       - ./Backend/data:/data

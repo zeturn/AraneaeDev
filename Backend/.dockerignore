@@ -1,0 +1,22 @@
+# VCS
+.git
+.gitignore
+
+# Runtime data must never be baked into the image
+data
+bin
+
+# Local databases / artifacts
+*.db
+*.db-*
+*.db-wal
+*.db-shm
+
+# Language tooling caches
+node_modules
+*.log
+
+# OS / editor junk
+.DS_Store
+.vscode
+.idea

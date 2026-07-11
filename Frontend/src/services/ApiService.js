@@ -712,7 +712,6 @@ const ApiService = {
                 name: project?.name || project?.title || 'untitled-project',
                 description: project?.description || '',
                 language: project?.language || '',
-                command: project?.command || '',
                 workplace_id: project?.workplace_id || project?.workplace || undefined,
             });
         }
@@ -724,7 +723,6 @@ const ApiService = {
                 name: project?.name,
                 description: project?.description,
                 language: project?.language,
-                command: project?.command,
             });
         }
         return apiClient.put(`/projects/${projectId}/`, project);

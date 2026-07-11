@@ -41,13 +41,7 @@
 			            </span>
 					</div>
 
-					<!-- Command -->
-					<div class="border border-gray-200 rounded-xl p-4 bg-gray-50">
-						<p class="font-semibold text-gray-700">Command:</p>
-						<p class="text-gray-900">{{ command }}</p>
-					</div>
-
-				</div>
+			</div>
 			</div>
 		</div>
 	</Project>
@@ -65,7 +59,6 @@ export default {
       name: null,
       description: null,
       language: null,
-      command: null,
       created_at: null,
       updated_at: null,
       loading: true,
@@ -87,7 +80,6 @@ export default {
             this.name = response.data.name;
             this.description = response.data.description;
             this.language = response.data.language;
-            this.command = response.data.command;
             this.created_at = response.data.created_at;
             this.updated_at = response.data.updated_at;
             this.loading = false;

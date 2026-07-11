@@ -26,10 +26,6 @@
 						<label class="mb-2 block text-sm font-medium text-slate-700">语言</label>
 						<input v-model="form.language" type="text" class="field-input" placeholder="python / go / node" />
 					</div>
-					<div>
-						<label class="mb-2 block text-sm font-medium text-slate-700">默认命令</label>
-						<input v-model="form.command" type="text" class="field-input" placeholder="例如: python app.py" />
-					</div>
 					<div class="md:col-span-2">
 						<label class="mb-2 block text-sm font-medium text-slate-700">描述</label>
 						<textarea v-model="form.description" rows="4" class="field-input" placeholder="项目描述"></textarea>
@@ -70,7 +66,6 @@ export default {
 				name: '',
 				description: '',
 				language: '',
-				command: '',
 				created_at: '',
 				updated_at: '',
 			},
@@ -90,9 +85,8 @@ export default {
 					this.form.id = response?.data?.id || projectId;
 					this.form.name = response?.data?.name || '';
 					this.form.description = response?.data?.description || '';
-					this.form.language = response?.data?.language || '';
-					this.form.command = response?.data?.command || '';
-					this.form.created_at = response?.data?.created_at || '';
+				this.form.language = response?.data?.language || '';
+				this.form.created_at = response?.data?.created_at || '';
 					this.form.updated_at = response?.data?.updated_at || '';
 					this.notice = '';
 				})
@@ -113,7 +107,6 @@ export default {
 				name,
 				description: this.form.description,
 				language: this.form.language,
-				command: this.form.command,
 			})
 				.then(() => {
 					this.notice = '项目设置已保存';
