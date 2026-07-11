@@ -3,6 +3,7 @@ package control
 import (
 	"encoding/json"
 	"errors"
+	"sort"
 	"strings"
 	"time"
 
@@ -98,6 +99,36 @@ func (a *App) createSchedule(c *fiber.Ctx) error {
 	if req.ProjectID == "" || req.VersionID == "" || req.EntryCommand == "" {
 		return fiber.NewError(fiber.StatusBadRequest, "project_id, version_id and entry_command are required")
 	}
+	// Collect multiple firing times for the datetime trigger.
+	var collectedRunTimes []time.Time
+	if strings.EqualFold(strings.TrimSpace(req.TriggerType), "datetime") || (strings.TrimSpace(req.TriggerType) == "" && strings.TrimSpace(req.RunAt) != "") {
+		rawTimes := []string{}
+		if strings.TrimSpace(req.RunAt) != "" {
+			rawTimes = append(rawTimes, strings.TrimSpace(req.RunAt))
+		}
+		for _, rt := range req.RunTimes {
+			if strings.TrimSpace(rt) != "" {
+				rawTimes = append(rawTimes, strings.TrimSpace(rt))
+			}
+		}
+		seen := map[string]bool{}
+		for _, r := range rawTimes {
+			if seen[r] {
+				continue
+			}
+			seen[r] = true
+			parsed, perr := parseScheduleRunAt(r)
+			if perr != nil {
+				return fiber.NewError(fiber.StatusBadRequest, "invalid run_at ("+r+"): "+perr.Error())
+			}
+			collectedRunTimes = append(collectedRunTimes, *parsed)
+		}
+		if len(collectedRunTimes) > 0 {
+			sort.Slice(collectedRunTimes, func(i, j int) bool { return collectedRunTimes[i].Before(collectedRunTimes[j]) })
+			req.RunAt = formatScheduleRunAt(&collectedRunTimes[0])
+		}
+	}
+
 	triggerType, cronExpr, runAt, err := normalizeScheduleTrigger(req.TriggerType, req.CronExpr, req.RunAt)
 	if err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
@@ -187,13 +218,32 @@ func (a *App) createSchedule(c *fiber.Ctx) error {
 	if err := a.db.Create(&schedule).Error; err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}
+	if req.TriggerType == "datetime" {
+		for _, rt := range collectedRunTimes {
+			row := common.ScheduleRunTime{
+				ID:         uuid.NewString(),
+				ScheduleID: schedule.ID,
+				RunAt:      rt,
+				CreatedAt:  now,
+				UpdatedAt:  now,
+			}
+			if err := a.db.Create(&row).Error; err != nil {
+				_ = a.db.Delete(&common.Schedule{}, "id = ?", schedule.ID).Error
+				return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+			}
+		}
+	}
 	if schedule.Enabled {
 		if err := a.registerCronSchedule(schedule); err != nil {
 			_ = a.db.Delete(&common.Schedule{}, "id = ?", schedule.ID).Error
 			return fiber.NewError(fiber.StatusBadRequest, err.Error())
 		}
 	}
-	return c.JSON(schedule)
+	var created common.Schedule
+	if err := a.db.Preload("RunTimes").Where("id = ?", schedule.ID).First(&created).Error; err != nil {
+		return c.JSON(schedule)
+	}
+	return c.JSON(created)
 }
 
 func (a *App) listSchedules(c *fiber.Ctx) error {
@@ -239,7 +289,7 @@ func (a *App) listSchedules(c *fiber.Ctx) error {
 		query = query.Where("project_id IN (?)", projectScope)
 	}
 
-	if err := query.Find(&schedules).Error; err != nil {
+	if err := query.Preload("RunTimes").Find(&schedules).Error; err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}
 	return c.JSON(schedules)
@@ -248,7 +298,7 @@ func (a *App) listSchedules(c *fiber.Ctx) error {
 func (a *App) getSchedule(c *fiber.Ctx) error {
 	id := c.Params("id")
 	var schedule common.Schedule
-	if err := a.db.Where("id = ?", id).First(&schedule).Error; err != nil {
+	if err := a.db.Preload("RunTimes").Where("id = ?", id).First(&schedule).Error; err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "schedule not found")
 	}
 	allowed, accessErr := a.canAccessSchedule(c, schedule)
@@ -345,6 +395,63 @@ func (a *App) updateSchedule(c *fiber.Ctx) error {
 	schedule.CronExpr = cronExpr
 	schedule.RunAt = runAt
 
+	if schedule.TriggerType == "datetime" {
+		replaceRunTimes := false
+		var newRunTimes []time.Time
+		if req.RunTimes != nil {
+			replaceRunTimes = true
+			rawTimes := []string{}
+			if req.RunAt != nil && strings.TrimSpace(*req.RunAt) != "" {
+				rawTimes = append(rawTimes, strings.TrimSpace(*req.RunAt))
+			}
+			for _, rt := range *req.RunTimes {
+				if strings.TrimSpace(rt) != "" {
+					rawTimes = append(rawTimes, strings.TrimSpace(rt))
+				}
+			}
+			seen := map[string]bool{}
+			for _, r := range rawTimes {
+				if seen[r] {
+					continue
+				}
+				seen[r] = true
+				parsed, perr := parseScheduleRunAt(r)
+				if perr != nil {
+					return fiber.NewError(fiber.StatusBadRequest, "invalid run_at ("+r+"): "+perr.Error())
+				}
+				newRunTimes = append(newRunTimes, *parsed)
+			}
+			if len(newRunTimes) == 0 {
+				return fiber.NewError(fiber.StatusBadRequest, "at least one run_at is required for datetime trigger")
+			}
+		} else if req.RunAt != nil {
+			replaceRunTimes = true
+			parsed, perr := parseScheduleRunAt(strings.TrimSpace(*req.RunAt))
+			if perr != nil {
+				return fiber.NewError(fiber.StatusBadRequest, perr.Error())
+			}
+			newRunTimes = []time.Time{*parsed}
+		}
+		if replaceRunTimes {
+			if err := a.db.Where("schedule_id = ?", schedule.ID).Delete(&common.ScheduleRunTime{}).Error; err != nil {
+				return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+			}
+			sort.Slice(newRunTimes, func(i, j int) bool { return newRunTimes[i].Before(newRunTimes[j]) })
+			now := time.Now()
+			for _, rt := range newRunTimes {
+				row := common.ScheduleRunTime{ID: uuid.NewString(), ScheduleID: schedule.ID, RunAt: rt, CreatedAt: now, UpdatedAt: now}
+				if err := a.db.Create(&row).Error; err != nil {
+					return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+				}
+			}
+			schedule.RunAt = &newRunTimes[0]
+		}
+	} else {
+		if err := a.db.Where("schedule_id = ?", schedule.ID).Delete(&common.ScheduleRunTime{}).Error; err != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+		}
+	}
+
 	if schedule.TaskID != "" {
 		var task common.Task
 		if err := a.db.Where("id = ?", schedule.TaskID).First(&task).Error; err != nil {
@@ -410,13 +517,17 @@ func (a *App) updateSchedule(c *fiber.Ctx) error {
 		}
 	}
 
-	return c.JSON(schedule)
+	var updated common.Schedule
+	if err := a.db.Preload("RunTimes").Where("id = ?", schedule.ID).First(&updated).Error; err != nil {
+		return c.JSON(schedule)
+	}
+	return c.JSON(updated)
 }
 
 func (a *App) deleteSchedule(c *fiber.Ctx) error {
 	id := c.Params("id")
 	var schedule common.Schedule
-	if err := a.db.Where("id = ?", id).First(&schedule).Error; err != nil {
+	if err := a.db.Preload("RunTimes").Where("id = ?", id).First(&schedule).Error; err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "schedule not found")
 	}
 	canWrite, accessErr := a.canWriteSchedule(c, schedule)
@@ -428,6 +539,9 @@ func (a *App) deleteSchedule(c *fiber.Ctx) error {
 	}
 
 	a.unregisterCronSchedule(schedule.ID)
+	if err := a.db.Where("schedule_id = ?", schedule.ID).Delete(&common.ScheduleRunTime{}).Error; err != nil {
+		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
+	}
 	if err := a.db.Delete(&common.Schedule{}, "id = ?", schedule.ID).Error; err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, err.Error())
 	}
@@ -445,7 +559,7 @@ func (a *App) disableSchedule(c *fiber.Ctx) error {
 func (a *App) setScheduleEnabled(c *fiber.Ctx, enabled bool) error {
 	id := c.Params("id")
 	var schedule common.Schedule
-	if err := a.db.Where("id = ?", id).First(&schedule).Error; err != nil {
+	if err := a.db.Preload("RunTimes").Where("id = ?", id).First(&schedule).Error; err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "schedule not found")
 	}
 	canWrite, accessErr := a.canWriteSchedule(c, schedule)
@@ -478,7 +592,7 @@ func (a *App) setScheduleEnabled(c *fiber.Ctx, enabled bool) error {
 func (a *App) triggerSchedule(c *fiber.Ctx) error {
 	id := c.Params("id")
 	var schedule common.Schedule
-	if err := a.db.Where("id = ?", id).First(&schedule).Error; err != nil {
+	if err := a.db.Preload("RunTimes").Where("id = ?", id).First(&schedule).Error; err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "schedule not found")
 	}
 	canWrite, accessErr := a.canWriteSchedule(c, schedule)
@@ -509,7 +623,7 @@ func (a *App) triggerSchedule(c *fiber.Ctx) error {
 func (a *App) listScheduleRuns(c *fiber.Ctx) error {
 	id := c.Params("id")
 	var schedule common.Schedule
-	if err := a.db.Where("id = ?", id).First(&schedule).Error; err != nil {
+	if err := a.db.Preload("RunTimes").Where("id = ?", id).First(&schedule).Error; err != nil {
 		return fiber.NewError(fiber.StatusNotFound, "schedule not found")
 	}
 	allowed, accessErr := a.canAccessSchedule(c, schedule)

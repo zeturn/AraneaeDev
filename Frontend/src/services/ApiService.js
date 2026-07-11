@@ -228,6 +228,8 @@ const buildGoSchedulePayload = schedule => {
         .toLowerCase();
     const runAt = schedule?.run_at || firstStep?.run_at || undefined;
     const cronExpr = triggerType === 'crons' ? (schedule?.cron_expr || firstStep?.crons || undefined) : undefined;
+    const rawRunTimes = Array.isArray(schedule?.run_times) ? schedule.run_times : [];
+    const runTimes = triggerType === 'datetime' ? rawRunTimes : [];
 
     return {
         name: schedule?.name || firstStep?.name || 'schedule',
@@ -240,6 +242,7 @@ const buildGoSchedulePayload = schedule => {
         trigger_type: triggerType,
         cron_expr: cronExpr,
         run_at: triggerType === 'datetime' ? runAt : undefined,
+        run_times: runTimes.length > 0 ? runTimes : undefined,
         node_queue: nodeQueue,
         order: parsedOrder || schedule?.order || undefined,
     };

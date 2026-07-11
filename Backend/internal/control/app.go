@@ -48,6 +48,7 @@ type App struct {
 	cronEntries     map[string]cron.EntryID
 	scheduleEntries map[string]cron.EntryID
 	scheduleTimers  map[string]*time.Timer
+	runPublisher    func(schedule common.Schedule, source string) (*common.TaskRun, error)
 	oauthCodes      map[string]oauthExchangeState
 	cronMu          sync.Mutex
 	oauthMu         sync.Mutex
@@ -264,6 +265,7 @@ func NewApp(cfg common.ControlConfig) (*App, error) {
 		scheduleTimers:  make(map[string]*time.Timer),
 		oauthCodes:      make(map[string]oauthExchangeState),
 	}
+	app.runPublisher = app.publishScheduleRun
 
 	app.http.Use(cors.New(cors.Config{
 		AllowOrigins: cfg.CORSAllowOrigins,

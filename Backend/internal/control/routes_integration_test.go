@@ -80,6 +80,25 @@ func newTestControlApp(t *testing.T) *App {
 		oauthCodes:      map[string]oauthExchangeState{},
 	}
 	a.setupRoutes()
+	a.runPublisher = func(schedule common.Schedule, source string) (*common.TaskRun, error) {
+		run := &common.TaskRun{
+			ID:            uuid.NewString(),
+			TaskID:        schedule.TaskID,
+			ScheduleID:    schedule.ID,
+			TriggerSource: source,
+			NodeQueue:     schedule.NodeQueue,
+			Status:        "queued",
+			CreatedAt:     time.Now(),
+			CorrelationID: uuid.NewString(),
+		}
+		if run.NodeQueue == "" {
+			run.NodeQueue = "default"
+		}
+		if err := a.db.Create(run).Error; err != nil {
+			return nil, err
+		}
+		return run, nil
+	}
 	return a
 }
 

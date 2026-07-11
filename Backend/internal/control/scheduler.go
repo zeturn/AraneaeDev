@@ -2,9 +2,11 @@ package control
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"araneae-go/internal/common"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -52,10 +54,7 @@ func (a *App) registerCronSchedule(schedule common.Schedule) error {
 		a.cron.Remove(old)
 		delete(a.scheduleEntries, schedule.ID)
 	}
-	if timer, ok := a.scheduleTimers[schedule.ID]; ok {
-		timer.Stop()
-		delete(a.scheduleTimers, schedule.ID)
-	}
+	a.clearScheduleTimers(schedule.ID)
 
 	triggerType := schedule.TriggerType
 	if triggerType == "" {
@@ -82,18 +81,28 @@ func (a *App) registerCronSchedule(schedule common.Schedule) error {
 		}
 		a.scheduleEntries[schedule.ID] = entryID
 	case "datetime":
-		if schedule.RunAt == nil {
+		runTimes, err := a.loadPendingRunTimes(schedule)
+		if err != nil {
+			return err
+		}
+		if len(runTimes) == 0 {
+			// No pending firing times left: disable the schedule so it does not linger.
+			if schedule.Enabled {
+				_ = a.db.Model(&common.Schedule{}).Where("id = ?", schedule.ID).Update("enabled", false).Error
+			}
 			return nil
 		}
-		delay := time.Until(*schedule.RunAt)
-		if delay <= 0 {
-			go a.runOneTimeSchedule(schedule)
-			return nil
+		for _, rt := range runTimes {
+			delay := time.Until(rt.RunAt)
+			if delay <= 0 {
+				go a.runOneTimeSchedule(schedule, rt.ID)
+				continue
+			}
+			timer := time.AfterFunc(delay, func() {
+				a.runOneTimeSchedule(schedule, rt.ID)
+			})
+			a.scheduleTimers[schedule.ID+"/"+rt.ID] = timer
 		}
-		timer := time.AfterFunc(delay, func() {
-			a.runOneTimeSchedule(schedule)
-		})
-		a.scheduleTimers[schedule.ID] = timer
 	default:
 		return nil
 	}
@@ -108,13 +117,48 @@ func (a *App) unregisterCronSchedule(scheduleID string) {
 		a.cron.Remove(old)
 		delete(a.scheduleEntries, scheduleID)
 	}
-	if timer, ok := a.scheduleTimers[scheduleID]; ok {
-		timer.Stop()
-		delete(a.scheduleTimers, scheduleID)
+	a.clearScheduleTimers(scheduleID)
+}
+
+// clearScheduleTimers stops and removes every pending one-time timer belonging to a
+// schedule. Timers are keyed as "<scheduleID>/<runTimeID>" so we match by prefix.
+func (a *App) clearScheduleTimers(scheduleID string) {
+	for key, timer := range a.scheduleTimers {
+		if key == scheduleID || strings.HasPrefix(key, scheduleID+"/") {
+			timer.Stop()
+			delete(a.scheduleTimers, key)
+		}
 	}
 }
 
-func (a *App) runOneTimeSchedule(schedule common.Schedule) {
+// loadPendingRunTimes returns the not-yet-fired firing times for a schedule, ordered
+// ascending. For backwards compatibility, a legacy datetime schedule that only has a
+// single Schedule.RunAt (and no ScheduleRunTime rows yet) is migrated into a row.
+func (a *App) loadPendingRunTimes(schedule common.Schedule) ([]common.ScheduleRunTime, error) {
+	var runTimes []common.ScheduleRunTime
+	if err := a.db.Where("schedule_id = ? AND triggered_at IS NULL", schedule.ID).Order("run_at asc").Find(&runTimes).Error; err != nil {
+		return nil, err
+	}
+	if len(runTimes) > 0 {
+		return runTimes, nil
+	}
+	if schedule.TriggerType == "datetime" && schedule.RunAt != nil {
+		rt := common.ScheduleRunTime{
+			ID:         uuid.NewString(),
+			ScheduleID: schedule.ID,
+			RunAt:      *schedule.RunAt,
+			CreatedAt:  time.Now(),
+			UpdatedAt:  time.Now(),
+		}
+		if err := a.db.Create(&rt).Error; err != nil {
+			return nil, err
+		}
+		return []common.ScheduleRunTime{rt}, nil
+	}
+	return nil, nil
+}
+
+func (a *App) runOneTimeSchedule(schedule common.Schedule, runTimeID string) {
 	var fresh common.Schedule
 	if err := a.db.Where("id = ?", schedule.ID).First(&fresh).Error; err != nil {
 		return
@@ -122,17 +166,41 @@ func (a *App) runOneTimeSchedule(schedule common.Schedule) {
 	if !fresh.Enabled {
 		return
 	}
-	if fresh.LastTriggeredAt != nil {
+	var rt common.ScheduleRunTime
+	if err := a.db.Where("id = ?", runTimeID).First(&rt).Error; err != nil {
 		return
 	}
-	if _, err := a.publishScheduleRun(fresh, "schedule_datetime"); err != nil {
+	if rt.TriggeredAt != nil {
+		return
+	}
+	if _, err := a.runPublisher(fresh, "schedule_datetime"); err != nil {
 		a.log.Error("datetime trigger failed", zap.Error(err), zap.String("schedule_id", fresh.ID))
 		return
 	}
+
 	now := time.Now()
-	_ = a.db.Model(&common.Schedule{}).Where("id = ?", fresh.ID).Updates(map[string]any{
-		"enabled":    false,
-		"updated_at": now,
-	}).Error
-	a.unregisterCronSchedule(fresh.ID)
+	if err := a.db.Model(&common.ScheduleRunTime{}).Where("id = ?", runTimeID).Updates(map[string]any{
+		"triggered_at": &now,
+		"updated_at":   now,
+	}).Error; err != nil {
+		a.log.Error("failed to mark run_time triggered", zap.Error(err), zap.String("schedule_id", fresh.ID))
+	}
+
+	var pending []common.ScheduleRunTime
+	a.db.Where("schedule_id = ? AND triggered_at IS NULL", fresh.ID).Order("run_at asc").Find(&pending)
+	if len(pending) == 0 {
+		a.db.Model(&common.Schedule{}).Where("id = ?", fresh.ID).Updates(map[string]any{
+			"enabled":           false,
+			"run_at":            nil,
+			"last_triggered_at": &now,
+			"updated_at":        now,
+		})
+		a.unregisterCronSchedule(fresh.ID)
+		return
+	}
+	a.db.Model(&common.Schedule{}).Where("id = ?", fresh.ID).Updates(map[string]any{
+		"run_at":            pending[0].RunAt,
+		"last_triggered_at": &now,
+		"updated_at":        now,
+	})
 }

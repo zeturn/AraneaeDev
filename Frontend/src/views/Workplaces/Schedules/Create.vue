@@ -105,22 +105,39 @@
 														placeholder="* * * * * *"
 													/>
 												</div>
-												<div v-if="index === 0 && schedule.trigger === 'datetime'" class="w-full md:w-1/2">
-													<label class="block text-sm font-medium text-gray-600">Run At</label>
-													<div class="flex flex-col gap-2">
+											<div v-if="index === 0 && schedule.trigger === 'datetime'" class="w-full md:w-1/2">
+												<label class="block text-sm font-medium text-gray-600">Run At (multiple times supported)</label>
+												<div class="flex flex-col gap-2">
+													<select v-model="schedule.run_at_tz" class="field-input">
+														<option v-for="tz in timezoneOptions" :key="tz.value" :value="tz.value">
+															{{ tz.label }}
+														</option>
+													</select>
+													<div
+														v-for="(rt, ridx) in schedule.run_times"
+														:key="ridx"
+														class="flex items-center gap-2"
+													>
 														<input
-															v-model.trim="schedule.run_at_local"
+															v-model.trim="rt.local"
 															class="field-input"
 															type="datetime-local"
 															step="1"
 														/>
-														<select v-model="schedule.run_at_tz" class="field-input">
-															<option v-for="tz in timezoneOptions" :key="tz.value" :value="tz.value">
-																{{ tz.label }}
-															</option>
-														</select>
+														<button
+															type="button"
+															class="btn-muted shrink-0 px-3 py-2"
+															@click="removeRunTime(schedule, ridx)"
+															:disabled="schedule.run_times.length <= 1"
+														>Remove</button>
 													</div>
+													<button
+														type="button"
+														class="btn-muted self-start"
+														@click="addRunTime(schedule)"
+													>+ Add Time</button>
 												</div>
+											</div>
 											</div>
 											<div v-if="index > 0">
 												<label class="block text-sm font-medium text-gray-600">Previous Task</label>
@@ -203,7 +220,7 @@ const schedulesConfig = ref([
 		node: [],
 		trigger: 'crons',
 		crons: '',
-		run_at_local: '',
+		run_times: [{local: ''}],
 		run_at_tz: defaultTimezoneOffset,
 		previous: ''
 	}
@@ -229,9 +246,11 @@ const buildOrderSteps = () => {
 			node: Array.isArray(s.node) ? s.node : [],
 			trigger: index === 0 ? s.trigger : 'previous',
 			crons: index === 0 && s.trigger === 'crons' ? s.crons : undefined,
-			run_at: index === 0 && s.trigger === 'datetime'
-				? toRunAtRFC3339(s.run_at_local, s.run_at_tz)
-				: undefined,
+		run_at: index === 0 && s.trigger === 'datetime'
+			? (Array.isArray(s.run_times)
+				? s.run_times.map(rt => toRunAtRFC3339(rt?.local, s.run_at_tz)).filter(Boolean)[0]
+				: undefined)
+			: undefined,
 			previous: index > 0 ? previousTaskName : undefined,
 		};
 	});
@@ -278,10 +297,23 @@ const addScheduleConfig = () => {
 		node: [],
 		trigger: 'previous',
 		crons: '',
-		run_at_local: '',
+		run_times: [{local: ''}],
 		run_at_tz: defaultTimezoneOffset,
 		previous: ''
 	});
+};
+
+const addRunTime = schedule => {
+	if (!Array.isArray(schedule.run_times)) {
+		schedule.run_times = [{local: ''}];
+	}
+	schedule.run_times.push({local: ''});
+};
+
+const removeRunTime = (schedule, ridx) => {
+	if (Array.isArray(schedule.run_times) && schedule.run_times.length > 1) {
+		schedule.run_times.splice(ridx, 1);
+	}
 };
 
 const handleCreateSchedule = async () => {
@@ -306,12 +338,12 @@ const handleCreateSchedule = async () => {
 		window.alert('Please provide a cron expression for the first step.');
 		return;
 	}
-	const firstStepRunAt = toRunAtRFC3339(
-		schedulesConfig.value[0].run_at_local,
-		schedulesConfig.value[0].run_at_tz
-	);
-	if (firstStepTrigger === 'datetime' && !firstStepRunAt) {
-		window.alert('Please provide run_at for the first step in RFC3339 format.');
+	const firstStepRunTimes = (Array.isArray(schedulesConfig.value[0].run_times)
+		? schedulesConfig.value[0].run_times
+		: []
+	).map(rt => toRunAtRFC3339(rt?.local, schedulesConfig.value[0].run_at_tz)).filter(Boolean);
+	if (firstStepTrigger === 'datetime' && firstStepRunTimes.length === 0) {
+		window.alert('Please provide at least one run_at time for the first step.');
 		return;
 	}
 
@@ -327,7 +359,8 @@ const handleCreateSchedule = async () => {
 		description: newSchedule.description,
 		enabled: newSchedule.enabled,
 		trigger_type: firstStepTrigger,
-		run_at: firstStepTrigger === 'datetime' ? firstStepRunAt : undefined,
+		run_at: firstStepTrigger === 'datetime' ? firstStepRunTimes[0] : undefined,
+		run_times: firstStepTrigger === 'datetime' ? firstStepRunTimes : [],
 		workplace: workplaceId.value,
 		order: JSON.stringify(orderPayload)
 	};
@@ -341,7 +374,7 @@ const handleCreateSchedule = async () => {
 			node: [],
 			trigger: 'crons',
 			crons: '',
-			run_at_local: '',
+			run_times: [{local: ''}],
 			run_at_tz: defaultTimezoneOffset,
 			previous: ''
 		}];

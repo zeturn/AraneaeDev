@@ -141,24 +141,27 @@ type createScheduleRequest struct {
 	CronExpr     string    `json:"cron_expr"`
 	TriggerType  string    `json:"trigger_type"`
 	RunAt        string    `json:"run_at"`
+	RunTimes     []string  `json:"run_times"`
 	NodeQueue    laxString `json:"node_queue"`
 	Enabled      *bool     `json:"enabled"`
 	Order        any       `json:"order"`
 }
 
 type updateScheduleRequest struct {
-	Name         *string    `json:"name"`
-	Description  *string    `json:"description"`
-	TaskID       *string    `json:"task_id"`
-	ProjectID    *string    `json:"project_id"`
-	VersionID    *string    `json:"version_id"`
-	EntryCommand *string    `json:"entry_command"`
-	CronExpr     *string    `json:"cron_expr"`
-	TriggerType  *string    `json:"trigger_type"`
-	RunAt        *string    `json:"run_at"`
-	NodeQueue    *laxString `json:"node_queue"`
-	Enabled      *bool      `json:"enabled"`
-	Order        any        `json:"order"`
+	Name         *string   `json:"name"`
+	Description  *string   `json:"description"`
+	TaskID       *string   `json:"task_id"`
+	ProjectID    *string   `json:"project_id"`
+	VersionID    *string   `json:"version_id"`
+	EntryCommand *string   `json:"entry_command"`
+	CronExpr     *string   `json:"cron_expr"`
+	TriggerType  *string   `json:"trigger_type"`
+	RunAt        *string   `json:"run_at"`
+	RunTimes     *[]string `json:"run_times"`
+
+	NodeQueue *laxString `json:"node_queue"`
+	Enabled   *bool      `json:"enabled"`
+	Order     any        `json:"order"`
 }
 
 const (

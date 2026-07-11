@@ -78,23 +78,35 @@ type TaskRun struct {
 }
 
 type Schedule struct {
-	ID              string     `gorm:"primaryKey;size:36" json:"id"`
-	Name            string     `gorm:"size:128;not null" json:"name"`
-	Description     string     `gorm:"size:512" json:"description"`
-	TaskID          string     `gorm:"index;size:36" json:"task_id"`
-	ProjectID       string     `gorm:"index;size:36;not null" json:"project_id"`
-	VersionID       string     `gorm:"index;size:36;not null" json:"version_id"`
-	EntryCommand    string     `gorm:"size:512;not null" json:"entry_command"`
-	CronExpr        string     `gorm:"size:128;not null" json:"cron_expr"`
-	TriggerType     string     `gorm:"size:32;not null;default:api" json:"trigger_type"`
-	RunAt           *time.Time `json:"run_at"`
-	NodeQueue       string     `gorm:"size:64;not null" json:"node_queue"`
-	OrderJSON       string     `gorm:"type:text" json:"order"`
-	Enabled         bool       `gorm:"not null;default:true" json:"enabled"`
-	CreatedBy       string     `gorm:"size:36;not null" json:"created_by"`
-	LastTriggeredAt *time.Time `json:"last_triggered_at"`
-	CreatedAt       time.Time  `gorm:"not null" json:"created_at"`
-	UpdatedAt       time.Time  `gorm:"not null" json:"updated_at"`
+	ID              string            `gorm:"primaryKey;size:36" json:"id"`
+	Name            string            `gorm:"size:128;not null" json:"name"`
+	Description     string            `gorm:"size:512" json:"description"`
+	TaskID          string            `gorm:"index;size:36" json:"task_id"`
+	ProjectID       string            `gorm:"index;size:36;not null" json:"project_id"`
+	VersionID       string            `gorm:"index;size:36;not null" json:"version_id"`
+	EntryCommand    string            `gorm:"size:512;not null" json:"entry_command"`
+	CronExpr        string            `gorm:"size:128;not null" json:"cron_expr"`
+	TriggerType     string            `gorm:"size:32;not null;default:api" json:"trigger_type"`
+	RunAt           *time.Time        `json:"run_at"`
+	NodeQueue       string            `gorm:"size:64;not null" json:"node_queue"`
+	OrderJSON       string            `gorm:"type:text" json:"order"`
+	Enabled         bool              `gorm:"not null;default:true" json:"enabled"`
+	CreatedBy       string            `gorm:"size:36;not null" json:"created_by"`
+	LastTriggeredAt *time.Time        `json:"last_triggered_at"`
+	CreatedAt       time.Time         `gorm:"not null" json:"created_at"`
+	UpdatedAt       time.Time         `gorm:"not null" json:"updated_at"`
+	RunTimes        []ScheduleRunTime `gorm:"foreignKey:ScheduleID;references:ID" json:"run_times"`
+}
+
+// ScheduleRunTime is a one-to-many relation: a single schedule (bound to a task) can
+// run at multiple specific points in time. Each row represents one firing time.
+type ScheduleRunTime struct {
+	ID          string     `gorm:"primaryKey;size:36" json:"id"`
+	ScheduleID  string     `gorm:"index;size:36;not null" json:"schedule_id"`
+	RunAt       time.Time  `gorm:"not null" json:"run_at"`
+	TriggeredAt *time.Time `json:"triggered_at"`
+	CreatedAt   time.Time  `gorm:"not null" json:"created_at"`
+	UpdatedAt   time.Time  `gorm:"not null" json:"updated_at"`
 }
 
 type RSSSubscription struct {
@@ -248,6 +260,7 @@ func AutoMigrateModels() []interface{} {
 		&ArtifactVersion{},
 		&Task{},
 		&Schedule{},
+		&ScheduleRunTime{},
 		&TaskRun{},
 		&RSSSubscription{},
 		&RSSItem{},

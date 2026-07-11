@@ -33,7 +33,7 @@ func TestFindOrCreateBasaltUserSyncsGroupsIntoTeams(t *testing.T) {
 		"role":   "operator",
 		"groups": []any{"engineering", "ops"},
 	}
-	user, err := app.findOrCreateBasaltUser("subject-sync-1", "", claims)
+	user, err := app.findOrCreateBasaltUser("subject-sync-1", "", claims, basaltTokenSet{})
 	if err != nil {
 		t.Fatalf("findOrCreateBasaltUser failed: %v", err)
 	}
@@ -71,7 +71,7 @@ func TestSyncBasaltGroupsPrunesStaleMembershipsWhenEnabled(t *testing.T) {
 		"role":   "operator",
 		"groups": []any{"engineering", "ops"},
 	}
-	user, err := app.findOrCreateBasaltUser("subject-sync-prune", "", firstClaims)
+	user, err := app.findOrCreateBasaltUser("subject-sync-prune", "", firstClaims, basaltTokenSet{})
 	if err != nil {
 		t.Fatalf("initial sync failed: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestSyncBasaltGroupsPrunesStaleMembershipsWhenEnabled(t *testing.T) {
 		"role":   "operator",
 		"groups": []any{"engineering"},
 	}
-	if _, err := app.findOrCreateBasaltUser("subject-sync-prune", "", secondClaims); err != nil {
+	if _, err := app.findOrCreateBasaltUser("subject-sync-prune", "", secondClaims, basaltTokenSet{}); err != nil {
 		t.Fatalf("second sync failed: %v", err)
 	}
 
@@ -113,7 +113,7 @@ func TestSyncBasaltGroupsKeepsStaleMembershipsWhenPruneDisabled(t *testing.T) {
 		"role":   "operator",
 		"groups": []any{"engineering", "ops"},
 	}
-	user, err := app.findOrCreateBasaltUser("subject-sync-keep", "", firstClaims)
+	user, err := app.findOrCreateBasaltUser("subject-sync-keep", "", firstClaims, basaltTokenSet{})
 	if err != nil {
 		t.Fatalf("initial sync failed: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestSyncBasaltGroupsKeepsStaleMembershipsWhenPruneDisabled(t *testing.T) {
 		"role":   "operator",
 		"groups": []any{"engineering"},
 	}
-	if _, err := app.findOrCreateBasaltUser("subject-sync-keep", "", secondClaims); err != nil {
+	if _, err := app.findOrCreateBasaltUser("subject-sync-keep", "", secondClaims, basaltTokenSet{}); err != nil {
 		t.Fatalf("second sync failed: %v", err)
 	}
 
