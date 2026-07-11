@@ -11,22 +11,19 @@
 
 					<div class="grid gap-4 md:grid-cols-2">
 						<div class="md:col-span-2">
-							<label class="mb-2 block text-sm font-medium text-slate-700">任务名称</label>
-							<input v-model="form.name" type="text" class="field-input" placeholder="输入任务名称" />
+							<div class="flex border-b border-slate-200">
+								<button
+									type="button"
+									v-for="t in taskTypeTabs"
+									:key="t.value"
+									@click="form.type = t.value"
+									:class="['flex-1 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors', form.type === t.value ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700']"
+								>{{ t.label }}</button>
+							</div>
 						</div>
 						<div class="md:col-span-2">
-							<label class="mb-2 block text-sm font-medium text-slate-700">任务类型</label>
-							<div class="flex flex-wrap gap-3">
-								<label class="flex items-center gap-2 cursor-pointer">
-									<input type="radio" value="code" v-model="form.type" /> <span>上传爬虫</span>
-								</label>
-								<label class="flex items-center gap-2 cursor-pointer">
-									<input type="radio" value="rss" v-model="form.type" /> <span>RSS</span>
-								</label>
-								<label class="flex items-center gap-2 cursor-pointer">
-									<input type="radio" value="api" v-model="form.type" /> <span>JSON API</span>
-								</label>
-							</div>
+							<label class="mb-2 block text-sm font-medium text-slate-700">任务名称</label>
+							<input v-model="form.name" type="text" class="field-input" placeholder="输入任务名称" />
 						</div>
 						<template v-if="form.type === 'code'">
 							<div>
@@ -85,6 +82,12 @@ import ApiService from '@/services/ApiService.js';
 import CheckboxSquareField from '@/components/BeansDesign/Checkbox/CheckboxSquareField.vue';
 import Workplace from '@/views/Workplaces/Workplace.vue';
 import Task from '@/views/Workplaces/Tasks/Tasks.vue';
+
+const taskTypeTabs = [
+	{value: 'code', label: '上传爬虫'},
+	{value: 'rss', label: 'RSS'},
+	{value: 'api', label: 'JSON API'},
+];
 
 const route = useRoute();
 const router = useRouter();

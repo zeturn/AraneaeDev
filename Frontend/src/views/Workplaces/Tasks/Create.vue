@@ -14,6 +14,19 @@
 		<Task>
 			<div class="mx-auto my-6 w-full max-w-xl overflow-x-hidden rounded-2xl bg-white p-4 sm:p-6">
 				<form @submit.prevent="submitForm" class="space-y-5">
+					<!-- 任务类型（仅 Go 模式，置顶 tab） -->
+					<div v-if="isGoApi" class="mb-1">
+						<div class="flex border-b border-slate-200">
+							<button
+								type="button"
+								v-for="t in taskTypeTabs"
+								:key="t.value"
+								@click="goForm.type = t.value"
+								:class="['flex-1 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors', goForm.type === t.value ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700']"
+							>{{ t.label }}</button>
+						</div>
+					</div>
+
 					<!-- 名称 -->
 					<div>
 						<label for="name" class="block mb-2 text-gray-700 text-sm font-medium">名称</label>
@@ -114,26 +127,7 @@
 					></textarea>
 				</div>
 
-				<!-- 任务类型（仅 Go 模式） -->
-				<div v-if="isGoApi">
-					<label class="block mb-2 text-gray-700 text-sm font-medium">任务类型</label>
-					<div class="flex flex-wrap gap-3">
-						<label class="flex items-center gap-2 cursor-pointer">
-							<input type="radio" value="code" v-model="goForm.type" />
-							<span>上传爬虫</span>
-						</label>
-						<label class="flex items-center gap-2 cursor-pointer">
-							<input type="radio" value="rss" v-model="goForm.type" />
-							<span>RSS</span>
-						</label>
-						<label class="flex items-center gap-2 cursor-pointer">
-							<input type="radio" value="api" v-model="goForm.type" />
-							<span>JSON API</span>
-						</label>
-					</div>
-				</div>
-
-				<!-- 源地址（rss / api 模式） -->
+			<!-- 源地址（rss / api 模式） -->
 				<div v-if="isGoApi && goForm.type !== 'code'" class="grid grid-cols-1 gap-5 md:grid-cols-2">
 					<div class="md:col-span-2">
 						<label for="source_url" class="block mb-2 text-gray-700 text-sm font-medium">
@@ -216,6 +210,12 @@ const goProjectLoading = ref(false);
 const goVersionLoading = ref(false);
 const goProjects = ref<Array<{id: string; name?: string}>>([]);
 const goVersions = ref<Array<{id: string; file_name?: string; version_hash?: string; created_at?: string; release_date?: string}>>([]);
+const taskTypeTabs = [
+	{value: 'code', label: '上传爬虫'},
+	{value: 'rss', label: 'RSS'},
+	{value: 'api', label: 'JSON API'},
+];
+
 const goForm = reactive({
 	type: 'code',
 	project_id: '',
