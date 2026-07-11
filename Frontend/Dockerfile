@@ -24,5 +24,5 @@ COPY --from=build /app/dist /usr/share/nginx/html
 
 EXPOSE 80
 
-HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start_period=10s \
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=10s \
   CMD wget -qO- http://127.0.0.1/ >/dev/null 2>&1 || exit 1
