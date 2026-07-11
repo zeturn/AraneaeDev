@@ -39,9 +39,9 @@
 							<el-option label="循环" value="recurring" />
 						</el-select>
 					</div>
-					<div v-if="isGoApi" class="grid grid-cols-1 gap-5 md:grid-cols-2">
-						<div>
-							<label for="project_id" class="block mb-2 text-gray-700 text-sm font-medium">项目</label>
+				<div v-if="isGoApi && goForm.type === 'code'" class="grid grid-cols-1 gap-5 md:grid-cols-2">
+					<div>
+						<label for="project_id" class="block mb-2 text-gray-700 text-sm font-medium">项目</label>
 							<el-select
 								v-model="goForm.project_id"
 								id="project_id"
@@ -78,9 +78,9 @@
 							<p v-if="goForm.project_id && !goVersionLoading && goVersions.length === 0" class="mt-2 text-xs text-slate-500">该项目暂无可用版本，请先上传版本。</p>
 						</div>
 					</div>
-					<div v-if="isGoApi" class="grid grid-cols-1 gap-5 md:grid-cols-2">
-						<div>
-							<label for="entry_command" class="block mb-2 text-gray-700 text-sm font-medium">执行命令</label>
+				<div v-if="isGoApi && goForm.type === 'code'" class="grid grid-cols-1 gap-5 md:grid-cols-2">
+					<div>
+						<label for="entry_command" class="block mb-2 text-gray-700 text-sm font-medium">执行命令</label>
 							<input
 								v-model="goForm.entry_command"
 								id="entry_command"
@@ -102,17 +102,63 @@
 						</div>
 					</div>
 
-					<!-- 描述 -->
-					<div>
-						<label for="description" class="block mb-2 text-gray-700 text-sm font-medium">描述</label>
-						<textarea
-							v-model="form.description"
-							id="description"
-							rows="3"
-							class="field-input resize-none"
-							placeholder="请输入任务描述"
-						></textarea>
+				<!-- 描述 -->
+				<div>
+					<label for="description" class="block mb-2 text-gray-700 text-sm font-medium">描述</label>
+					<textarea
+						v-model="form.description"
+						id="description"
+						rows="3"
+						class="field-input resize-none"
+						placeholder="请输入任务描述"
+					></textarea>
+				</div>
+
+				<!-- 任务类型（仅 Go 模式） -->
+				<div v-if="isGoApi">
+					<label class="block mb-2 text-gray-700 text-sm font-medium">任务类型</label>
+					<div class="flex flex-wrap gap-3">
+						<label class="flex items-center gap-2 cursor-pointer">
+							<input type="radio" value="code" v-model="goForm.type" />
+							<span>上传爬虫</span>
+						</label>
+						<label class="flex items-center gap-2 cursor-pointer">
+							<input type="radio" value="rss" v-model="goForm.type" />
+							<span>RSS</span>
+						</label>
+						<label class="flex items-center gap-2 cursor-pointer">
+							<input type="radio" value="api" v-model="goForm.type" />
+							<span>JSON API</span>
+						</label>
 					</div>
+				</div>
+
+				<!-- 源地址（rss / api 模式） -->
+				<div v-if="isGoApi && goForm.type !== 'code'" class="grid grid-cols-1 gap-5 md:grid-cols-2">
+					<div class="md:col-span-2">
+						<label for="source_url" class="block mb-2 text-gray-700 text-sm font-medium">
+							{{ goForm.type === 'rss' ? 'RSS 地址' : 'JSON API 地址' }}
+						</label>
+						<input
+							v-model="goForm.source_url"
+							id="source_url"
+							type="text"
+							required
+							class="field-input"
+							:placeholder="goForm.type === 'rss' ? 'https://example.com/feed.xml' : 'https://api.example.com/data'"
+						/>
+					</div>
+					<div>
+						<label for="node_queue" class="block mb-2 text-gray-700 text-sm font-medium">节点队列</label>
+						<input
+							v-model="goForm.node_queue"
+							id="node_queue"
+							type="text"
+							class="field-input"
+							placeholder="默认 default"
+						/>
+					</div>
+				</div>
 					<!-- 启用 -->
 					<div v-if="!isGoApi" class="mb-2">
 						<CheckboxSquareField id="enabled" v-model="form.enabled">启用</CheckboxSquareField>
@@ -171,9 +217,11 @@ const goVersionLoading = ref(false);
 const goProjects = ref<Array<{id: string; name?: string}>>([]);
 const goVersions = ref<Array<{id: string; file_name?: string; version_hash?: string; created_at?: string; release_date?: string}>>([]);
 const goForm = reactive({
+	type: 'code',
 	project_id: '',
 	version_id: '',
 	entry_command: 'bash run.sh',
+	source_url: '',
 	node_queue: 'default',
 });
 
@@ -263,25 +311,41 @@ async function submitForm() {
 		loading.value = false;
 		return;
 	}
-	if (isGoApi && !goForm.project_id) {
-		error.value = '请选择项目';
-		loading.value = false;
-		return;
+	if (isGoApi && goForm.type === 'code') {
+		if (!goForm.project_id) {
+			error.value = '请选择项目';
+			loading.value = false;
+			return;
+		}
+		if (!goForm.version_id) {
+			error.value = '请选择版本';
+			loading.value = false;
+			return;
+		}
 	}
-	if (isGoApi && !goForm.version_id) {
-		error.value = '请选择版本';
-		loading.value = false;
-		return;
+	if (isGoApi && (goForm.type === 'rss' || goForm.type === 'api')) {
+		if (!String(goForm.source_url || '').trim()) {
+			error.value = '请填写源地址';
+			loading.value = false;
+			return;
+		}
 	}
 	try {
 		const taskPayload = isGoApi
-			? {
-				name: form.name,
-				project_id: goForm.project_id,
-				version_id: goForm.version_id,
-				entry_command: goForm.entry_command,
-				node_queue: goForm.node_queue || 'default',
-			}
+			? goForm.type === 'code'
+				? {
+					name: form.name,
+					project_id: goForm.project_id,
+					version_id: goForm.version_id,
+					entry_command: goForm.entry_command,
+					node_queue: goForm.node_queue || 'default',
+				}
+				: {
+					name: form.name,
+					type: goForm.type,
+					source_url: String(goForm.source_url || '').trim(),
+					node_queue: goForm.node_queue || 'default',
+				}
 			: {
 				workplace: workplaceId,
 				celery_label: 'schedule_task_execution',

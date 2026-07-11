@@ -41,7 +41,6 @@ const isLargeScreen = ref(window.innerWidth >= 768);
 const links = [
 	{name: '工作区', url: '/aprons/workplaces'},
 	{name: '节点', url: '/aprons/nodes'},
-	{name: 'RSS', url: '/aprons/rss'},
 	{name: '团队', url: '/aprons/teams'},
 	{name: '设置', url: '/aprons/settings'},
 	{name: '帮助', url: '/aprons/help'},

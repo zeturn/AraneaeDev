@@ -100,6 +100,8 @@ func (a *App) triggerNextScheduleChainRun(prevRun common.TaskRun) error {
 		next.VersionID,
 		next.EntryCommand,
 		next.NodeQueue,
+		"",
+		"",
 		&chainRunMeta{
 			ChainID:    prevRun.ChainID,
 			ChainIndex: nextIndex,

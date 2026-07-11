@@ -429,7 +429,7 @@ func (a *App) reconnectRabbitPublisher() (*amqp.Channel, error) {
 }
 
 func (a *App) publishTaskRun(task common.Task, source string, scheduleID string) (*common.TaskRun, error) {
-	return a.publishRun(task.ID, scheduleID, source, task.ProjectID, task.VersionID, task.EntryCommand, task.NodeQueue, nil)
+	return a.publishRun(task.ID, scheduleID, source, task.ProjectID, task.VersionID, task.EntryCommand, task.NodeQueue, task.Type, task.SourceURL, nil)
 }
 
 func (a *App) publishScheduleRun(schedule common.Schedule, source string) (*common.TaskRun, error) {
@@ -457,7 +457,7 @@ func (a *App) publishScheduleRun(schedule common.Schedule, source string) (*comm
 	}
 
 	first := steps[0]
-	run, err := a.publishRun(first.TaskID, schedule.ID, source, first.ProjectID, first.VersionID, first.EntryCommand, first.NodeQueue, chainMeta)
+	run, err := a.publishRun(first.TaskID, schedule.ID, source, first.ProjectID, first.VersionID, first.EntryCommand, first.NodeQueue, "", "", chainMeta)
 	if err != nil {
 		return nil, err
 	}
@@ -468,7 +468,7 @@ func (a *App) publishScheduleRun(schedule common.Schedule, source string) (*comm
 	return run, nil
 }
 
-func (a *App) publishRun(taskID, scheduleID, source, projectID, versionID, entryCommand, nodeQueue string, chainMeta *chainRunMeta) (*common.TaskRun, error) {
+func (a *App) publishRun(taskID, scheduleID, source, projectID, versionID, entryCommand, nodeQueue, taskType, sourceURL string, chainMeta *chainRunMeta) (*common.TaskRun, error) {
 	if taskID == "" {
 		taskID = scheduleID
 	}
@@ -515,6 +515,8 @@ func (a *App) publishRun(taskID, scheduleID, source, projectID, versionID, entry
 		ProjectID:     projectID,
 		VersionID:     versionID,
 		EntryCommand:  entryCommand,
+		Type:          taskType,
+		SourceURL:     sourceURL,
 		NodeQueue:     nodeQueue,
 		CorrelationID: run.CorrelationID,
 		RunToken:      runToken,

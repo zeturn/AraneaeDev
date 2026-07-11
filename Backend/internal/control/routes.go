@@ -45,6 +45,8 @@ type createTaskRequest struct {
 	ProjectID    string `json:"project_id"`
 	VersionID    string `json:"version_id"`
 	EntryCommand string `json:"entry_command"`
+	Type         string `json:"type"`
+	SourceURL    string `json:"source_url"`
 	CronExpr     string `json:"cron_expr"`
 	NodeQueue    string `json:"node_queue"`
 }
@@ -54,6 +56,8 @@ type updateTaskRequest struct {
 	ProjectID    *string `json:"project_id"`
 	VersionID    *string `json:"version_id"`
 	EntryCommand *string `json:"entry_command"`
+	Type         *string `json:"type"`
+	SourceURL    *string `json:"source_url"`
 	CronExpr     *string `json:"cron_expr"`
 	NodeQueue    *string `json:"node_queue"`
 	Enabled      *bool   `json:"enabled"`
@@ -808,37 +812,58 @@ func (a *App) createTask(c *fiber.Ctx) error {
 	if req.NodeQueue == "" {
 		req.NodeQueue = "default"
 	}
-	if strings.TrimSpace(req.EntryCommand) == "" {
-		return fiber.NewError(fiber.StatusBadRequest, "entry_command is required")
+	taskType := strings.ToLower(strings.TrimSpace(req.Type))
+	if taskType == "" {
+		taskType = "code"
 	}
-	var project common.Project
-	if err := a.db.Where("id = ?", req.ProjectID).First(&project).Error; err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "project not found")
+	if taskType != "code" && taskType != "rss" && taskType != "api" {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid task type (must be code, rss or api)")
 	}
-	canWrite, accessErr := a.canWriteProject(c, project)
-	if accessErr != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
-	}
-	if !canWrite {
-		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
-	}
-	var version common.ArtifactVersion
-	if err := a.db.Where("id = ? AND project_id = ?", req.VersionID, req.ProjectID).First(&version).Error; err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "version not found")
-	}
+
 	uid, _ := c.Locals("uid").(string)
 	task := common.Task{
-		ID:           uuid.NewString(),
-		Name:         req.Name,
-		ProjectID:    req.ProjectID,
-		VersionID:    req.VersionID,
-		EntryCommand: req.EntryCommand,
-		CronExpr:     "",
-		NodeQueue:    req.NodeQueue,
-		Enabled:      true,
-		CreatedBy:    uid,
-		CreatedAt:    time.Now(),
+		ID:        uuid.NewString(),
+		Name:      req.Name,
+		Type:      taskType,
+		NodeQueue: req.NodeQueue,
+		Enabled:   true,
+		CreatedBy: uid,
+		CreatedAt: time.Now(),
 	}
+
+	if taskType == "code" {
+		if strings.TrimSpace(req.EntryCommand) == "" {
+			return fiber.NewError(fiber.StatusBadRequest, "entry_command is required for code tasks")
+		}
+		var project common.Project
+		if err := a.db.Where("id = ?", req.ProjectID).First(&project).Error; err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "project not found")
+		}
+		canWrite, accessErr := a.canWriteProject(c, project)
+		if accessErr != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+		}
+		if !canWrite {
+			return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
+		}
+		var version common.ArtifactVersion
+		if err := a.db.Where("id = ? AND project_id = ?", req.VersionID, req.ProjectID).First(&version).Error; err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "version not found")
+		}
+		task.ProjectID = req.ProjectID
+		task.VersionID = req.VersionID
+		task.EntryCommand = req.EntryCommand
+	} else {
+		sourceURL := strings.TrimSpace(req.SourceURL)
+		if sourceURL == "" {
+			return fiber.NewError(fiber.StatusBadRequest, "source_url is required for rss/api tasks")
+		}
+		if !strings.HasPrefix(sourceURL, "http://") && !strings.HasPrefix(sourceURL, "https://") {
+			return fiber.NewError(fiber.StatusBadRequest, "source_url must start with http:// or https://")
+		}
+		task.SourceURL = sourceURL
+	}
+
 	if task.Name == "" {
 		task.Name = "task-" + task.ID[:8]
 	}
@@ -923,6 +948,16 @@ func (a *App) updateTask(c *fiber.Ctx) error {
 	if req.EntryCommand != nil {
 		task.EntryCommand = strings.TrimSpace(*req.EntryCommand)
 	}
+	if req.SourceURL != nil {
+		task.SourceURL = strings.TrimSpace(*req.SourceURL)
+	}
+	if req.Type != nil {
+		t := strings.ToLower(strings.TrimSpace(*req.Type))
+		if t != "code" && t != "rss" && t != "api" {
+			return fiber.NewError(fiber.StatusBadRequest, "invalid task type (must be code, rss or api)")
+		}
+		task.Type = t
+	}
 	if req.CronExpr != nil {
 		task.CronExpr = ""
 	}
@@ -933,34 +968,46 @@ func (a *App) updateTask(c *fiber.Ctx) error {
 		task.Enabled = *req.Enabled
 	}
 
-	if task.ProjectID == "" {
-		return fiber.NewError(fiber.StatusBadRequest, "project_id is required")
-	}
-	if task.VersionID == "" {
-		return fiber.NewError(fiber.StatusBadRequest, "version_id is required")
-	}
-	if task.EntryCommand == "" {
-		return fiber.NewError(fiber.StatusBadRequest, "entry_command is required")
+	taskType := strings.ToLower(strings.TrimSpace(task.Type))
+	if taskType == "rss" || taskType == "api" {
+		if task.SourceURL == "" {
+			return fiber.NewError(fiber.StatusBadRequest, "source_url is required for rss/api tasks")
+		}
+		if !strings.HasPrefix(task.SourceURL, "http://") && !strings.HasPrefix(task.SourceURL, "https://") {
+			return fiber.NewError(fiber.StatusBadRequest, "source_url must start with http:// or https://")
+		}
+	} else {
+		if task.ProjectID == "" {
+			return fiber.NewError(fiber.StatusBadRequest, "project_id is required")
+		}
+		if task.VersionID == "" {
+			return fiber.NewError(fiber.StatusBadRequest, "version_id is required")
+		}
+		if task.EntryCommand == "" {
+			return fiber.NewError(fiber.StatusBadRequest, "entry_command is required")
+		}
 	}
 	if task.NodeQueue == "" {
 		task.NodeQueue = "default"
 	}
 	task.CronExpr = ""
 
-	var project common.Project
-	if err := a.db.Where("id = ?", task.ProjectID).First(&project).Error; err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "project not found")
-	}
-	canWriteProject, projectAccessErr := a.canWriteProject(c, project)
-	if projectAccessErr != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, projectAccessErr.Error())
-	}
-	if !canWriteProject {
-		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
-	}
-	var version common.ArtifactVersion
-	if err := a.db.Where("id = ? AND project_id = ?", task.VersionID, task.ProjectID).First(&version).Error; err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "version not found")
+	if taskType == "code" {
+		var project common.Project
+		if err := a.db.Where("id = ?", task.ProjectID).First(&project).Error; err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "project not found")
+		}
+		canWriteProject, projectAccessErr := a.canWriteProject(c, project)
+		if projectAccessErr != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, projectAccessErr.Error())
+		}
+		if !canWriteProject {
+			return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
+		}
+		var version common.ArtifactVersion
+		if err := a.db.Where("id = ? AND project_id = ?", task.VersionID, task.ProjectID).First(&version).Error; err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "version not found")
+		}
 	}
 
 	if err := a.db.Save(&task).Error; err != nil {

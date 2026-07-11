@@ -47,9 +47,11 @@ type ArtifactVersion struct {
 type Task struct {
 	ID           string    `gorm:"primaryKey;size:36" json:"id"`
 	Name         string    `gorm:"size:128;not null" json:"name"`
-	ProjectID    string    `gorm:"index;size:36;not null" json:"project_id"`
-	VersionID    string    `gorm:"index;size:36;not null" json:"version_id"`
-	EntryCommand string    `gorm:"size:512;not null" json:"entry_command"`
+	ProjectID    string    `gorm:"index;size:36" json:"project_id"`
+	VersionID    string    `gorm:"index;size:36" json:"version_id"`
+	EntryCommand string    `gorm:"size:512" json:"entry_command"`
+	Type         string    `gorm:"size:16;not null;default:code" json:"type"`
+	SourceURL    string    `gorm:"size:1024" json:"source_url"`
 	CronExpr     string    `gorm:"size:128" json:"cron_expr"`
 	NodeQueue    string    `gorm:"size:64;not null" json:"node_queue"`
 	Enabled      bool      `gorm:"not null;default:true" json:"enabled"`

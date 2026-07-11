@@ -8,6 +8,8 @@ type QueueTaskMessage struct {
 	ProjectID     string `json:"project_id"`
 	VersionID     string `json:"version_id"`
 	EntryCommand  string `json:"entry_command"`
+	Type          string `json:"type"`
+	SourceURL     string `json:"source_url"`
 	NodeQueue     string `json:"node_queue"`
 	CorrelationID string `json:"correlation_id"`
 	RunToken      string `json:"run_token"`

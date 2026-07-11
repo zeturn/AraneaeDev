@@ -33,10 +33,11 @@
 								<h3 class="text-base font-semibold text-slate-900">{{ task.name || 'untitled-task' }}</h3>
 								<p class="text-xs text-slate-500">ID: {{ task.id }}</p>
 							</header>
-							<div class="flex flex-wrap gap-2 text-xs">
-								<span class="tag-pill">队列: {{ task.node_queue || 'default' }}</span>
-								<span class="tag-pill">{{ task.enabled ? '已启用' : '已禁用' }}</span>
-							</div>
+						<div class="flex flex-wrap gap-2 text-xs">
+							<span class="tag-pill">{{ task.type === 'rss' ? 'RSS' : task.type === 'api' ? 'JSON API' : '爬虫' }}</span>
+							<span class="tag-pill">队列: {{ task.node_queue || 'default' }}</span>
+							<span class="tag-pill">{{ task.enabled ? '已启用' : '已禁用' }}</span>
+						</div>
 							<p class="text-xs text-slate-500">创建时间: {{ formatDate(task.created_at) }}</p>
 							<div class="flex flex-wrap gap-2 pt-1">
 								<button class="btn-primary" @click="runTaskOnce(task)">手动运行一次</button>

@@ -534,41 +534,6 @@ const ApiService = {
             };
         });
     },
-    createRSSSubscription(url, workplaceId) {
-        if (!isGoApi) {
-            return Promise.reject(new Error('RSS subscriptions are only supported in Go API mode.'));
-        }
-        return apiClient.post('/rss/subscriptions', {
-            url,
-            workplace_id: workplaceId,
-        });
-    },
-    getRSSSubscriptions(workplaceId) {
-        if (!isGoApi) {
-            return Promise.reject(new Error('RSS subscriptions are only supported in Go API mode.'));
-        }
-        return apiClient.get('/rss/subscriptions', {
-            params: workplaceId ? {workplace_id: workplaceId} : undefined,
-        });
-    },
-    refreshRSSSubscription(subscriptionId) {
-        if (!isGoApi) {
-            return Promise.reject(new Error('RSS subscriptions are only supported in Go API mode.'));
-        }
-        return apiClient.post(`/rss/subscriptions/${subscriptionId}/refresh`);
-    },
-    getRSSItems(subscriptionId) {
-        if (!isGoApi) {
-            return Promise.reject(new Error('RSS subscriptions are only supported in Go API mode.'));
-        }
-        return apiClient.get(`/rss/subscriptions/${subscriptionId}/items`);
-    },
-    deleteRSSSubscription(subscriptionId) {
-        if (!isGoApi) {
-            return Promise.reject(new Error('RSS subscriptions are only supported in Go API mode.'));
-        }
-        return apiClient.delete(`/rss/subscriptions/${subscriptionId}`);
-    },
     getWorkplaces() {
         return apiClient.get('/workplaces/');
     },

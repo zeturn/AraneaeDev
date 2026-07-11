@@ -77,12 +77,6 @@ const routes = [
         meta: {requiresAuth: true}
     },
     {
-        name: 'apronsRSS',
-        path: '/aprons/rss',
-        component: () => import('../views/Aprons/ApronsRSS.vue'),
-        meta: {requiresAuth: true}
-    },
-    {
         name: 'node',
         path: '/aprons/nodes/:id',
         component: () => import('../views/Nodes/Index.vue'),
