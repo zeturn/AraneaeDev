@@ -83,6 +83,7 @@ func (a *App) publishCrawlSucceededEvent(ctx context.Context, run common.TaskRun
 			"schema_id":           firstNonEmpty(metadataString(metadata, "schema_id"), collection),
 			"analysis_collection": outputCollection,
 			"artifact_type":       firstNonEmpty(metadataString(metadata, "artifact_type"), "tdt_news_brief"),
+			"vesper_job":         metadata["vesper_job"],
 			"sink_summary":        run.Output,
 			"exit_code":           run.ExitCode,
 			"finished_at":         timePtrString(run.FinishedAt),
