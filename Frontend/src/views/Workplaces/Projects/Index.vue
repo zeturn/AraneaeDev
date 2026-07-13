@@ -48,7 +48,7 @@ export default {
 		<Project>
 			<!-- Empty‑state message -->
 			<div v-if="projects.length === 0" class="py-12 text-center text-gray-500">
-				没有可用的项目。
+				{{ $t('没有可用的项目。') }}
 			</div>
 
 			<!-- Project cards grid -->

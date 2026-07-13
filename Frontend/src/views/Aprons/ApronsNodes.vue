@@ -121,19 +121,19 @@ onMounted(fetchNodes);
 <template>
 	<Aprons>
 		<div class="flex items-center mb-6">
-			<h1 class="text-gray-500 text-3xl m-2">节点管理</h1>
+			<h1 class="text-gray-500 text-3xl m-2">{{ $t('节点管理') }}</h1>
 			<RouterLink
 				class="ml-auto rounded text-blue-600 hover:bg-gray-200 p-2"
 				to="/aprons/nodes/running"
 			>
-				进行中任务
+				{{ $t('进行中任务') }}
 			</RouterLink>
 			<RouterLink
 				v-if="nodes.length"
 				class="rounded text-green-600 hover:bg-gray-200 p-2"
 				to="/aprons/node/create"
 			>
-				创建节点
+				{{ $t('创建节点') }}
 			</RouterLink>
 		</div>
 
@@ -165,7 +165,7 @@ onMounted(fetchNodes);
 							<p class="text-sm text-gray-600">频率: {{ node.cpu_info.cpu_frequency.current }} MHz</p>
 						</div>
 						<div>
-							<p class="text-sm font-semibold text-gray-700">内存信息</p>
+							<p class="text-sm font-semibold text-gray-700">{{ $t('内存信息') }}</p>
 							<p class="text-sm text-gray-600">
 								已用: {{
 									node.memory_info.used_memory !== '-' ? (Number(node.memory_info.used_memory) / (1024 * 1024 * 1024)).toFixed(2) + ' GB' : '-'
@@ -183,12 +183,12 @@ onMounted(fetchNodes);
 			</div>
 		</div>
 		<div v-else class="flex flex-col items-center justify-center h-full">
-			<p class="text-gray-500 text-lg">还没有节点</p>
+			<p class="text-gray-500 text-lg">{{ $t('还没有节点') }}</p>
 			<RouterLink
 				class="mt-4 rounded text-green-600 hover:bg-gray-200 p-2"
 				to="/aprons/node/create"
 			>
-				创建节点↗
+				{{ $t('创建节点↗') }}
 			</RouterLink>
 		</div>
 	</Aprons>

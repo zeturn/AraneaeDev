@@ -17,7 +17,7 @@
 			</div>
 			<!-- Empty‑state message -->
 			<div v-if="schedules.length === 0" class="py-12 text-center text-gray-500">
-				没有可用的计划。
+				{{ $t('没有可用的计划。') }}
 			</div>
 
 			<!-- Schedule cards grid -->
@@ -72,7 +72,7 @@
 							:disabled="isBusy(schedule.id)"
 							@click="deleteSchedule(schedule)"
 						>
-							删除
+							{{ $t('删除') }}
 						</button>
 					</div>
 				</div>
@@ -127,7 +127,7 @@ export default {
 				schedule.enabled = typeof updated?.enabled === 'boolean' ? updated.enabled : targetEnabled;
 				schedule.updated_at = updated?.updated_at || schedule.updated_at;
 			} catch (error) {
-				this.actionError = error?.response?.data?.message || '更新计划状态失败';
+				this.actionError = error?.response?.data?.message || this.$t('更新计划状态失败');
 			}
 			this.busyScheduleId = '';
 		},
@@ -144,7 +144,7 @@ export default {
 				await ApiService.deleteSchedule(schedule.id);
 				this.schedules = this.schedules.filter(item => item.id !== schedule.id);
 			} catch (error) {
-				this.actionError = error?.response?.data?.message || '删除计划失败';
+				this.actionError = error?.response?.data?.message || this.$t('删除计划失败');
 			}
 			this.busyScheduleId = '';
 		},

@@ -16,7 +16,7 @@
 				<header v-if="notice" class="flex flex-wrap items-center justify-end gap-3">
 					<span class="text-sm text-slate-500">{{ notice }}</span>
 				</header>
-				<div v-if="repos.length === 0" class="py-6 text-sm text-slate-500">暂无版本，请先上传构建产物。</div>
+				<div v-if="repos.length === 0" class="py-6 text-sm text-slate-500">{{ $t('暂无版本，请先上传构建产物。') }}</div>
 				<div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2">
 					<article v-for="repo in repos" :key="repo.id || repo.version_hash" class="surface-card repo-card-flat space-y-3">
 						<div class="space-y-1">
@@ -28,9 +28,9 @@
 							<span class="tag-pill">发布时间: {{ formatDate(repo.release_date) }}</span>
 						</div>
 						<div class="flex flex-wrap gap-2 pt-1">
-							<button class="btn-muted" @click="renameVersion(repo)">重命名</button>
-							<router-link class="btn-muted" :to="`/aprons/projects/${projectId}/versions/${repo.id || repo.version_hash}/settings`">设置</router-link>
-							<button class="btn-danger" @click="removeVersion(repo)">删除</button>
+							<button class="btn-muted" @click="renameVersion(repo)">{{ $t('重命名') }}</button>
+							<router-link class="btn-muted" :to="`/aprons/projects/${projectId}/versions/${repo.id || repo.version_hash}/settings`">{{ $t('设置') }}</router-link>
+							<button class="btn-danger" @click="removeVersion(repo)">{{ $t('删除') }}</button>
 						</div>
 					</article>
 				</div>
@@ -66,28 +66,28 @@ export default {
 				this.repos = response.data.versions;
 				this.notice = '';
 			} catch (error) {
-				console.error("获取仓库列表失败:", error);
-				this.notice = '获取版本列表失败';
+				console.error(this.$t("获取仓库列表失败:"), error);
+				this.notice = this.$t('获取版本列表失败');
 			}
 		},
 		async renameVersion(repo) {
 			const currentName = repo.file_name || repo.version_hash || '';
-			const nextName = window.prompt('输入新的版本名称（file_name）', currentName);
+			const nextName = window.prompt(this.$t('输入新的版本名称（file_name）'), currentName);
 			if (nextName === null) {
 				return;
 			}
 			const name = nextName.trim();
 			if (!name) {
-				this.notice = '版本名称不能为空';
+				this.notice = this.$t('版本名称不能为空');
 				return;
 			}
 			try {
 				await ApiService.updateProjectVersion(this.projectId, repo.id || repo.version_hash, {file_name: name});
-				this.notice = '版本名称已更新';
+				this.notice = this.$t('版本名称已更新');
 				await this.fetchRepos();
 			} catch (error) {
 				console.error('rename version failed:', error);
-				this.notice = error?.response?.data?.detail || '更新版本失败';
+				this.notice = error?.response?.data?.detail || this.$t('更新版本失败');
 			}
 		},
 		async removeVersion(repo) {
@@ -96,11 +96,11 @@ export default {
 			}
 			try {
 				await ApiService.deleteProjectVersion(this.projectId, repo.id || repo.version_hash);
-				this.notice = '版本已删除';
+				this.notice = this.$t('版本已删除');
 				await this.fetchRepos();
 			} catch (error) {
 				console.error('delete version failed:', error);
-				this.notice = error?.response?.data?.detail || '删除版本失败';
+				this.notice = error?.response?.data?.detail || this.$t('删除版本失败');
 			}
 		},
 	},

@@ -12,7 +12,7 @@
 <!-- ButtonText.vue -->
 <template>
 	<button class="btn-ghost btn-ghost-primary px-2 py-1 text-sm font-medium">
-		文字按钮
+		{{ $t('文字按钮') }}
 	</button>
 </template>
 

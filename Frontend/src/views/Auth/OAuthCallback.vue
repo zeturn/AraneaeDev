@@ -1,7 +1,7 @@
 <template>
   <div class="h-screen flex items-center justify-center bg-gray-50">
     <div class="w-full max-w-md rounded-lg bg-white p-6 shadow">
-      <h1 class="text-xl font-semibold text-gray-800">登录处理中</h1>
+      <h1 class="text-xl font-semibold text-gray-800">{{ $t('登录处理中') }}</h1>
       <p class="mt-3 text-sm text-gray-600">{{ message }}</p>
       <p v-if="error" class="mt-3 text-sm text-red-600">{{ error }}</p>
     </div>
@@ -16,7 +16,7 @@ import { resolveBackendBase } from '@/utils/backendBase';
 export default {
   data() {
     return {
-      message: '正在完成 BasaltPass 登录...',
+      message: this.$t('正在完成 BasaltPass 登录...'),
       error: '',
     };
   },
@@ -35,13 +35,13 @@ export default {
 
     if (error) {
       this.error = `登录失败: ${error}`;
-      this.message = '请返回登录页重试。';
+      this.message = this.$t('请返回登录页重试。');
       return;
     }
 
     if (!exchangeCode) {
-      this.error = '登录失败: 缺少 exchange code';
-      this.message = '请返回登录页重试。';
+      this.error = this.$t('登录失败: 缺少 exchange code');
+      this.message = this.$t('请返回登录页重试。');
       return;
     }
     const backendBase = resolveBackendBase();
@@ -54,8 +54,8 @@ export default {
       const exchangeNext = response?.data?.next || safeNext;
       const safeExchangeNext = exchangeNext.startsWith('/') ? exchangeNext : '/aprons/workplaces';
       if (!access) {
-        this.error = '登录失败: access token 交换失败';
-        this.message = '请返回登录页重试。';
+        this.error = this.$t('登录失败: access token 交换失败');
+        this.message = this.$t('请返回登录页重试。');
         return;
       }
 
@@ -65,8 +65,8 @@ export default {
       }
       this.$router.replace(safeExchangeNext);
     } catch (err) {
-      this.error = '登录失败: exchange 请求失败';
-      this.message = '请返回登录页重试。';
+      this.error = this.$t('登录失败: exchange 请求失败');
+      this.message = this.$t('请返回登录页重试。');
     }
   },
 };

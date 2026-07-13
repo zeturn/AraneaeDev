@@ -2,7 +2,7 @@
   <div class="h-screen bg-gradient-to-r from-blue-100 via-purple-100 to-pink-100 flex justify-center items-center">
     <div class="bg-white bg-opacity-80 backdrop-blur-lg rounded-xl p-8 shadow-lg w-96">
       <h2 class="text-1xl font-semibold text-gray-700 text-left mb-2 ml-0.5">Araneae</h2>
-      <h1 class="text-3xl font-semibold text-gray-700 text-left mb-6 ml-0.5">Sign In</h1>
+      <h1 class="text-3xl font-semibold text-gray-700 text-left mb-6 ml-0.5">{{ $t('Sign In') }}</h1>
 
       <div v-if="loginError" class="text-red-500 bg-red-100 p-3 rounded mb-4 text-center">
         {{ loginError }}
@@ -16,7 +16,7 @@
           <input
             v-model="username"
             :class="['field-input block w-full mb-4 p-3', usernameError ? 'login-input-error' : '']"
-            placeholder="Username"
+            :placeholder="$t('Username')"
             type="text"
           />
           <span v-if="usernameError" class="absolute right-2 top-3 text-sm text-red-500">
@@ -28,7 +28,7 @@
           <input
             v-model="password"
             :class="['field-input block w-full mb-6 p-3', passwordError ? 'login-input-error' : '']"
-            placeholder="Password"
+            :placeholder="$t('Password')"
             type="password"
           />
           <span v-if="passwordError" class="absolute right-2 top-3 text-sm text-red-500">
@@ -40,7 +40,7 @@
           class="btn-primary w-full"
           type="submit"
         >
-          Local Sign In
+          {{ $t('Local Sign In') }}
         </button>
       </form>
 
@@ -55,11 +55,11 @@
           class="h-5 w-5 shrink-0 object-contain"
           src="@/assets/basaltpass-logo-symbol.svg"
         />
-        Sign In with BasaltPass
+        {{ $t('Sign In with BasaltPass') }}
       </button>
 
       <div class="text-center mt-4">
-        <a class="text-blue-500 hover:underline" href="/register">No account? Create one.</a>
+        <a class="text-blue-500 hover:underline" href="/register">{{ $t('No account? Create one.') }}</a>
       </div>
     </div>
   </div>
@@ -84,7 +84,7 @@ export default {
   mounted() {
     const reason = typeof this.$route.query.reason === 'string' ? this.$route.query.reason : '';
     if (reason === 'session_expired') {
-      this.loginNotice = 'Session expired. Please sign in again.';
+      this.loginNotice = this.$t('Session expired. Please sign in again.');
     }
   },
   methods: {
@@ -105,11 +105,11 @@ export default {
 
       let isValid = true;
       if (!this.username) {
-        this.usernameError = 'Username is required';
+        this.usernameError = this.$t('Username is required');
         isValid = false;
       }
       if (!this.password) {
-        this.passwordError = 'Password is required';
+        this.passwordError = this.$t('Password is required');
         isValid = false;
       }
       return isValid;
@@ -123,7 +123,7 @@ export default {
         .then(response => {
           const token = response.data.access || response.data.token;
           if (!token) {
-            this.loginError = '登录响应缺少 token。';
+            this.loginError = this.$t('登录响应缺少 token。');
             return;
           }
           setAccessToken(token);
@@ -135,10 +135,10 @@ export default {
         })
         .catch(error => {
           if (error.response && error.response.status === 401) {
-            this.loginError = 'Invalid username or password.';
+            this.loginError = this.$t('Invalid username or password.');
           } else {
             console.error(error);
-            this.loginError = 'Login failed. Please try again later.';
+            this.loginError = this.$t('Login failed. Please try again later.');
           }
         });
     },

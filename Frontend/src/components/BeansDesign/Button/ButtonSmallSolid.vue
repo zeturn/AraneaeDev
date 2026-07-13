@@ -12,7 +12,7 @@
 <!-- ButtonSmallSolid.vue -->
 <template>
 	<button class="btn-solid btn-solid-primary min-w-20 h-10 px-4 text-xs">
-		小按钮
+		{{ $t('小按钮') }}
 	</button>
 </template>
 

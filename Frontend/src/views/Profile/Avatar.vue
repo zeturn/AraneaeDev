@@ -1,14 +1,14 @@
 <template>
   <Aprons>
     <div class="mx-auto flex max-w-3xl flex-col items-center rounded-2xl bg-[#F8FAFC] p-6">
-      <h2 class="mb-6 text-2xl font-semibold text-gray-800">头像管理</h2>
+      <h2 class="mb-6 text-2xl font-semibold text-gray-800">{{ $t('头像管理') }}</h2>
 
       <div v-if="avatarUrl" class="mb-4">
         <img :src="avatarUrl" alt="User Avatar" class="h-36 w-36 rounded-full object-cover shadow-lg"/>
       </div>
 
       <div v-else class="mb-4 text-gray-500">
-        <p class="text-lg font-medium">暂无头像</p>
+        <p class="text-lg font-medium">{{ $t('暂无头像') }}</p>
       </div>
 
       <input class="mb-4 w-full max-w-md cursor-pointer"
@@ -19,12 +19,12 @@
         <button
             class="btn-primary flex-1 px-6 py-2"
             @click="uploadAvatar">
-          上传头像
+          {{ $t('上传头像') }}
         </button>
         <button
             class="btn-muted px-4 py-2"
             @click="$router.push('/aprons/profile')">
-          返回资料
+          {{ $t('返回资料') }}
         </button>
       </div>
     </div>

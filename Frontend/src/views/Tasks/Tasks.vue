@@ -18,10 +18,10 @@ const route = useRoute();
 	<div>
 		<div class="px-6 pt-6">
 			<h1 class="text-3xl font-semibold text-gray-500">
-				任务
+				{{ $t('任务') }}
 			</h1>
 			<p class="text-gray-400 text-sm mt-1">
-				任务是一次性的实时自动化操作。如需定时或链式操作，请使用计划。
+				{{ $t('任务是一次性的实时自动化操作。如需定时或链式操作，请使用计划。') }}
 			</p>
 		</div>
 		<slot></slot>

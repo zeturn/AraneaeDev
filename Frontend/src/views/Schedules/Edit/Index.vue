@@ -12,7 +12,7 @@
 <template>
   <Schedules>
     <div class="container">
-      <div v-if="loading" class="text-center text-gray-500 text-lg">加载中...</div>
+      <div v-if="loading" class="text-center text-gray-500 text-lg">{{ $t('加载中...') }}</div>
       <div v-else class="bg-white rounded-lg m-4 p-6">
         <form @submit.prevent="handleUpdateSchedule">
           <div class="space-y-2">

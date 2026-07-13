@@ -18,7 +18,7 @@
 	<Aprons>
 		<div class="mx-auto max-w-4xl px-4 pb-10">
 			<h2 class="text-3xl font-semibold text-gray-500">
-				创建团队
+				{{ $t('创建团队') }}
 			</h2>
 
 			<form
@@ -31,12 +31,12 @@
 					<label
 						class="block mb-2 text-gray-700 text-sm font-medium"
 						for="name"
-					>名称</label>
+					>{{ $t('名称') }}</label>
 					<input
 						id="name"
 						v-model="name"
 						class="field-input"
-						placeholder="输入团队名称"
+						:placeholder="$t('输入团队名称')"
 						required
 						type="text"
 					/>
@@ -47,18 +47,18 @@
 					<label
 						class="block mb-2 text-gray-700 text-sm font-medium"
 						for="description"
-					>描述</label>
+					>{{ $t('描述') }}</label>
 					<textarea
 						id="description"
 						v-model="description"
 						class="field-input h-24 resize-none"
-						placeholder="添加团队描述（可选）"
+						:placeholder="$t('添加团队描述（可选）')"
 					></textarea>
 				</div>
 
 				<!-- 可加入 -->
 				<div class="mb-6">
-					<CheckboxSquareField id="joinAble" v-model="joinAble">可加入</CheckboxSquareField>
+					<CheckboxSquareField id="joinAble" v-model="joinAble">{{ $t('可加入') }}</CheckboxSquareField>
 				</div>
 
 				<button
@@ -66,19 +66,21 @@
 					class="btn-primary w-full disabled:opacity-50"
 					type="submit"
 				>
-					<span v-if="loading">提交中...</span>
-					<span v-else>创建团队</span>
+					<span v-if="loading">{{ $t('提交中...') }}</span>
+					<span v-else>{{ $t('创建团队') }}</span>
 				</button>
 
 				<p v-if="error" class="mt-2 text-sm text-red-500">{{ error }}</p>
-				<p v-if="success" class="mt-2 text-sm text-green-600">创建成功！</p>
+				<p v-if="success" class="mt-2 text-sm text-green-600">{{ $t('创建成功！') }}</p>
 			</form>
 		</div>
 	</Aprons>
 </template>
 
 
-<script setup>
+<script setup>import { useI18n } from '@/i18n';
+const { t } = useI18n();
+
 /**
  * 中文: 团队创建组件（Tailwind CSS 版）
  * English: Team creation component (Tailwind CSS version).
@@ -122,15 +124,15 @@ async function onSubmit() {
 
 		EventBus.emit('notify', {
 			type: 'success',
-			title: '创建成功',
-			message: '团队已成功创建'
+			title: t('创建成功'),
+			message: t('团队已成功创建')
 		});
 
 		// 跳转到团队列表 / Redirect to team list
 		await router.push({name: 'team', params: {id: newId}});
 	} catch (err) {
 		// 处理错误并显示 / Handle and display error
-		error.value = err.response?.data?.detail || '创建失败，请重试';
+		error.value = err.response?.data?.detail || t('创建失败，请重试');
 	} finally {
 		loading.value = false;
 	}

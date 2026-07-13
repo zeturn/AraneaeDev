@@ -12,12 +12,12 @@
 <template>
 	<Aprons>
 		<div class="flex flex-col p-2">
-			<h1 class="text-3xl font-bold text-gray-700">组件展示</h1>
+			<h1 class="text-3xl font-bold text-gray-700">{{ $t('组件展示') }}</h1>
 
 			<!-- 按钮组件 -->
 			<div>
-				<h2 class="text-2xl font-semibold mb-2">按钮组件</h2>
-				<p class="text-gray-500 text-sm mb-4">展示各种按钮样式</p>
+				<h2 class="text-2xl font-semibold mb-2">{{ $t('按钮组件') }}</h2>
+				<p class="text-gray-500 text-sm mb-4">{{ $t('展示各种按钮样式') }}</p>
 				<div class="grid grid-cols-2 md:grid-cols-4 gap-2">
 					<ButtonLargeSolid/>
 					<ButtonLargeOutline/>
@@ -32,8 +32,8 @@
 
 			<!-- 输入组件 -->
 			<div>
-				<h2 class="text-2xl font-semibold mb-2">输入组件</h2>
-				<p class="text-gray-500 text-sm mb-4">展示输入框、文本区、文件上传等组件</p>
+				<h2 class="text-2xl font-semibold mb-2">{{ $t('输入组件') }}</h2>
+				<p class="text-gray-500 text-sm mb-4">{{ $t('展示输入框、文本区、文件上传等组件') }}</p>
 				<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 					<InputField/>
 					<TextareaField/>
@@ -43,8 +43,8 @@
 
 			<!-- 开关和复选框 -->
 			<div>
-				<h2 class="text-2xl font-semibold mb-2">开关和复选框</h2>
-				<p class="text-gray-500 text-sm mb-4">展示开关按钮和不同样式的复选框</p>
+				<h2 class="text-2xl font-semibold mb-2">{{ $t('开关和复选框') }}</h2>
+				<p class="text-gray-500 text-sm mb-4">{{ $t('展示开关按钮和不同样式的复选框') }}</p>
 				<div class="grid grid-cols-3 gap-6">
 					<ToggleSwitch/>
 					<CheckboxRoundField/>
@@ -54,39 +54,39 @@
 
 			<!-- 标签组件 -->
 			<div>
-				<h2 class="text-2xl font-semibold mb-2">标签组件</h2>
-				<p class="text-gray-500 text-sm mb-4">展示标签样式</p>
+				<h2 class="text-2xl font-semibold mb-2">{{ $t('标签组件') }}</h2>
+				<p class="text-gray-500 text-sm mb-4">{{ $t('展示标签样式') }}</p>
 				<div class="flex space-x-4">
-					<BadgeSolid>大标签</BadgeSolid>
-					<BadgeOutline>大标签</BadgeOutline>
+					<BadgeSolid>{{ $t('大标签') }}</BadgeSolid>
+					<BadgeOutline>{{ $t('大标签') }}</BadgeOutline>
 				</div>
 			</div>
 
 			<!-- 折叠面板 -->
 			<div>
-				<h2 class="text-2xl font-semibold mb-2">折叠面板</h2>
-				<p class="text-gray-500 text-sm mb-4">展示折叠面板组件</p>
-				<CollapsePanel title="折叠面板标题">
-					<p class="text-gray-600">这是折叠面板的内容。点击标题可以展开或收起内容。</p>
+				<h2 class="text-2xl font-semibold mb-2">{{ $t('折叠面板') }}</h2>
+				<p class="text-gray-500 text-sm mb-4">{{ $t('展示折叠面板组件') }}</p>
+				<CollapsePanel :title="$t('折叠面板标题')">
+					<p class="text-gray-600">{{ $t('这是折叠面板的内容。点击标题可以展开或收起内容。') }}</p>
 				</CollapsePanel>
 			</div>
 
 			<div>
 				<div>
-					<h2 class="text-2xl font-semibold mb-2">基础卡片</h2>
-					<p class="text-gray-500 text-sm mb-4">使用于显示各类内容</p>
-					<BasicCard description="这是一个简单的描述" title="示例标题">
-						<button class="btn-solid btn-solid-primary">点击</button>
+					<h2 class="text-2xl font-semibold mb-2">{{ $t('基础卡片') }}</h2>
+					<p class="text-gray-500 text-sm mb-4">{{ $t('使用于显示各类内容') }}</p>
+					<BasicCard description="这是一个简单的描述" :title="$t('示例标题')">
+						<button class="btn-solid btn-solid-primary">{{ $t('点击') }}</button>
 					</BasicCard>
 				</div>
 				<div class="mt-4">
 					<BasicCard
 						borderColor="red"
 						description="这是一个示例描述"
-						title="示例标题"
+						:title="$t('示例标题')"
 						titleColor="red"
 					>
-						<button class="btn-solid btn-solid-danger">点击</button>
+						<button class="btn-solid btn-solid-danger">{{ $t('点击') }}</button>
 					</BasicCard>
 				</div>
 			</div>

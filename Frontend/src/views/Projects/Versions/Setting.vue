@@ -6,8 +6,8 @@
 
           <div class="grid gap-4 md:grid-cols-2">
             <div class="md:col-span-2">
-              <label class="mb-2 block text-sm font-medium text-slate-700">版本名称 (file_name)</label>
-              <input v-model="form.file_name" type="text" class="field-input" placeholder="输入版本名称" />
+              <label class="mb-2 block text-sm font-medium text-slate-700">{{ $t('版本名称 (file_name)') }}</label>
+              <input v-model="form.file_name" type="text" class="field-input" :placeholder="$t('输入版本名称')" />
             </div>
             <div>
               <label class="mb-2 block text-sm font-medium text-slate-700">Version ID</label>
@@ -23,8 +23,8 @@
             <button class="btn-primary" :disabled="loading" @click="saveVersion">
               {{ loading ? '保存中...' : '保存设置' }}
             </button>
-            <router-link :to="`/aprons/projects/${projectId}/repo`" class="btn-muted">返回版本列表</router-link>
-            <button class="btn-danger" :disabled="loading" @click="deleteVersion">删除版本</button>
+            <router-link :to="`/aprons/projects/${projectId}/repo`" class="btn-muted">{{ $t('返回版本列表') }}</router-link>
+            <button class="btn-danger" :disabled="loading" @click="deleteVersion">{{ $t('删除版本') }}</button>
             <span class="text-sm text-slate-500">{{ notice }}</span>
           </div>
 
@@ -38,7 +38,9 @@
   </Project>
 </template>
 
-<script setup>
+<script setup>import { useI18n } from '@/i18n';
+const { t } = useI18n();
+
 import {onMounted, reactive, ref} from 'vue';
 import {useRoute, useRouter} from 'vue-router';
 import ApiService from '@/services/ApiService.js';
@@ -80,14 +82,14 @@ const fetchVersion = async () => {
     notice.value = '';
   } catch (error) {
     console.error('fetch version failed:', error);
-    notice.value = '加载版本失败';
+    notice.value = t('加载版本失败');
   }
 };
 
 const saveVersion = async () => {
   const fileName = String(form.file_name || '').trim();
   if (!fileName) {
-    notice.value = '版本名称不能为空';
+    notice.value = t('版本名称不能为空');
     return;
   }
   loading.value = true;
@@ -96,17 +98,17 @@ const saveVersion = async () => {
     await ApiService.updateProjectVersion(projectId, versionId, {
       file_name: fileName,
     });
-    notice.value = '版本设置已保存';
+    notice.value = t('版本设置已保存');
   } catch (error) {
     console.error('save version failed:', error);
-    notice.value = error?.response?.data?.detail || '保存失败';
+    notice.value = error?.response?.data?.detail || t('保存失败');
   } finally {
     loading.value = false;
   }
 };
 
 const deleteVersion = async () => {
-  if (!window.confirm('确认删除当前版本？此操作不可撤销。')) {
+  if (!window.confirm(t('确认删除当前版本？此操作不可撤销。'))) {
     return;
   }
   loading.value = true;
@@ -116,7 +118,7 @@ const deleteVersion = async () => {
     await router.push(`/aprons/projects/${projectId}/repo`);
   } catch (error) {
     console.error('delete version failed:', error);
-    notice.value = error?.response?.data?.detail || '删除失败';
+    notice.value = error?.response?.data?.detail || t('删除失败');
   } finally {
     loading.value = false;
   }

@@ -30,22 +30,24 @@
 	</div>
 </template>
 
-<script lang="ts" setup>
-import {ref, onMounted, onBeforeUnmount} from 'vue';
+<script lang="ts" setup>import { useI18n } from '@/i18n';
+const { t } = useI18n();
+
+import {ref, computed, onMounted, onBeforeUnmount} from 'vue';
 import Header from '../../components/Header.vue';
 import Sidebar from '../../components/Sidebar.vue';
 
 const isSidebarOpen = ref(false);
 const isLargeScreen = ref(window.innerWidth >= 768);
 
-const links = [
-	{name: '工作区', url: '/aprons/workplaces'},
-	{name: '节点', url: '/aprons/nodes'},
-	{name: '团队', url: '/aprons/teams'},
-	{name: '设置', url: '/aprons/settings'},
-	{name: '帮助', url: '/aprons/help'},
-	{name: '关于', url: '/aprons/about'},
-];
+const links = computed(() => [
+	{name: t('工作区'), url: '/aprons/workplaces'},
+	{name: t('节点'), url: '/aprons/nodes'},
+	{name: t('团队'), url: '/aprons/teams'},
+	{name: t('设置'), url: '/aprons/settings'},
+	{name: t('帮助'), url: '/aprons/help'},
+	{name: t('关于'), url: '/aprons/about'},
+]);
 
 const toggleSidebar = () => {
 	isSidebarOpen.value = !isSidebarOpen.value;

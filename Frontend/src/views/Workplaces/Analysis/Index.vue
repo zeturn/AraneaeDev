@@ -14,7 +14,7 @@
 		<div class="mx-auto w-full max-w-5xl px-4 pb-10">
 			<div class="bg-white rounded-2xl p-5 md:p-6 workplace-logs space-y-4 overflow-hidden">
 			<div class="flex flex-wrap items-center justify-between gap-3">
-				<h2 class="text-2xl font-semibold">工作区日志记录 Task Records</h2>
+				<h2 class="text-2xl font-semibold">{{ $t('工作区日志记录 Task Records') }}</h2>
 				<div class="text-sm text-gray-500">共 {{ count }} 条</div>
 			</div>
 			<div class="max-h-[68vh] overflow-auto rounded-xl border border-gray-200">
@@ -76,16 +76,16 @@
 						<td class="px-4 py-3 text-sm text-gray-700 whitespace-nowrap">
 							<div class="flex flex-wrap gap-2">
 								<button class="rounded bg-slate-900 px-3 py-1 text-xs text-white" :disabled="!hasOutput(record)" @click="openOutput(record)">
-									查看输出
+									{{ $t('查看输出') }}
 								</button>
 								<button class="rounded border border-slate-300 px-3 py-1 text-xs text-slate-700" :disabled="!record.task_id" @click="openTaskRuns(record.task_id)">
-									历史页面
+									{{ $t('历史页面') }}
 								</button>
 							</div>
 						</td>
 					</tr>
 					<tr v-if="records.length === 0">
-						<td colspan="11" class="px-4 py-6 text-center text-sm text-gray-500">暂无运行记录</td>
+						<td colspan="11" class="px-4 py-6 text-center text-sm text-gray-500">{{ $t('暂无运行记录') }}</td>
 					</tr>
 					</tbody>
 				</table>
@@ -95,9 +95,9 @@
 				<div class="flex items-center justify-between">
 					<div class="text-sm text-slate-700">
 						<span class="font-medium">Run ID:</span> {{ selectedRecord.id || '-' }}
-						<span class="ml-4 font-medium">状态:</span> {{ selectedRecord.task_status || '-' }}
+						<span class="ml-4 font-medium">{{ $t('状态:') }}</span> {{ selectedRecord.task_status || '-' }}
 					</div>
-					<button class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700" @click="closeOutput">关闭</button>
+					<button class="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700" @click="closeOutput">{{ $t('关闭') }}</button>
 				</div>
 				<pre class="max-h-[360px] overflow-auto rounded bg-slate-950 p-4 text-xs text-slate-100 whitespace-pre-wrap">{{ selectedOutput }}</pre>
 			</div>
@@ -132,7 +132,7 @@ export default {
 				return '';
 			}
 			const out = this.selectedRecord.run_output || this.selectedRecord.task_result || '';
-			return typeof out === 'string' && out.trim() !== '' ? out : '暂无输出';
+			return typeof out === 'string' && out.trim() !== '' ? out : this.$t('暂无输出');
 		}
 	},
 	created() {
@@ -158,7 +158,7 @@ export default {
 					this.selectedRecord = next || null;
 				}
 			} catch (error) {
-				console.error('获取工作区日志数据时出错:', error);
+				console.error(this.$t('获取工作区日志数据时出错:'), error);
 			}
 		},
 		hasOutput(record) {

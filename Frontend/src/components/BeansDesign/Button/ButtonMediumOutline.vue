@@ -12,7 +12,7 @@
 <!-- ButtonMediumOutline.vue -->
 <template>
 	<button class="btn-ghost btn-ghost-primary min-w-24 h-12 px-4 text-sm">
-		中按钮
+		{{ $t('中按钮') }}
 	</button>
 </template>
 

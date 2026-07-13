@@ -6,7 +6,7 @@
 					<header class="space-y-2">
 						<p class="text-xs uppercase tracking-wider text-slate-500">Task Settings</p>
 						<h1 class="text-2xl font-semibold text-slate-900">{{ form.name || '任务设置' }}</h1>
-						<p class="text-sm text-slate-500">修改任务名称、命令、队列与触发配置。</p>
+						<p class="text-sm text-slate-500">{{ $t('修改任务名称、命令、队列与触发配置。') }}</p>
 					</header>
 
 					<div class="grid gap-4 md:grid-cols-2">
@@ -22,8 +22,8 @@
 							</div>
 						</div>
 						<div class="md:col-span-2">
-							<label class="mb-2 block text-sm font-medium text-slate-700">任务名称</label>
-							<input v-model="form.name" type="text" class="field-input" placeholder="输入任务名称" />
+							<label class="mb-2 block text-sm font-medium text-slate-700">{{ $t('任务名称') }}</label>
+							<input v-model="form.name" type="text" class="field-input" :placeholder="$t('输入任务名称')" />
 						</div>
 						<template v-if="form.type === 'code'">
 							<div>
@@ -35,8 +35,8 @@
 								<input v-model="form.version_id" type="text" class="field-input" placeholder="version id" />
 							</div>
 							<div class="md:col-span-2">
-								<label class="mb-2 block text-sm font-medium text-slate-700">执行命令</label>
-								<input v-model="form.entry_command" type="text" class="field-input" placeholder="例如: python app.py" />
+								<label class="mb-2 block text-sm font-medium text-slate-700">{{ $t('执行命令') }}</label>
+								<input v-model="form.entry_command" type="text" class="field-input" :placeholder="$t('例如: python app.py')" />
 							</div>
 						</template>
 						<template v-else>
@@ -75,7 +75,9 @@
 	</Workplace>
 </template>
 
-<script setup>
+<script setup>import { useI18n } from '@/i18n';
+const { t } = useI18n();
+
 import {onMounted, reactive, ref} from 'vue';
 import {useRoute, useRouter} from 'vue-router';
 import ApiService from '@/services/ApiService.js';
@@ -84,7 +86,7 @@ import Workplace from '@/views/Workplaces/Workplace.vue';
 import Task from '@/views/Workplaces/Tasks/Tasks.vue';
 
 const taskTypeTabs = [
-	{value: 'code', label: '上传爬虫'},
+	{value: 'code', label: t('上传爬虫')},
 	{value: 'rss', label: 'RSS'},
 	{value: 'api', label: 'JSON API'},
 ];
@@ -125,24 +127,24 @@ const fetchTask = async () => {
 		notice.value = '';
 	} catch (error) {
 		console.error('fetch task failed:', error);
-		notice.value = '加载任务信息失败';
+		notice.value = t('加载任务信息失败');
 	}
 };
 
 const saveTask = async () => {
 	if (!String(form.name || '').trim()) {
-		notice.value = '任务名称不能为空';
+		notice.value = t('任务名称不能为空');
 		return;
 	}
 	const taskType = String(form.type || 'code').trim();
 	if (taskType === 'code') {
 		if (!String(form.entry_command || '').trim()) {
-			notice.value = '执行命令不能为空';
+			notice.value = t('执行命令不能为空');
 			return;
 		}
 	} else {
 		if (!String(form.source_url || '').trim()) {
-			notice.value = '源地址不能为空';
+			notice.value = t('源地址不能为空');
 			return;
 		}
 	}
@@ -163,10 +165,10 @@ const saveTask = async () => {
 			payload.source_url = String(form.source_url).trim();
 		}
 		await ApiService.updateTask(taskId(), payload);
-		notice.value = '任务设置已保存';
+		notice.value = t('任务设置已保存');
 	} catch (error) {
 		console.error('update task failed:', error);
-		notice.value = error?.response?.data?.detail || '保存失败';
+		notice.value = error?.response?.data?.detail || t('保存失败');
 	} finally {
 		loading.value = false;
 	}
@@ -178,17 +180,17 @@ const runTaskOnce = async () => {
 	try {
 		const response = await ApiService.triggerTask(taskId());
 		const runId = response?.data?.id;
-		notice.value = runId ? `任务已触发，运行ID: ${runId}` : '任务已触发';
+		notice.value = runId ? `任务已触发，运行ID: ${runId}` : t('任务已触发');
 	} catch (error) {
 		console.error('trigger task failed:', error);
-		notice.value = error?.response?.data?.detail || '触发失败';
+		notice.value = error?.response?.data?.detail || t('触发失败');
 	} finally {
 		loading.value = false;
 	}
 };
 
 const deleteTask = async () => {
-	if (!window.confirm('确认删除当前任务？此操作不可撤销。')) {
+	if (!window.confirm(t('确认删除当前任务？此操作不可撤销。'))) {
 		return;
 	}
 	loading.value = true;
@@ -198,7 +200,7 @@ const deleteTask = async () => {
 		await router.push(`/aprons/workplaces/${workplaceId()}/tasks`);
 	} catch (error) {
 		console.error('delete task failed:', error);
-		notice.value = error?.response?.data?.detail || '删除失败';
+		notice.value = error?.response?.data?.detail || t('删除失败');
 	} finally {
 		loading.value = false;
 	}

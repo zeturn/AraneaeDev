@@ -7,14 +7,14 @@
   <div class="h-screen bg-gradient-to-r from-blue-100 via-purple-100 to-pink-100 flex justify-center items-center">
     <div class="text-center">
       <div v-if="loading">
-        <h1 class="text-2xl font-semibold text-gray-700 animate-pulse">Logging out...</h1>
+        <h1 class="text-2xl font-semibold text-gray-700 animate-pulse">{{ $t('Logging out...') }}</h1>
       </div>
       <div v-else>
-        <h1 class="text-3xl font-bold text-gray-800 mb-4">You have been logged out.</h1>
+        <h1 class="text-3xl font-bold text-gray-800 mb-4">{{ $t('You have been logged out.') }}</h1>
         <router-link
             class="text-white bg-blue-500 hover:bg-blue-600 px-4 py-2 rounded shadow-md transition duration-200"
             to="/login">
-          Go to Login
+          {{ $t('Go to Login') }}
         </router-link>
       </div>
     </div>

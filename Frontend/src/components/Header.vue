@@ -35,54 +35,58 @@
         </div>
       </div>
 
-      <div class="relative">
+      <div class="relative flex items-center gap-3">
+        <LocaleSwitcher/>
         <AvatarToggle/>
       </div>
     </div>
   </header>
 </template>
 
-<script lang="ts" setup>
+<script lang="ts" setup>import { useI18n } from '@/i18n';
+const { t } = useI18n();
+
 import {computed} from 'vue';
 import {useRoute} from 'vue-router';
 import AvatarToggle from "@/components/AvatarToggle.vue";
+import LocaleSwitcher from "@/components/LocaleSwitcher.vue";
 
 const route = useRoute();
 
-const routeLabelMap: Record<string, string> = {
-  aprons: '控制台',
-  workplaces: '工作区',
-  projects: '项目',
-  nodes: '节点',
-  teams: '团队',
-  settings: '设置',
-  help: '帮助',
-  about: '关于',
-  favorites: '收藏',
-  tasks: '任务',
-  schedule: '计划',
-  schedules: '计划',
-  repo: '版本仓库',
-  versions: '版本',
-  distribute: '分发',
-  order: '分发任务',
-  create: '创建',
-  edit: '编辑',
-  AnalyticsAndLogging: '分析日志',
-  profile: '个人中心',
-};
+const routeLabelMap = computed<Record<string, string>>(() => ({
+  aprons: t('控制台'),
+  workplaces: t('工作区'),
+  projects: t('项目'),
+  nodes: t('节点'),
+  teams: t('团队'),
+  settings: t('设置'),
+  help: t('帮助'),
+  about: t('关于'),
+  favorites: t('收藏'),
+  tasks: t('任务'),
+  schedule: t('计划'),
+  schedules: t('计划'),
+  repo: t('版本仓库'),
+  versions: t('版本'),
+  distribute: t('分发'),
+  order: t('分发任务'),
+  create: t('创建'),
+  edit: t('编辑'),
+  AnalyticsAndLogging: t('分析日志'),
+  profile: t('个人中心'),
+}));
 
-const paramPrefixMap: Record<string, string> = {
+const paramPrefixMap = computed<Record<string, string>>(() => ({
   id: 'ID',
-  taskId: '任务',
-  versionId: '版本',
-  projectId: '项目',
-  teamId: '团队',
-  nodeId: '节点',
-};
+  taskId: t('任务'),
+  versionId: t('版本'),
+  projectId: t('项目'),
+  teamId: t('团队'),
+  nodeId: t('节点'),
+}));
 
 const formatParamLabel = (key: string, value: string) => {
-  const prefix = paramPrefixMap[key] || key;
+  const prefix = paramPrefixMap.value[key] || key;
   const shortValue = value.length > 14 ? `${value.slice(0, 6)}...${value.slice(-4)}` : value;
   return `${prefix} ${shortValue}`;
 };
@@ -101,7 +105,7 @@ const breadcrumbItems = computed(() => {
     const matchedParam = paramEntries.find(([, value]) => value === segment);
     const label = matchedParam
       ? formatParamLabel(matchedParam[0], segment)
-      : (routeLabelMap[segment] || decodeURIComponent(segment));
+      : (routeLabelMap.value[segment] || decodeURIComponent(segment));
 
     return {
       label,

@@ -188,7 +188,9 @@
 	</Workplace>
 </template>
 
-<script setup>
+<script setup>import { useI18n } from '@/i18n';
+const { t } = useI18n();
+
 import {ref, reactive, computed, onMounted} from 'vue';
 import {useRoute} from 'vue-router';
 import ApiService from '@/services/ApiService.js';
@@ -206,8 +208,8 @@ const route = useRoute();
 const workplaceId = computed(() => route.params.id || 'default-id');
 
 const tabsList = computed(() => [
-	{name: '程序计划', url: `/aprons/workplaces/${workplaceId.value}/schedules`},
-	{name: '创建计划', url: `/aprons/workplaces/${workplaceId.value}/schedules/create`}
+	{name: t('程序计划'), url: `/aprons/workplaces/${workplaceId.value}/schedules`},
+	{name: t('创建计划'), url: `/aprons/workplaces/${workplaceId.value}/schedules/create`}
 ]);
 
 const schedules = ref([]);

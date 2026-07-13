@@ -12,7 +12,7 @@
 <template>
 	<a :href="href" :style="linkStyles" @blur="blurEffect" @focus="focusEffect" @mouseout="normalEffect"
 	   @mouseover="hoverEffect">
-		<slot>链接文本</slot>
+		<slot>{{ $t('链接文本') }}</slot>
 	</a>
 </template>
 

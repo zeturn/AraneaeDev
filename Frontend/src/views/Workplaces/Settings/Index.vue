@@ -10,20 +10,20 @@
 				<header class="space-y-2">
 					<p class="text-xs uppercase tracking-wider text-slate-500">Workplace Settings</p>
 					<h1 class="text-2xl font-semibold text-slate-900">{{ form.name || '工作区设置' }}</h1>
-					<p class="text-sm text-slate-500">重命名、修改描述与状态，或删除该工作区。</p>
+					<p class="text-sm text-slate-500">{{ $t('重命名、修改描述与状态，或删除该工作区。') }}</p>
 				</header>
 
 				<div class="grid gap-4 md:grid-cols-2">
 					<div class="md:col-span-2">
-						<label class="mb-2 block text-sm font-medium text-slate-700">工作区名称</label>
-						<input v-model="form.name" type="text" class="field-input" placeholder="输入新名称" />
+						<label class="mb-2 block text-sm font-medium text-slate-700">{{ $t('工作区名称') }}</label>
+						<input v-model="form.name" type="text" class="field-input" :placeholder="$t('输入新名称')" />
 					</div>
 					<div class="md:col-span-2">
-						<label class="mb-2 block text-sm font-medium text-slate-700">描述</label>
-						<textarea v-model="form.description" rows="4" class="field-input" placeholder="输入工作区描述"></textarea>
+						<label class="mb-2 block text-sm font-medium text-slate-700">{{ $t('描述') }}</label>
+						<textarea v-model="form.description" rows="4" class="field-input" :placeholder="$t('输入工作区描述')"></textarea>
 					</div>
 					<div class="md:col-span-2">
-						<label class="mb-2 block text-sm font-medium text-slate-700">状态</label>
+						<label class="mb-2 block text-sm font-medium text-slate-700">{{ $t('状态') }}</label>
 						<select v-model="form.status" class="field-input">
 							<option value="active">active</option>
 							<option value="inactive">inactive</option>
@@ -36,7 +36,7 @@
 						{{ loading ? '保存中...' : '保存设置' }}
 					</button>
 					<button class="btn-danger" :disabled="loading" @click="confirmDelete">
-						删除工作区
+						{{ $t('删除工作区') }}
 					</button>
 					<span class="text-sm text-slate-500 settings-notice">{{ notice }}</span>
 				</div>
@@ -50,7 +50,9 @@
 	</Workplace>
 </template>
 
-<script setup>
+<script setup>import { useI18n } from '@/i18n';
+const { t } = useI18n();
+
 import {onMounted, reactive, ref} from 'vue';
 import {useRoute, useRouter} from 'vue-router';
 import ApiService from '@/services/ApiService.js';
@@ -94,14 +96,14 @@ const fetchWorkplace = async () => {
 		updatedAt.value = data.updated_at || '';
 	} catch (error) {
 		console.error('Error fetching workplace data:', error);
-		notice.value = '加载工作区信息失败';
+		notice.value = t('加载工作区信息失败');
 	}
 };
 
 const saveWorkplace = async () => {
 	const name = String(form.name || '').trim();
 	if (!name) {
-		notice.value = '名称不能为空';
+		notice.value = t('名称不能为空');
 		return;
 	}
 	loading.value = true;
@@ -114,18 +116,18 @@ const saveWorkplace = async () => {
 			status: form.status,
 			enabled,
 		});
-		notice.value = '工作区设置已保存';
+		notice.value = t('工作区设置已保存');
 		updatedAt.value = new Date().toISOString();
 	} catch (error) {
 		console.error('Error updating workplace:', error);
-		notice.value = error?.response?.data?.detail || '保存失败';
+		notice.value = error?.response?.data?.detail || t('保存失败');
 	} finally {
 		loading.value = false;
 	}
 };
 
 const confirmDelete = async () => {
-	if (!window.confirm('确认删除该工作区？此操作不可撤销。')) {
+	if (!window.confirm(t('确认删除该工作区？此操作不可撤销。'))) {
 		return;
 	}
 	loading.value = true;
@@ -135,7 +137,7 @@ const confirmDelete = async () => {
 		await router.push('/aprons/workplaces');
 	} catch (error) {
 		console.error('Error deleting workplace:', error);
-		notice.value = error?.response?.data?.detail || '删除失败';
+		notice.value = error?.response?.data?.detail || t('删除失败');
 	} finally {
 		loading.value = false;
 	}

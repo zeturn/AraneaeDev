@@ -11,28 +11,28 @@
 	<Tasks>
 		<div class="p-6">
 			<!-- Loading state -->
-			<div v-if="loading" class="text-center py-12 text-gray-400">加载中...</div>
+			<div v-if="loading" class="text-center py-12 text-gray-400">{{ $t('加载中...') }}</div>
 
 			<!-- Empty state -->
 			<div v-else-if="tasks.length === 0" class="text-center py-12 text-gray-400">
-				暂无任务。
+				{{ $t('暂无任务。') }}
 			</div>
 
 			<!-- Task list -->
 			<div v-else>
 				<!-- Sort controls -->
 				<div class="flex items-center mb-4 space-x-2">
-					<label for="sort" class="text-sm font-medium text-gray-600">排序：</label>
+					<label for="sort" class="text-sm font-medium text-gray-600">{{ $t('排序：') }}</label>
 					<select
 						id="sort"
 						v-model="sortKey"
 						class="field-input w-auto px-2 py-1"
 					>
-						<option value="name">名称</option>
-						<option value="mode">模式</option>
-						<option value="created_at">创建时间</option>
-						<option value="updated_at">更新时间</option>
-						<option value="enabled">状态</option>
+						<option value="name">{{ $t('名称') }}</option>
+						<option value="mode">{{ $t('模式') }}</option>
+						<option value="created_at">{{ $t('创建时间') }}</option>
+						<option value="updated_at">{{ $t('更新时间') }}</option>
+						<option value="enabled">{{ $t('状态') }}</option>
 					</select>
 					<button
 						class="btn-muted px-2 py-1 text-sm"
@@ -110,7 +110,7 @@ export default {
 			});
 		},
 		sortOrderLabel() {
-			return this.sortOrder === 'asc' ? '升序' : '降序';
+			return this.sortOrder === 'asc' ? '升序' : this.$t('降序');
 		},
 	},
 	methods: {
@@ -123,7 +123,7 @@ export default {
 				this.tasks = response.data.results || response.data.tasks || response.data || [];
 			} catch (e) {
 				console.error('Error fetching tasks:', e);
-				this.error = '获取任务列表失败';
+				this.error = this.$t('获取任务列表失败');
 			} finally {
 				this.loading = false;
 			}

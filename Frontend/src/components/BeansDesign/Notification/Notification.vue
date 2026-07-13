@@ -22,7 +22,7 @@
 			<div class="font-bold text-base">{{ title }}</div>
 			<div class="text-sm mt-1">{{ message }}</div>
 		</div>
-		<button aria-label="关闭" class="btn-muted ml-2 px-2 py-1 text-lg" @click="close">&times;</button>
+		<button :aria-label="$t('关闭')" class="btn-muted ml-2 px-2 py-1 text-lg" @click="close">&times;</button>
 	</div>
 </template>
 

@@ -20,7 +20,9 @@
 </template>
 
 
-<script lang="ts" setup>
+<script lang="ts" setup>import { useI18n } from '@/i18n';
+const { t } = useI18n();
+
 import {computed, defineComponent, onBeforeUnmount, onMounted, ref} from 'vue';
 import Header from '../../components/Header.vue';
 import Sidebar from '../../components/Sidebar.vue';
@@ -46,13 +48,13 @@ const links = computed(() => {
 	let route = useRoute();
 	const id = route.params.id || 'default-id';  // 如果没有ID，使用默认值
 	return [
-		{name: '返回', url: `/aprons/workplaces`},
-		{name: '概览', url: `/aprons/workplaces/${id}`},
-    {name: '项目', url: `/aprons/workplaces/${id}/projects`},
-    {name: '任务', url: `/aprons/workplaces/${id}/tasks`},
-    {name: '计划', url: `/aprons/workplaces/${id}/schedules`},
-    {name: '分析和日志', url: `/aprons/workplaces/${id}/AnalyticsAndLogging`},
-    {name: '设置', url: `/aprons/workplaces/${id}/settings`},
+		{name: t('返回'), url: `/aprons/workplaces`},
+		{name: t('概览'), url: `/aprons/workplaces/${id}`},
+    {name: t('项目'), url: `/aprons/workplaces/${id}/projects`},
+    {name: t('任务'), url: `/aprons/workplaces/${id}/tasks`},
+    {name: t('计划'), url: `/aprons/workplaces/${id}/schedules`},
+    {name: t('分析和日志'), url: `/aprons/workplaces/${id}/AnalyticsAndLogging`},
+    {name: t('设置'), url: `/aprons/workplaces/${id}/settings`},
 	];
 });
 
@@ -60,9 +62,9 @@ const right_links = computed(() => {
   let route = useRoute();
   const id = route.params.id || 'default-id';  // 如果没有ID，使用默认值
   return [
-    {name: '概览', url: `/aprons/workplaces`},
-    {name: '个人资料', url: `/aprons/profile`},
-    {name: '注销', url: `/logout`},
+    {name: t('概览'), url: `/aprons/workplaces`},
+    {name: t('个人资料'), url: `/aprons/profile`},
+    {name: t('注销'), url: `/logout`},
 
   ];
 });

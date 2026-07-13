@@ -25,7 +25,9 @@
 </template>
 
 
-<script lang="ts" setup>
+<script lang="ts" setup>import { useI18n } from '@/i18n';
+const { t } = useI18n();
+
 import {computed, defineComponent, onBeforeUnmount, onMounted, ref} from 'vue';
 import Header from '../../components/Header.vue';
 import Sidebar from '../../components/Sidebar.vue';
@@ -51,9 +53,9 @@ const links = computed(() => {
 	let route = useRoute();
 	const id = route.params.id || 'default-id';  // 如果没有ID，使用默认值
 	return [
-		{name: '返回', url: `/aprons/nodes`},
-		{name: '概览', url: `/aprons/nodes/${id}`},
-		{name: '设置', url: `/aprons/nodes/${id}/settings`},
+		{name: t('返回'), url: `/aprons/nodes`},
+		{name: t('概览'), url: `/aprons/nodes/${id}`},
+		{name: t('设置'), url: `/aprons/nodes/${id}/settings`},
 	];
 });
 
@@ -61,9 +63,9 @@ const right_links = computed(() => {
 	let route = useRoute();
 	const id = route.params.id || 'default-id';  // 如果没有ID，使用默认值
 	return [
-		{name: '概览', url: `/aprons/workplaces`},
-		{name: '个人资料', url: `/aprons/profile`},
-		{name: '注销', url: `/logout`},
+		{name: t('概览'), url: `/aprons/workplaces`},
+		{name: t('个人资料'), url: `/aprons/profile`},
+		{name: t('注销'), url: `/logout`},
 
 	];
 });

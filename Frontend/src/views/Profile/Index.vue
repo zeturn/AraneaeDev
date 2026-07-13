@@ -2,8 +2,8 @@
   <Aprons>
     <div class="mx-auto max-w-5xl space-y-6 p-1 md:p-2">
       <header class="rounded-2xl bg-[#F8FAFC] p-6">
-        <h1 class="text-2xl font-semibold text-slate-900">个人信息</h1>
-        <p class="mt-2 text-sm text-slate-500">查看账号详情、组织归属和认证状态。</p>
+        <h1 class="text-2xl font-semibold text-slate-900">{{ $t('个人信息') }}</h1>
+        <p class="mt-2 text-sm text-slate-500">{{ $t('查看账号详情、组织归属和认证状态。') }}</p>
       </header>
 
       <p
@@ -31,43 +31,43 @@
             <div
               class="absolute inset-0 flex items-center justify-center rounded-full text-sm font-semibold text-white opacity-0 transition duration-300 ease-in-out group-hover:bg-slate-900/50 group-hover:opacity-100"
             >
-              修改头像
+              {{ $t('修改头像') }}
             </div>
           </div>
 
           <p class="text-center text-lg font-semibold text-slate-900">{{ displayName }}</p>
           <p class="mt-1 text-center text-sm text-slate-500">角色: {{ display(profile.role) }}</p>
 
-          <button class="btn-primary mt-4 w-full py-2" @click="goToProfileAvatar">管理头像</button>
+          <button class="btn-primary mt-4 w-full py-2" @click="goToProfileAvatar">{{ $t('管理头像') }}</button>
         </article>
 
         <article class="rounded-2xl bg-[#F8FAFC] p-6 lg:col-span-2">
-          <h2 class="text-lg font-semibold text-slate-900">账号详情</h2>
+          <h2 class="text-lg font-semibold text-slate-900">{{ $t('账号详情') }}</h2>
           <dl class="mt-4 grid gap-4 sm:grid-cols-2">
             <div class="rounded-xl bg-slate-100 p-3">
-              <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">用户 ID</dt>
+              <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">{{ $t('用户 ID') }}</dt>
               <dd class="mt-1 break-all text-sm font-semibold text-slate-900">
                 {{ display(profile.id || tokenMeta.uid || tokenMeta.subject) }}
               </dd>
             </div>
             <div class="rounded-xl bg-slate-100 p-3">
-              <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">姓名</dt>
+              <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">{{ $t('姓名') }}</dt>
               <dd class="mt-1 text-sm font-semibold text-slate-900">{{ display(profile.name) }}</dd>
             </div>
             <div class="rounded-xl bg-slate-100 p-3">
-              <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">用户名</dt>
+              <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">{{ $t('用户名') }}</dt>
               <dd class="mt-1 text-sm font-semibold text-slate-900">{{ display(profile.username) }}</dd>
             </div>
             <div class="rounded-xl bg-slate-100 p-3">
-              <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">角色</dt>
+              <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">{{ $t('角色') }}</dt>
               <dd class="mt-1 text-sm font-semibold text-slate-900">{{ display(profile.role) }}</dd>
             </div>
             <div class="rounded-xl bg-slate-100 p-3">
-              <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">邮箱</dt>
+              <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">{{ $t('邮箱') }}</dt>
               <dd class="mt-1 break-all text-sm font-semibold text-slate-900">{{ display(profile.email) }}</dd>
             </div>
             <div class="rounded-xl bg-slate-100 p-3 sm:col-span-2">
-              <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">账号创建时间</dt>
+              <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">{{ $t('账号创建时间') }}</dt>
               <dd class="mt-1 text-sm font-semibold text-slate-900">{{ formatDateTime(profile.created_at) }}</dd>
             </div>
           </dl>
@@ -76,43 +76,43 @@
 
       <section class="grid gap-6 md:grid-cols-2">
         <article class="rounded-2xl bg-[#F8FAFC] p-6">
-          <h2 class="text-lg font-semibold text-slate-900">组织归属</h2>
+          <h2 class="text-lg font-semibold text-slate-900">{{ $t('组织归属') }}</h2>
           <div class="mt-4 grid grid-cols-2 gap-3">
             <div class="rounded-xl bg-slate-100 p-3">
-              <p class="text-xs uppercase tracking-wide text-slate-500">我的团队</p>
+              <p class="text-xs uppercase tracking-wide text-slate-500">{{ $t('我的团队') }}</p>
               <p class="mt-1 text-xl font-semibold text-slate-900">{{ teamCount }}</p>
             </div>
             <div class="rounded-xl bg-slate-100 p-3">
-              <p class="text-xs uppercase tracking-wide text-slate-500">我的工作区</p>
+              <p class="text-xs uppercase tracking-wide text-slate-500">{{ $t('我的工作区') }}</p>
               <p class="mt-1 text-xl font-semibold text-slate-900">{{ workplaceCount }}</p>
             </div>
           </div>
 
           <div class="mt-4 space-y-3">
             <div>
-              <p class="text-xs font-medium uppercase tracking-wide text-slate-500">团队预览</p>
+              <p class="text-xs font-medium uppercase tracking-wide text-slate-500">{{ $t('团队预览') }}</p>
               <ul v-if="teamPreview.length" class="mt-2 space-y-1 text-sm text-slate-700">
                 <li v-for="team in teamPreview" :key="`team-${team.id || team.name}`">
                   {{ team.name || `团队 ${team.id}` }}
                 </li>
               </ul>
-              <p v-else class="mt-2 text-sm text-slate-500">暂无团队信息</p>
+              <p v-else class="mt-2 text-sm text-slate-500">{{ $t('暂无团队信息') }}</p>
             </div>
 
             <div>
-              <p class="text-xs font-medium uppercase tracking-wide text-slate-500">工作区预览</p>
+              <p class="text-xs font-medium uppercase tracking-wide text-slate-500">{{ $t('工作区预览') }}</p>
               <ul v-if="workplacePreview.length" class="mt-2 space-y-1 text-sm text-slate-700">
                 <li v-for="workplace in workplacePreview" :key="`workplace-${workplace.id || workplace.name}`">
                   {{ workplace.name || `工作区 ${workplace.id}` }}
                 </li>
               </ul>
-              <p v-else class="mt-2 text-sm text-slate-500">暂无工作区信息</p>
+              <p v-else class="mt-2 text-sm text-slate-500">{{ $t('暂无工作区信息') }}</p>
             </div>
           </div>
         </article>
 
         <article class="rounded-2xl bg-[#F8FAFC] p-6">
-          <h2 class="text-lg font-semibold text-slate-900">认证信息</h2>
+          <h2 class="text-lg font-semibold text-slate-900">{{ $t('认证信息') }}</h2>
           <dl class="mt-4 space-y-3 text-sm">
             <div>
               <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">Subject</dt>
@@ -127,18 +127,18 @@
               <dd class="mt-1 break-all font-semibold text-slate-900">{{ display(tokenMeta.scope) }}</dd>
             </div>
             <div>
-              <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">签发时间</dt>
+              <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">{{ $t('签发时间') }}</dt>
               <dd class="mt-1 font-semibold text-slate-900">{{ formatUnixTimestamp(tokenMeta.issuedAt) }}</dd>
             </div>
             <div>
-              <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">过期时间</dt>
+              <dt class="text-xs font-medium uppercase tracking-wide text-slate-500">{{ $t('过期时间') }}</dt>
               <dd class="mt-1 font-semibold text-slate-900">{{ formatUnixTimestamp(tokenMeta.expiresAt) }}</dd>
             </div>
           </dl>
         </article>
       </section>
 
-      <p v-if="isLoading" class="text-center text-sm text-slate-500">正在加载用户资料...</p>
+      <p v-if="isLoading" class="text-center text-sm text-slate-500">{{ $t('正在加载用户资料...') }}</p>
     </div>
   </Aprons>
 </template>
@@ -294,7 +294,7 @@ export default {
         const response = await ApiService.getProfile();
         const normalized = normalizeProfile(response?.data);
         if (!normalized) {
-          this.errorMessage = '未获取到完整资料，已展示当前可用信息。';
+          this.errorMessage = this.$t('未获取到完整资料，已展示当前可用信息。');
           return;
         }
 
@@ -312,7 +312,7 @@ export default {
         this.avatarUrl = pickFirstValue(normalized.avatar, normalized.avatar_url, this.avatarUrl) || null;
       } catch (error) {
         console.error('Error fetching profile:', error);
-        this.errorMessage = '资料接口不可用，已回退到本地认证信息。';
+        this.errorMessage = this.$t('资料接口不可用，已回退到本地认证信息。');
       } finally {
         this.isLoading = false;
       }

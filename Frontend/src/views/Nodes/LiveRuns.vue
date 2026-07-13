@@ -3,8 +3,8 @@
 		<div class="space-y-5">
 			<div class="flex flex-wrap items-center justify-between gap-3">
 				<div>
-					<h1 class="text-2xl font-semibold text-slate-800">节点进行中任务</h1>
-					<p class="text-sm text-slate-500">实时查看所有节点当前 queued/running 的任务。</p>
+					<h1 class="text-2xl font-semibold text-slate-800">{{ $t('节点进行中任务') }}</h1>
+					<p class="text-sm text-slate-500">{{ $t('实时查看所有节点当前 queued/running 的任务。') }}</p>
 				</div>
 				<div class="flex items-center gap-2">
 					<span class="text-xs text-slate-500">最后刷新: {{ lastUpdatedText }}</span>
@@ -19,11 +19,11 @@
 			</div>
 
 			<div v-if="loading && runs.length === 0" class="rounded-lg bg-slate-50 p-8 text-center text-sm text-slate-500">
-				正在加载节点运行任务...
+				{{ $t('正在加载节点运行任务...') }}
 			</div>
 
 			<div v-else-if="runs.length === 0" class="rounded-lg bg-slate-50 p-8 text-center text-sm text-slate-500">
-				当前没有进行中的任务。
+				{{ $t('当前没有进行中的任务。') }}
 			</div>
 
 			<div v-else class="grid gap-4 lg:grid-cols-[2fr,3fr]">
@@ -52,19 +52,19 @@
 				<div class="space-y-3">
 					<div class="rounded-xl bg-slate-50 p-4 text-sm text-slate-700">
 						<div class="grid gap-2 md:grid-cols-2">
-							<p><span class="font-medium">节点:</span> {{ selectedRun?.node_name || '-' }}</p>
-							<p><span class="font-medium">状态:</span> {{ selectedRun?.status || '-' }}</p>
-							<p><span class="font-medium">任务名:</span> {{ selectedRun?.task_name || '-' }}</p>
-							<p><span class="font-medium">任务 ID:</span> {{ selectedRun?.task_id || '-' }}</p>
+							<p><span class="font-medium">{{ $t('节点:') }}</span> {{ selectedRun?.node_name || '-' }}</p>
+							<p><span class="font-medium">{{ $t('状态:') }}</span> {{ selectedRun?.status || '-' }}</p>
+							<p><span class="font-medium">{{ $t('任务名:') }}</span> {{ selectedRun?.task_name || '-' }}</p>
+							<p><span class="font-medium">{{ $t('任务 ID:') }}</span> {{ selectedRun?.task_id || '-' }}</p>
 							<p><span class="font-medium">Run ID:</span> {{ selectedRun?.id || '-' }}</p>
-							<p><span class="font-medium">队列:</span> {{ selectedRun?.node_queue || '-' }}</p>
-							<p><span class="font-medium">触发:</span> {{ selectedRun?.trigger_source || '-' }}</p>
-							<p><span class="font-medium">开始:</span> {{ formatDate(selectedRun?.started_at) }}</p>
+							<p><span class="font-medium">{{ $t('队列:') }}</span> {{ selectedRun?.node_queue || '-' }}</p>
+							<p><span class="font-medium">{{ $t('触发:') }}</span> {{ selectedRun?.trigger_source || '-' }}</p>
+							<p><span class="font-medium">{{ $t('开始:') }}</span> {{ formatDate(selectedRun?.started_at) }}</p>
 						</div>
 					</div>
 
 					<div>
-						<p class="mb-2 text-sm font-medium text-slate-700">终端输出（实时）</p>
+						<p class="mb-2 text-sm font-medium text-slate-700">{{ $t('终端输出（实时）') }}</p>
 						<pre class="min-h-[340px] overflow-auto rounded-xl bg-slate-950 p-4 text-xs text-slate-100 whitespace-pre-wrap">{{ selectedRunOutput }}</pre>
 					</div>
 				</div>
@@ -73,7 +73,9 @@
 	</Aprons>
 </template>
 
-<script setup>
+<script setup>import { useI18n } from '@/i18n';
+const { t } = useI18n();
+
 import {computed, onBeforeUnmount, onMounted, ref} from 'vue';
 import Aprons from '@/views/Aprons/Aprons.vue';
 import ApiService from '@/services/ApiService';
@@ -91,7 +93,7 @@ const selectedRun = computed(() => runs.value.find(item => item.id === selectedR
 const selectedRunOutput = computed(() => {
 	const out = selectedRun.value?.output;
 	if (typeof out !== 'string' || out.trim() === '') {
-		return '暂无输出';
+		return t('暂无输出');
 	}
 	return out;
 });
@@ -136,7 +138,7 @@ async function fetchRuns() {
 			selectedRunId.value = list[0]?.id || '';
 		}
 	} catch (err) {
-		error.value = err?.response?.data?.message || err?.message || '加载进行中任务失败';
+		error.value = err?.response?.data?.message || err?.message || t('加载进行中任务失败');
 	} finally {
 		loading.value = false;
 	}

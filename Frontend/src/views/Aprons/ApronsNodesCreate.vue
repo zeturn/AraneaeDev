@@ -9,7 +9,9 @@
   - is strictly prohibited unless prior written permission is obtained.
   -->
 
-<script lang="ts" setup>
+<script lang="ts" setup>import { useI18n } from '@/i18n';
+const { t } = useI18n();
+
 import {onMounted, ref} from "vue";
 import {useRouter} from "vue-router";
 import Aprons from "@/views/Aprons/Aprons.vue";
@@ -56,7 +58,7 @@ const discoverNodes = async (scope: 'local' | 'custom' | 'domain' = 'local') => 
 		const params: Record<string, string> = {scope};
 		if (scope === 'custom') {
 			if (!customCidr.value.trim()) {
-				discoverError.value = "请输入 CIDR 或单个 IP，例如 192.168.1.0/24 或 127.0.0.1";
+				discoverError.value = t("请输入 CIDR 或单个 IP，例如 192.168.1.0/24 或 127.0.0.1");
 				discoverLoading.value = false;
 				return;
 			}
@@ -64,7 +66,7 @@ const discoverNodes = async (scope: 'local' | 'custom' | 'domain' = 'local') => 
 		}
 		if (scope === 'domain') {
 			if (!domainTarget.value.trim()) {
-				discoverError.value = "请输入域名或主机名，例如 worker-1.local";
+				discoverError.value = t("请输入域名或主机名，例如 worker-1.local");
 				discoverLoading.value = false;
 				return;
 			}
@@ -84,11 +86,11 @@ const discoverNodes = async (scope: 'local' | 'custom' | 'domain' = 'local') => 
 		}
 		if (!detail) {
 			if (status === 401) {
-				detail = '登录失效或未登录，请重新登录后重试。';
+				detail = t('登录失效或未登录，请重新登录后重试。');
 			} else if (status === 403) {
-				detail = '权限不足：仅 admin/operator 可扫描节点。';
+				detail = t('权限不足：仅 admin/operator 可扫描节点。');
 			} else {
-				detail = '扫描失败，请稍后重试';
+				detail = t('扫描失败，请稍后重试');
 			}
 		}
 		discoverError.value = detail;
@@ -99,7 +101,7 @@ const discoverNodes = async (scope: 'local' | 'custom' | 'domain' = 'local') => 
 // 处理节点创建
 const createNode = async () => {
 	if (!nodeIp.value || !nodeName.value || !nodePairKey.value.trim()) {
-		alert("请填写完整的节点信息！");
+		alert(t("请填写完整的节点信息！"));
 		return;
 	}
 
@@ -109,8 +111,8 @@ const createNode = async () => {
 		const newId = response.data.id; // 假设返回的数据中包含新节点的 ID
 		EventBus.emit('notify', {
 			type: 'success',
-			title: '创建成功',
-			message: '节点已成功注册'
+			title: t('创建成功'),
+			message: t('节点已成功注册')
 		});
 		// 跳转回节点列表页面
 		await router.push({name: 'node', params: {id: newId}});
@@ -118,8 +120,8 @@ const createNode = async () => {
 		console.error("Failed to create node:", error);
 		EventBus.emit('notify', {
 			type: 'error',
-			title: '创建失败',
-			message: '节点注册失败'
+			title: t('创建失败'),
+			message: t('节点注册失败')
 		});
 	}
 };
@@ -133,12 +135,12 @@ onMounted(() => {
 	<Aprons>
 		<div class="container">
 			<div class="flex flex-row items-center mb-6">
-				<h1 class="text-3xl font-semibold text-gray-500">创建节点</h1>
+				<h1 class="text-3xl font-semibold text-gray-500">{{ $t('创建节点') }}</h1>
 				<RouterLink
 					class="ml-auto text-blue-500 hover:underline text-base"
 					to="/aprons/nodes"
 				>
-					返回节点列表
+					{{ $t('返回节点列表') }}
 				</RouterLink>
 			</div>
 
@@ -151,13 +153,13 @@ onMounted(() => {
 							:disabled="discoverLoading"
 							@click="discoverNodes('local')"
 						>
-							扫描本地/内网
+							{{ $t('扫描本地/内网') }}
 						</button>
 						<input
 							v-model="customCidr"
 							class="field-input min-w-[220px] flex-1"
 							type="text"
-							placeholder="自定义网段 CIDR，如 192.168.1.0/24"
+							:placeholder="$t('自定义网段 CIDR，如 192.168.1.0/24')"
 						/>
 						<button
 							class="btn-muted px-3 py-2 text-sm disabled:opacity-60"
@@ -165,13 +167,13 @@ onMounted(() => {
 							:disabled="discoverLoading"
 							@click="discoverNodes('custom')"
 						>
-							扫描自定义网段
+							{{ $t('扫描自定义网段') }}
 						</button>
 						<input
 							v-model="domainTarget"
 							class="field-input min-w-[220px] flex-1"
 							type="text"
-							placeholder="域名/主机名，如 worker-a.internal"
+							:placeholder="$t('域名/主机名，如 worker-a.internal')"
 						/>
 						<button
 							class="btn-muted px-3 py-2 text-sm disabled:opacity-60"
@@ -179,10 +181,10 @@ onMounted(() => {
 							:disabled="discoverLoading"
 							@click="discoverNodes('domain')"
 						>
-							扫描域名
+							{{ $t('扫描域名') }}
 						</button>
 					</div>
-					<p v-if="discoverLoading" class="mt-3 text-sm text-gray-500">正在扫描可用 worknode...</p>
+					<p v-if="discoverLoading" class="mt-3 text-sm text-gray-500">{{ $t('正在扫描可用 worknode...') }}</p>
 					<p v-if="discoverError" class="mt-3 text-sm text-red-600">{{ discoverError }}</p>
 					<div v-if="discoveredNodes.length" class="mt-3 space-y-2">
 						<button
@@ -207,19 +209,19 @@ onMounted(() => {
 								v-if="candidate.pair_key_matched"
 								class="tag-pill"
 							>
-								密钥匹配
+								{{ $t('密钥匹配') }}
 							</span>
 							<span
 								v-if="candidate.already_registered"
 								class="tag-pill"
 							>
-								已注册
+								{{ $t('已注册') }}
 							</span>
 							<span
 								v-else
 								class="tag-pill"
 							>
-								匹配
+								{{ $t('匹配') }}
 							</span>
 							<span v-if="candidate.probe_status" class="tag-pill">
 								{{ candidate.probe_status }}
@@ -230,11 +232,11 @@ onMounted(() => {
 
 				<!-- 节点名称 -->
 				<div class="mb-5">
-					<label class="block mb-2 text-gray-700 text-sm font-medium">节点名称</label>
+					<label class="block mb-2 text-gray-700 text-sm font-medium">{{ $t('节点名称') }}</label>
 					<input
 						v-model="nodeName"
 						class="field-input"
-						placeholder="请输入节点名称"
+						:placeholder="$t('请输入节点名称')"
 						type="text"
 						required
 					/>
@@ -242,22 +244,22 @@ onMounted(() => {
 
 				<!-- 节点 IP -->
 				<div class="mb-5">
-					<label class="block mb-2 text-gray-700 text-sm font-medium">节点 IP 地址</label>
+					<label class="block mb-2 text-gray-700 text-sm font-medium">{{ $t('节点 IP 地址') }}</label>
 					<input
 						v-model="nodeIp"
 						class="field-input"
-						placeholder="请输入节点 IP"
+						:placeholder="$t('请输入节点 IP')"
 						type="text"
 						required
 					/>
 				</div>
 
 				<div class="mb-5">
-					<label class="block mb-2 text-gray-700 text-sm font-medium">节点密钥</label>
+					<label class="block mb-2 text-gray-700 text-sm font-medium">{{ $t('节点密钥') }}</label>
 					<input
 						v-model="nodePairKey"
 						class="field-input"
-						placeholder="请输入工作节点启动日志中的密钥"
+						:placeholder="$t('请输入工作节点启动日志中的密钥')"
 						type="password"
 						required
 					/>
@@ -267,7 +269,7 @@ onMounted(() => {
 					class="btn-primary w-full"
 					type="submit"
 				>
-					创建节点
+					{{ $t('创建节点') }}
 				</button>
 			</form>
 		</div>

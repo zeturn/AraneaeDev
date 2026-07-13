@@ -36,7 +36,9 @@
   </div>
 </template>
 
-<script lang="ts" setup>
+<script lang="ts" setup>import { useI18n } from '@/i18n';
+const { t } = useI18n();
+
 import {ref} from 'vue'
 import LayoutTabs from './LayoutTabs.vue'
 import useRouteCache from '@/hooks/useRouteCache'
@@ -47,19 +49,19 @@ const layoutStore = useLayoutStore()
 const menus = ref([
   {
     link: '/',
-    title: '首页'
+    title: t('首页')
   },
   {
     link: '/article',
-    title: '文章列表'
+    title: t('文章列表')
   },
   {
     link: '/child',
-    title: '多级缓存'
+    title: t('多级缓存')
   },
   {
     link: '/KeepScroll',
-    title: '记录滚动位置'
+    title: t('记录滚动位置')
   }
 ])
 </script>

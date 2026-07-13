@@ -9,7 +9,9 @@
   - is strictly prohibited unless prior written permission is obtained.
   -->
 
-<script lang="ts" setup>
+<script lang="ts" setup>import { useI18n } from '@/i18n';
+const { t } = useI18n();
+
 import {ref, onMounted} from 'vue';
 import ApiService from '@/services/ApiService';
 import Aprons from "@/views/Aprons/Aprons.vue";
@@ -40,7 +42,7 @@ const fetchProjects = async () => {
 		? payload
 		: (Array.isArray(payload?.results) ? payload.results : []);
   } catch (error: any) {
-    errorMessage.value = error.message || '无法加载项目';
+    errorMessage.value = error.message || t('无法加载项目');
   } finally {
     isLoading.value = false;
   }
@@ -55,11 +57,11 @@ onMounted(() => {
 <template>
   <Aprons>
     <div class="mb-4 flex flex-row items-center gap-3">
-      <h1 class="text-3xl font-semibold text-gray-500">项目</h1>
+      <h1 class="text-3xl font-semibold text-gray-500">{{ $t('项目') }}</h1>
     </div>
     <div v-if="isLoading" class="text-center py-4">
       <div class="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-gray-800"></div>
-      <p class="mt-2 text-gray-500">正在加载项目...</p>
+      <p class="mt-2 text-gray-500">{{ $t('正在加载项目...') }}</p>
     </div>
 
     <div v-else-if="errorMessage" class="text-center text-red-500 text-lg font-medium">

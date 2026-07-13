@@ -11,7 +11,7 @@
 
 <template>
 	<button class="btn-solid btn-solid-primary min-w-32 h-16 px-6 text-base">
-		大按钮
+		{{ $t('大按钮') }}
 	</button>
 </template>
 

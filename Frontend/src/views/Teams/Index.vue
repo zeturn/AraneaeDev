@@ -19,28 +19,28 @@
 					<p class="text-sm text-slate-500">{{ team.description || '暂无描述' }}</p>
 				</header>
 
-				<div v-if="loading" class="text-sm text-slate-500">加载中...</div>
+				<div v-if="loading" class="text-sm text-slate-500">{{ $t('加载中...') }}</div>
 				<div v-else class="grid gap-4 md:grid-cols-3">
 					<div class="team-card">
-						<p class="text-xs uppercase tracking-wide text-slate-500">成员数量</p>
+						<p class="text-xs uppercase tracking-wide text-slate-500">{{ $t('成员数量') }}</p>
 						<p class="mt-2 text-2xl font-semibold text-slate-900">{{ members.length }}</p>
 					</div>
 					<div class="team-card">
-						<p class="text-xs uppercase tracking-wide text-slate-500">我的角色</p>
+						<p class="text-xs uppercase tracking-wide text-slate-500">{{ $t('我的角色') }}</p>
 						<p class="mt-2 text-2xl font-semibold text-slate-900">{{ team.role || 'member' }}</p>
 					</div>
 					<div class="team-card">
-						<p class="text-xs uppercase tracking-wide text-slate-500">加入策略</p>
+						<p class="text-xs uppercase tracking-wide text-slate-500">{{ $t('加入策略') }}</p>
 						<p class="mt-2 text-2xl font-semibold text-slate-900">{{ team.join_able ? '开放' : '受限' }}</p>
 					</div>
 				</div>
 
 				<div class="team-card space-y-3">
 					<div class="flex flex-wrap items-center justify-between gap-2">
-						<h2 class="text-base font-semibold text-slate-900">成员预览</h2>
-						<router-link class="btn-primary" :to="`/aprons/teams/${teamId}/members`">进入添加成员</router-link>
+						<h2 class="text-base font-semibold text-slate-900">{{ $t('成员预览') }}</h2>
+						<router-link class="btn-primary" :to="`/aprons/teams/${teamId}/members`">{{ $t('进入添加成员') }}</router-link>
 					</div>
-					<div v-if="members.length === 0" class="text-sm text-slate-500">暂无成员</div>
+					<div v-if="members.length === 0" class="text-sm text-slate-500">{{ $t('暂无成员') }}</div>
 					<ul v-else class="space-y-2">
 						<li v-for="item in members.slice(0, 6)" :key="item.user?.id" class="flex items-center justify-between rounded-lg bg-white px-3 py-2">
 							<span class="text-sm text-slate-700">{{ item.user?.username || '未知用户' }}</span>

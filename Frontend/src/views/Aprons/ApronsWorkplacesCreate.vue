@@ -8,7 +8,9 @@
   - All rights reserved. Unauthorized copying of this file, via any medium,
   - is strictly prohibited unless prior written permission is obtained.
   -->
-<script lang="ts" setup>
+<script lang="ts" setup>import { useI18n } from '@/i18n';
+const { t } = useI18n();
+
 import {ref, onMounted} from 'vue';
 import ApiService from '@/services/ApiService';
 import Aprons from "@/views/Aprons/Aprons.vue";
@@ -54,8 +56,8 @@ const createWorkplace = async () => {
 	if (!newWorkplace.value.team_id) {
 		EventBus.emit('notify', {
 			type: 'warning',
-			title: '缺少团队',
-			message: '请选择一个团队'
+			title: t('缺少团队'),
+			message: t('请选择一个团队')
 		});
 		return;
 	}
@@ -66,8 +68,8 @@ const createWorkplace = async () => {
 
 		EventBus.emit('notify', {
 			type: 'success',
-			title: '创建成功',
-			message: '工作区已成功创建'
+			title: t('创建成功'),
+			message: t('工作区已成功创建')
 		});
 		// 跳转到详情页
 		await router.push({name: 'workplace', params: {id: newId}});
@@ -76,8 +78,8 @@ const createWorkplace = async () => {
 
 		EventBus.emit('notify', {
 			type: 'error',
-			title: '创建失败',
-			message: (err as Error).message || '网络错误，请稍后重试'
+			title: t('创建失败'),
+			message: (err as Error).message || t('网络错误，请稍后重试')
 		});
 	}
 };
@@ -91,16 +93,16 @@ onMounted(async () => {
 <template>
 	<Aprons>
 		<div class="container">
-			<h1 class="text-3xl font-semibold text-gray-500">创建工作区</h1>
+			<h1 class="text-3xl font-semibold text-gray-500">{{ $t('创建工作区') }}</h1>
 
 			<form class="mb-8 p-6 bg-white  rounded-2xl my-4" @submit.prevent="createWorkplace">
 				<!-- 团队下拉 -->
 				<div class="mb-5">
-					<label class="block mb-2 text-gray-700 text-sm font-medium">所属团队</label>
+					<label class="block mb-2 text-gray-700 text-sm font-medium">{{ $t('所属团队') }}</label>
 					<el-select
 						v-model="newWorkplace.team_id"
 						class="araneae-select w-full"
-						placeholder="请选择团队"
+						:placeholder="$t('请选择团队')"
 						popper-class="araneae-select-popper"
 					>
 						<el-option
@@ -114,11 +116,11 @@ onMounted(async () => {
 
 				<!-- 名称输入 -->
 				<div class="mb-5">
-					<label class="block mb-2 text-gray-700 text-sm font-medium">名称</label>
+					<label class="block mb-2 text-gray-700 text-sm font-medium">{{ $t('名称') }}</label>
 					<input
 						v-model="newWorkplace.name"
 						class="field-input"
-						placeholder="请输入工作区名称"
+						:placeholder="$t('请输入工作区名称')"
 						required
 						type="text"
 					/>
@@ -126,25 +128,25 @@ onMounted(async () => {
 
 				<!-- 描述输入 -->
 				<div class="mb-5">
-					<label class="block mb-2 text-gray-700 text-sm font-medium">描述</label>
+					<label class="block mb-2 text-gray-700 text-sm font-medium">{{ $t('描述') }}</label>
 					<input
 						v-model="newWorkplace.description"
 						class="field-input"
-						placeholder="请输入描述（可选）"
+						:placeholder="$t('请输入描述（可选）')"
 						type="text"
 					/>
 				</div>
 
 				<!-- 状态选择 -->
 				<div class="mb-6">
-					<label class="block mb-2 text-gray-700 text-sm font-medium">状态</label>
+					<label class="block mb-2 text-gray-700 text-sm font-medium">{{ $t('状态') }}</label>
 					<el-select
 						v-model="newWorkplace.status"
 						class="araneae-select w-full"
 						popper-class="araneae-select-popper"
 					>
-						<el-option label="启用" value="active"/>
-						<el-option label="停用" value="inactive"/>
+						<el-option :label="$t('启用')" value="active"/>
+						<el-option :label="$t('停用')" value="inactive"/>
 					</el-select>
 				</div>
 
@@ -152,7 +154,7 @@ onMounted(async () => {
 					class="btn-primary w-full"
 					type="submit"
 				>
-					创建工作区
+					{{ $t('创建工作区') }}
 				</button>
 			</form>
 		</div>

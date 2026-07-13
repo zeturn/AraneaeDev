@@ -9,7 +9,9 @@
   - is strictly prohibited unless prior written permission is obtained.
   -->
 
-<script lang="ts" setup>
+<script lang="ts" setup>import { useI18n } from '@/i18n';
+const { t } = useI18n();
+
 import {ref, onMounted} from 'vue';
 import ApiService from '@/services/ApiService.js';
 import Aprons from "@/views/Aprons/Aprons.vue";
@@ -31,7 +33,7 @@ const fetchTeams = async () => {
 	  notice.value = '';
   } catch (error) {
 		console.error('Error fetching teams:', error);
-		notice.value = '加载团队失败';
+		notice.value = t('加载团队失败');
   }
 };
 
@@ -43,11 +45,11 @@ onMounted(() => {
 <template>
 	<Aprons>
 		<div class="mb-6 flex items-center">
-			<h1 class="m-2 text-3xl text-gray-500">团队</h1>
+			<h1 class="m-2 text-3xl text-gray-500">{{ $t('团队') }}</h1>
 			<RouterLink
 				v-if="teams.length"
 				class="btn-primary ml-auto"
-				to="/aprons/teams/create">创建团队
+				to="/aprons/teams/create">{{ $t('创建团队') }}
 			</RouterLink>
 		</div>
 		<div class="mb-2 text-sm text-slate-500">{{ notice }}</div>
@@ -71,18 +73,18 @@ onMounted(() => {
 					</p>
 					<div class="mt-4 flex items-center justify-between text-sm text-gray-500">
 						<span>ID: {{ team.id }}</span>
-						<RouterLink class="btn-muted" :to="`/aprons/teams/${team.id}/settings`">设置</RouterLink>
+						<RouterLink class="btn-muted" :to="`/aprons/teams/${team.id}/settings`">{{ $t('设置') }}</RouterLink>
 					</div>
 				</RouterLink>
 			</div>
 		</div>
 		<div v-else class="flex h-full flex-col items-center justify-center">
-			<p class="text-gray-500 text-lg">还没有团队</p>
+			<p class="text-gray-500 text-lg">{{ $t('还没有团队') }}</p>
 			<RouterLink
 				class="btn-primary mt-4"
 				to="/aprons/teams/create"
 			>
-				创建团队↗
+				{{ $t('创建团队↗') }}
 			</RouterLink>
 		</div>
 	</Aprons>

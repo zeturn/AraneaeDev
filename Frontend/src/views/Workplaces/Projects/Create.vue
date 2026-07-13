@@ -17,13 +17,13 @@
 					<!-- 项目名称 -->
 					<div>
 						<label class="block mb-2 text-gray-700 text-sm font-medium" for="name">
-							项目名称
+							{{ $t('项目名称') }}
 						</label>
 						<input
 							id="name"
 							v-model="projectData.name"
 							class="field-input"
-							placeholder="请输入项目名称"
+							:placeholder="$t('请输入项目名称')"
 							required
 							type="text"
 						/>
@@ -32,13 +32,13 @@
 					<!-- 语言 -->
 					<div>
 						<label class="block mb-2 text-gray-700 text-sm font-medium" for="language">
-							语言
+							{{ $t('语言') }}
 						</label>
 						<el-select
 							id="language"
 							v-model="projectData.language"
 							class="w-full"
-							placeholder="请选择语言"
+							:placeholder="$t('请选择语言')"
 						>
 							<el-option label="Python" value="python" />
 							<el-option label="JavaScript" value="js" />
@@ -52,13 +52,13 @@
 				<!-- 描述（跨两列） -->
 					<div class="col-span-1 md:col-span-2">
 						<label class="block mb-2 text-gray-700 text-sm font-medium" for="description">
-							描述
+							{{ $t('描述') }}
 						</label>
 						<textarea
 							id="description"
 							v-model="projectData.description"
 							class="field-input resize-none"
-							placeholder="请输入项目描述"
+							:placeholder="$t('请输入项目描述')"
 							rows="4"
 						></textarea>
 					</div>
@@ -69,7 +69,7 @@
 							class="btn-primary w-full"
 							type="submit"
 						>
-							创建项目
+							{{ $t('创建项目') }}
 						</button>
 					</div>
 				</form>
@@ -112,7 +112,7 @@ export default {
 		 */
 		async submitProject() {
 			if (!this.projectData.language) {
-				alert("请选择语言。");
+				alert(this.$t("请选择语言。"));
 				return;
 			}
 
@@ -126,14 +126,14 @@ export default {
 
 				EventBus.emit('notify', {
 					type: 'success',
-					title: '创建成功',
-					message: '项目已成功创建'
+					title: this.$t('创建成功'),
+					message: this.$t('项目已成功创建')
 				});
 
 				this.$router.push({name: 'project', params: {id: newId}});
 			} catch (error) {
-				console.error("创建项目失败：", error);
-				alert("创建项目失败，请重试。");
+				console.error(this.$t("创建项目失败："), error);
+				alert(this.$t("创建项目失败，请重试。"));
 			}
 		},
 	},

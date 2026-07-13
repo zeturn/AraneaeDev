@@ -19,16 +19,16 @@
 
 				<div class="grid gap-4 md:grid-cols-2">
 					<div class="md:col-span-2">
-						<label class="mb-2 block text-sm font-medium text-slate-700">项目名称</label>
-						<input v-model="form.name" type="text" class="field-input" placeholder="输入项目名称" />
+						<label class="mb-2 block text-sm font-medium text-slate-700">{{ $t('项目名称') }}</label>
+						<input v-model="form.name" type="text" class="field-input" :placeholder="$t('输入项目名称')" />
 					</div>
 					<div>
-						<label class="mb-2 block text-sm font-medium text-slate-700">语言</label>
+						<label class="mb-2 block text-sm font-medium text-slate-700">{{ $t('语言') }}</label>
 						<input v-model="form.language" type="text" class="field-input" placeholder="python / go / node" />
 					</div>
 					<div class="md:col-span-2">
-						<label class="mb-2 block text-sm font-medium text-slate-700">描述</label>
-						<textarea v-model="form.description" rows="4" class="field-input" placeholder="项目描述"></textarea>
+						<label class="mb-2 block text-sm font-medium text-slate-700">{{ $t('描述') }}</label>
+						<textarea v-model="form.description" rows="4" class="field-input" :placeholder="$t('项目描述')"></textarea>
 					</div>
 				</div>
 
@@ -36,8 +36,8 @@
 					<button class="btn-primary" :disabled="loading" @click="saveProject">
 						{{ loading ? '保存中...' : '保存设置' }}
 					</button>
-					<router-link :to="`/aprons/projects/${projectId}/repo`" class="btn-muted">版本管理</router-link>
-					<button class="btn-danger" :disabled="loading" @click="deleteProject">删除项目</button>
+					<router-link :to="`/aprons/projects/${projectId}/repo`" class="btn-muted">{{ $t('版本管理') }}</router-link>
+					<button class="btn-danger" :disabled="loading" @click="deleteProject">{{ $t('删除项目') }}</button>
 					<span class="text-sm text-slate-500">{{ notice }}</span>
 				</div>
 
@@ -92,13 +92,13 @@ export default {
 				})
 				.catch(error => {
 					console.error("Error fetching project data:", error);
-					this.notice = '加载项目信息失败';
+					this.notice = this.$t('加载项目信息失败');
 				});
 		},
 		saveProject() {
 			const name = String(this.form.name || '').trim();
 			if (!name) {
-				this.notice = '项目名称不能为空';
+				this.notice = this.$t('项目名称不能为空');
 				return;
 			}
 			this.loading = true;
@@ -109,19 +109,19 @@ export default {
 				language: this.form.language,
 			})
 				.then(() => {
-					this.notice = '项目设置已保存';
+					this.notice = this.$t('项目设置已保存');
 					this.form.updated_at = new Date().toISOString();
 				})
 				.catch(error => {
 					console.error('save project failed:', error);
-					this.notice = error?.response?.data?.detail || '保存失败';
+					this.notice = error?.response?.data?.detail || this.$t('保存失败');
 				})
 				.finally(() => {
 					this.loading = false;
 				});
 		},
 		deleteProject() {
-			if (!window.confirm('确认删除该项目？此操作不可撤销。')) {
+			if (!window.confirm(this.$t('确认删除该项目？此操作不可撤销。'))) {
 				return;
 			}
 			this.loading = true;
@@ -132,7 +132,7 @@ export default {
 				})
 				.catch(error => {
 					console.error('delete project failed:', error);
-					this.notice = error?.response?.data?.detail || '删除失败';
+					this.notice = error?.response?.data?.detail || this.$t('删除失败');
 				})
 				.finally(() => {
 					this.loading = false;

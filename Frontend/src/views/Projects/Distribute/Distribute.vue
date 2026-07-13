@@ -9,7 +9,9 @@
   - is strictly prohibited unless prior written permission is obtained.
   -->
 
-<script lang="ts" setup>
+<script lang="ts" setup>import { useI18n } from '@/i18n';
+const { t } = useI18n();
+
 import {computed} from 'vue';
 import {useRoute} from 'vue-router';
 import Tabs from '@/components/Tabs.vue';
@@ -18,8 +20,8 @@ const tabsList = computed(() => {
 	const route = useRoute();
 	const id = route.params.id || 'default-id';  // 如果没有ID，使用默认值
 	return [
-		{name: '项目分发状态', url: `/aprons/projects/${id}/distribute`},
-		{name: '创建项目分发', url: `/aprons/projects/${id}/distribute/order`},
+		{name: t('项目分发状态'), url: `/aprons/projects/${id}/distribute`},
+		{name: t('创建项目分发'), url: `/aprons/projects/${id}/distribute/order`},
 	];
 });
 </script>
@@ -27,10 +29,10 @@ const tabsList = computed(() => {
 
 <template>
 	<h1 class="text-gray-500 text-3xl m-4">
-		项目分发
+		{{ $t('项目分发') }}
 	</h1>
 	<p class="text-gray-400 text-sm m-4">
-		分发您的项目到各个节点
+		{{ $t('分发您的项目到各个节点') }}
 	</p>
 	<Tabs :tabs="tabsList"/>
 	<slot>

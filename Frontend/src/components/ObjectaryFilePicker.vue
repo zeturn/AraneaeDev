@@ -13,7 +13,7 @@
 	>
 		<div class="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
 			<div class="flex items-center justify-between px-4 py-3 border-b">
-				<h3 class="text-lg font-medium text-gray-800">从 Objectary 导入文件</h3>
+				<h3 class="text-lg font-medium text-gray-800">{{ $t('从 Objectary 导入文件') }}</h3>
 				<button
 					class="text-gray-400 hover:text-gray-600 text-2xl leading-none"
 					@click="close"
@@ -28,7 +28,7 @@
 					class="hover:text-indigo-600"
 					@click="goToRoot"
 				>
-					根目录
+					{{ $t('根目录') }}
 				</button>
 				<span
 					v-for="(crumb, idx) in breadcrumb"
@@ -47,7 +47,7 @@
 					class="ml-2 text-indigo-600 hover:underline"
 					@click="goUp"
 				>
-					返回上级
+					{{ $t('返回上级') }}
 				</button>
 			</div>
 
@@ -57,7 +57,7 @@
 					v-if="loading"
 					class="text-gray-400 py-6 text-center"
 				>
-					加载中…
+					{{ $t('加载中…') }}
 				</p>
 				<p
 					v-else-if="error"
@@ -69,7 +69,7 @@
 					v-else-if="!items.length"
 					class="text-gray-400 py-6 text-center"
 				>
-					此目录为空
+					{{ $t('此目录为空') }}
 				</p>
 				<ul v-else>
 					<li
@@ -109,7 +109,7 @@
 						class="px-3 py-1.5 rounded border text-gray-600 hover:bg-gray-50"
 						@click="close"
 					>
-						取消
+						{{ $t('取消') }}
 					</button>
 					<button
 						class="px-3 py-1.5 rounded bg-indigo-600 text-white disabled:opacity-50"
@@ -180,7 +180,7 @@ export default {
 				this.items = Array.isArray(data.items) ? data.items : [];
 				this.currentParentId = data.parentId || parentId;
 			} catch (e) {
-				this.error = e.response?.data?.error || '无法加载 Objectary 文件目录';
+				this.error = e.response?.data?.error || this.$t('无法加载 Objectary 文件目录');
 			} finally {
 				this.loading = false;
 			}
@@ -226,7 +226,7 @@ export default {
 				this.$emit('imported', resp.data);
 				this.close();
 			} catch (e) {
-				this.error = e.response?.data?.error || '导入失败';
+				this.error = e.response?.data?.error || this.$t('导入失败');
 			} finally {
 				this.importing = false;
 			}

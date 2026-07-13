@@ -6,15 +6,15 @@
 					<header class="flex flex-wrap items-center justify-between gap-3">
 						<div>
 							<p class="text-xs uppercase tracking-wider text-slate-500">Task Runs</p>
-							<h1 class="text-2xl font-semibold text-slate-900">运行记录与输出</h1>
-							<p class="text-sm text-slate-500">查看任务每次执行状态、退出码和标准输出。</p>
+							<h1 class="text-2xl font-semibold text-slate-900">{{ $t('运行记录与输出') }}</h1>
+							<p class="text-sm text-slate-500">{{ $t('查看任务每次执行状态、退出码和标准输出。') }}</p>
 						</div>
 						<div class="flex items-center gap-2">
 							<button class="btn-muted" :disabled="loading" @click="refreshData">
 								{{ loading ? '刷新中...' : '刷新' }}
 							</button>
 							<button class="btn-primary" :disabled="loading" @click="runTaskOnce">
-								手动运行一次
+								{{ $t('手动运行一次') }}
 							</button>
 						</div>
 					</header>
@@ -22,7 +22,7 @@
 					<div class="grid gap-4 lg:grid-cols-[2fr,3fr]">
 						<section class="space-y-3">
 							<div v-if="runs.length === 0" class="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">
-								当前还没有运行记录。
+								{{ $t('当前还没有运行记录。') }}
 							</div>
 							<div v-else class="space-y-2">
 								<button
@@ -45,16 +45,16 @@
 							<div class="rounded-xl bg-slate-50 p-4 text-sm text-slate-700">
 								<div class="grid gap-2 md:grid-cols-2">
 									<p><span class="font-medium">Run ID:</span> {{ selectedRun?.id || '-' }}</p>
-									<p><span class="font-medium">状态:</span> {{ selectedRun?.status || '-' }}</p>
-									<p><span class="font-medium">触发方式:</span> {{ selectedRun?.trigger_source || '-' }}</p>
-									<p><span class="font-medium">退出码:</span> {{ normalizeExitCode(selectedRun?.exit_code) }}</p>
-									<p><span class="font-medium">开始时间:</span> {{ formatDate(selectedRun?.started_at) }}</p>
-									<p><span class="font-medium">结束时间:</span> {{ formatDate(selectedRun?.finished_at) }}</p>
+									<p><span class="font-medium">{{ $t('状态:') }}</span> {{ selectedRun?.status || '-' }}</p>
+									<p><span class="font-medium">{{ $t('触发方式:') }}</span> {{ selectedRun?.trigger_source || '-' }}</p>
+									<p><span class="font-medium">{{ $t('退出码:') }}</span> {{ normalizeExitCode(selectedRun?.exit_code) }}</p>
+									<p><span class="font-medium">{{ $t('开始时间:') }}</span> {{ formatDate(selectedRun?.started_at) }}</p>
+									<p><span class="font-medium">{{ $t('结束时间:') }}</span> {{ formatDate(selectedRun?.finished_at) }}</p>
 								</div>
 							</div>
 
 							<div class="space-y-2">
-								<p class="text-sm font-medium text-slate-700">运行输出</p>
+								<p class="text-sm font-medium text-slate-700">{{ $t('运行输出') }}</p>
 								<pre class="min-h-[320px] overflow-auto rounded-xl bg-slate-950 p-4 text-xs text-slate-100 whitespace-pre-wrap">{{ selectedRunOutput }}</pre>
 							</div>
 						</section>
@@ -67,7 +67,9 @@
 	</Workplace>
 </template>
 
-<script setup>
+<script setup>import { useI18n } from '@/i18n';
+const { t } = useI18n();
+
 import {computed, onMounted, ref} from 'vue';
 import {useRoute} from 'vue-router';
 import ApiService from '@/services/ApiService.js';
@@ -90,7 +92,7 @@ const selectedRun = computed(() => {
 const selectedRunOutput = computed(() => {
 	const output = selectedRun.value?.output;
 	if (typeof output !== 'string' || output.trim() === '') {
-		return '暂无输出';
+		return t('暂无输出');
 	}
 	return output;
 });
@@ -115,7 +117,7 @@ function selectRun(runId) {
 
 async function fetchRuns() {
 	if (!taskId.value) {
-		notice.value = '无效任务 ID';
+		notice.value = t('无效任务 ID');
 		return;
 	}
 	loading.value = true;
@@ -132,7 +134,7 @@ async function fetchRuns() {
 		notice.value = `共 ${list.length} 条运行记录`;
 	} catch (error) {
 		console.error('fetch task runs failed:', error);
-		notice.value = error?.response?.data?.detail || '加载运行记录失败';
+		notice.value = error?.response?.data?.detail || t('加载运行记录失败');
 	} finally {
 		loading.value = false;
 	}
@@ -140,21 +142,21 @@ async function fetchRuns() {
 
 async function runTaskOnce() {
 	if (!taskId.value) {
-		notice.value = '无效任务 ID';
+		notice.value = t('无效任务 ID');
 		return;
 	}
 	loading.value = true;
 	try {
 		const response = await ApiService.triggerTask(taskId.value);
 		const runId = response?.data?.id;
-		notice.value = runId ? `任务已触发，运行 ID: ${runId}` : '任务已触发';
+		notice.value = runId ? `任务已触发，运行 ID: ${runId}` : t('任务已触发');
 		await fetchRuns();
 		if (runId) {
 			selectedRunId.value = runId;
 		}
 	} catch (error) {
 		console.error('trigger task failed:', error);
-		notice.value = error?.response?.data?.detail || '触发任务失败';
+		notice.value = error?.response?.data?.detail || t('触发任务失败');
 	} finally {
 		loading.value = false;
 	}

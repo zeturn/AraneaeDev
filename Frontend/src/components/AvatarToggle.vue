@@ -34,7 +34,7 @@
           role="menuitem"
           @click="closeMenu"
         >
-          个人信息
+          {{ $t('个人信息') }}
         </RouterLink>
         <RouterLink
           to="/logout"
@@ -42,7 +42,7 @@
           role="menuitem"
           @click="closeMenu"
         >
-          退出登录
+          {{ $t('退出登录') }}
         </RouterLink>
       </div>
     </div>

@@ -18,10 +18,10 @@ import Aprons from "@/views/Aprons/Aprons.vue";
 <template>
 	<Aprons>
 		<h1 class="text-gray-500 text-3xl m-4">
-			帮助
+			{{ $t('帮助') }}
 		</h1>
 		<p class="text-gray-500 text-sm m-4">
-			Aprons 是一个开源的自动化工具，旨在帮助用户更高效地管理和执行任务。
+			{{ $t('Aprons 是一个开源的自动化工具，旨在帮助用户更高效地管理和执行任务。') }}
 		</p>
 
 	</Aprons>

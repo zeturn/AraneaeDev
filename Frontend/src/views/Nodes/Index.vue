@@ -19,11 +19,11 @@
 			<!-- 实时资源环形图 -->
 			<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
 				<div>
-					<h2 class="text-xl font-semibold mb-2 text-gray-800">CPU 使用率</h2>
+					<h2 class="text-xl font-semibold mb-2 text-gray-800">{{ $t('CPU 使用率') }}</h2>
 					<div ref="cpuChartRef" style="width:100%;height:250px;"></div>
 				</div>
 				<div>
-					<h2 class="text-xl font-semibold mb-2 text-gray-800">内存使用率</h2>
+					<h2 class="text-xl font-semibold mb-2 text-gray-800">{{ $t('内存使用率') }}</h2>
 					<div ref="memChartRef" style="width:100%;height:250px;"></div>
 				</div>
 			</div>
@@ -31,21 +31,21 @@
 			<!-- 运行时环境能力 -->
 			<div class="mt-8">
 				<div class="flex items-center justify-between mb-3">
-					<h2 class="text-xl font-semibold text-gray-800">运行时环境</h2>
+					<h2 class="text-xl font-semibold text-gray-800">{{ $t('运行时环境') }}</h2>
 					<button
 						:disabled="capLoading"
 						class="btn-primary px-4 py-1.5 text-sm disabled:opacity-50"
 						@click="doRefreshCapabilities"
 					>
-						<span v-if="capLoading">检测中...</span>
-						<span v-else>🔍 刷新检测</span>
+						<span v-if="capLoading">{{ $t('检测中...') }}</span>
+						<span v-else>{{ $t('🔍 刷新检测') }}</span>
 					</button>
 				</div>
 
 				<div v-if="capError" class="text-sm text-red-500 mb-2">{{ capError }}</div>
 
 				<div v-if="capabilities.length === 0 && !capLoading" class="text-sm text-gray-400">
-					暂无数据，点击"刷新检测"从执行节点获取运行时列表。
+					{{ $t('暂无数据，点击"刷新检测"从执行节点获取运行时列表。') }}
 				</div>
 
 				<!-- Badge grid -->
@@ -76,11 +76,11 @@
 						</div>
 
 						<!-- Status text / version -->
-						<p v-if="isInstalling(cap.key)" class="text-xs text-yellow-600">安装中...</p>
-						<p v-else-if="installJobs[cap.key]?.status === 'success'" class="text-xs text-green-600">安装成功 ✓</p>
-						<p v-else-if="installJobs[cap.key]?.status === 'failed'" class="text-xs text-red-500">安装失败</p>
+						<p v-if="isInstalling(cap.key)" class="text-xs text-yellow-600">{{ $t('安装中...') }}</p>
+						<p v-else-if="installJobs[cap.key]?.status === 'success'" class="text-xs text-green-600">{{ $t('安装成功 ✓') }}</p>
+						<p v-else-if="installJobs[cap.key]?.status === 'failed'" class="text-xs text-red-500">{{ $t('安装失败') }}</p>
 						<p v-else-if="cap.available" class="text-xs text-gray-500 truncate" :title="cap.version">{{ cap.version || '已安装' }}</p>
-						<p v-else class="text-xs text-gray-400">未安装</p>
+						<p v-else class="text-xs text-gray-400">{{ $t('未安装') }}</p>
 
 						<!-- Install button (show only when not installed and not currently installing) -->
 						<button
@@ -88,7 +88,7 @@
 							class="btn-primary mt-2 w-full px-2 py-1 text-xs"
 							@click="doInstall(cap.key)"
 						>
-							📦 安装
+							{{ $t('📦 安装') }}
 						</button>
 
 						<!-- View log button (show when a job exists) -->
@@ -97,7 +97,7 @@
 							class="btn-muted mt-1 w-full px-2 py-1 text-xs"
 							@click="openLog(cap.key)"
 						>
-							📋 查看日志
+							{{ $t('📋 查看日志') }}
 						</button>
 					</div>
 				</div>
@@ -106,7 +106,7 @@
 				<div v-if="logPanelKey" class="mt-6 rounded-xl border border-gray-200 overflow-hidden">
 					<div class="flex items-center justify-between bg-gray-800 px-4 py-2">
 						<span class="text-sm font-medium text-white">📋 安装日志 — {{ logPanelKey }}</span>
-						<button class="btn-muted px-2 py-1 text-xs text-gray-200" @click="logPanelKey = null">✕ 关闭</button>
+						<button class="btn-muted px-2 py-1 text-xs text-gray-200" @click="logPanelKey = null">{{ $t('✕ 关闭') }}</button>
 					</div>
 					<pre
 						ref="logPanelRef"
@@ -129,7 +129,7 @@
 							class="btn-primary ml-auto px-3 py-1 text-xs"
 							@click="doInstall(logPanelKey)"
 						>
-							重试安装
+							{{ $t('重试安装') }}
 						</button>
 					</div>
 				</div>
@@ -141,7 +141,9 @@
 	</Node>
 </template>
 
-<script lang="ts" setup>
+<script lang="ts" setup>import { useI18n } from '@/i18n';
+const { t } = useI18n();
+
 import {ref, onMounted, onUnmounted, nextTick} from 'vue'
 import {useRoute} from 'vue-router'
 import { PieChart } from 'echarts/charts'
@@ -322,7 +324,7 @@ const doRefreshCapabilities = async () => {
 		capabilities.value = res.data.capabilities || []
 	} catch (err: any) {
 		console.error('Error refreshing capabilities:', err)
-		capError.value = err?.response?.data?.error || '刷新失败，请检查节点是否在线'
+		capError.value = err?.response?.data?.error || t('刷新失败，请检查节点是否在线')
 	} finally {
 		capLoading.value = false
 	}
@@ -399,7 +401,7 @@ const doInstall = async (key: string) => {
 		console.error('Error starting install:', err)
 		installJobs.value[key] = {
 			status: 'failed',
-			log: err?.response?.data?.error || '发起安装失败',
+			log: err?.response?.data?.error || t('发起安装失败'),
 			job_id: null,
 		}
 	}

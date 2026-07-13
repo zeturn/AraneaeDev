@@ -7,6 +7,7 @@
 import { createApp } from 'vue'
 import {createPinia} from 'pinia'
 import { ElIcon, ElMenu, ElMenuItem, ElOption, ElSelect, ElTabPane, ElTabs } from 'element-plus'
+import {createI18n} from '@/i18n'
 import 'element-plus/es/components/icon/style/css'
 import 'element-plus/es/components/menu/style/css'
 import 'element-plus/es/components/menu-item/style/css'
@@ -29,6 +30,7 @@ app.use(ElSelect)
 app.use(ElTabPane)
 app.use(ElTabs)
 app.use(Router)
+app.use(createI18n())
 app.mount('#app')
 
 // 配置记录滚动位置的滚动容器

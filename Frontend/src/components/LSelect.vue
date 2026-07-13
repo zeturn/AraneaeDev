@@ -12,7 +12,7 @@
       @keydown.esc.prevent="close"
     >
       <span class="l-select-label" :class="{ 'is-placeholder': !selectedOption }">
-        {{ selectedOption ? selectedOption.label : placeholder }}
+        {{ selectedOption ? selectedOption.label : $t(placeholder) }}
       </span>
       <svg
         class="l-select-arrow"
@@ -46,7 +46,9 @@
   </div>
 </template>
 
-<script setup>
+<script setup>import { useI18n } from '@/i18n';
+const { t } = useI18n();
+
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 
 const props = defineProps({

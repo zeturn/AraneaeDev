@@ -43,13 +43,13 @@ onMounted(() => {
 <template>
 	<Aprons>
 		<div class="mb-6 flex items-center">
-			<h1 class="m-2 text-3xl text-gray-500">工作区</h1>
+			<h1 class="m-2 text-3xl text-gray-500">{{ $t('工作区') }}</h1>
 			<RouterLink
 				v-if="workplaces.length"
 				class="btn-primary ml-auto"
 				to="/aprons/workplaces/create"
 			>
-				创建工作区
+				{{ $t('创建工作区') }}
 			</RouterLink>
 		</div>
 		<div v-if="workplaces.length" class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -69,12 +69,12 @@ onMounted(() => {
 			</div>
 		</div>
 		<div v-else class="flex h-full flex-col items-center justify-center gap-3 py-8">
-			<p class="text-gray-500 text-lg">还没有工作区</p>
+			<p class="text-gray-500 text-lg">{{ $t('还没有工作区') }}</p>
 			<RouterLink
 				class="btn-primary"
 				to="/aprons/workplaces/create"
 			>
-				创建工作区↗
+				{{ $t('创建工作区↗') }}
 			</RouterLink>
 		</div>
 	</Aprons>

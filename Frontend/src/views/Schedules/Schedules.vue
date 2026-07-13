@@ -26,7 +26,9 @@
 </template>
 
 
-<script lang="ts" setup>
+<script lang="ts" setup>import { useI18n } from '@/i18n';
+const { t } = useI18n();
+
 import {computed, defineComponent, onBeforeUnmount, onMounted, ref} from 'vue';
 import Header from '../../components/Header.vue';
 import Sidebar from '../../components/Sidebar.vue';
@@ -64,18 +66,18 @@ const isLargeScreen = ref(window.innerWidth >= 768);
 const links = computed(() => {
 	const id = route.params.id || 'default-id';
 	return [
-		{name: '返回', url: `/aprons/workplaces/${workplaceId.value}/schedules`},
-		{name: '概览', url: `/aprons/schedule/${id}`},
-		{name: '编辑', url: `/aprons/schedule/${id}/edit`},
+		{name: t('返回'), url: `/aprons/workplaces/${workplaceId.value}/schedules`},
+		{name: t('概览'), url: `/aprons/schedule/${id}`},
+		{name: t('编辑'), url: `/aprons/schedule/${id}/edit`},
 	];
 });
 
 const right_links = computed(() => {
 	const id = route.params.id || 'default-id';
 	return [
-		{name: '概览', url: `/aprons/projects`},
-		{name: '个人资料', url: `/aprons/profile`},
-		{name: '注销', url: `/logout`},
+		{name: t('概览'), url: `/aprons/projects`},
+		{name: t('个人资料'), url: `/aprons/profile`},
+		{name: t('注销'), url: `/logout`},
 	];
 });
 
@@ -100,9 +102,9 @@ async function fetchSchedule() {
 		schedule.value = response.data;
 		// 设置响应式工作区ID
 		workplaceId.value = schedule.value.workplace;
-		console.log('调度详情，工作区ID：', workplaceId.value);
+		console.log(t('调度详情，工作区ID：'), workplaceId.value);
 	} catch (err: any) {
-		error.value = err.response?.data?.message || '获取调度失败';
+		error.value = err.response?.data?.message || t('获取调度失败');
 	} finally {
 		loading.value = false;
 	}

@@ -30,22 +30,22 @@
 						@change="handleFileChange"
 					/>
 					<div class="text-gray-400 text-6xl">+</div>
-					<p class="mt-2 text-gray-600">拖拽文件到此处或点击上传</p>
+					<p class="mt-2 text-gray-600">{{ $t('拖拽文件到此处或点击上传') }}</p>
 				</div>
 				<p v-if="selectedFile" class="mt-4 text-gray-700">
-					已选择文件：<span class="font-medium">{{ selectedFile.name }}</span>
+					{{ $t('已选择文件：') }}<span class="font-medium">{{ selectedFile.name }}</span>
 				</p>
 				<button
 					class="btn-primary mt-4 w-full"
 					@click="uploadFile"
 				>
-					上传
+					{{ $t('上传') }}
 				</button>
 				<button
 					class="mt-3 w-full border border-indigo-300 text-indigo-600 rounded py-2 hover:bg-indigo-50"
 					@click="showObjectaryPicker = true"
 				>
-					从 Objectary 导入
+					{{ $t('从 Objectary 导入') }}
 				</button>
 				<p
 					v-if="message"
@@ -149,7 +149,7 @@ export default {
 		async uploadFile() {
 			if (!this.selectedFile) {
 				this.messageType = 'error';
-				this.message = '请选择一个文件！';
+				this.message = this.$t('请选择一个文件！');
 				return;
 			}
 			const formData = new FormData();
@@ -159,15 +159,15 @@ export default {
 			try {
 				const response = await ApiService.uploadCode(formData);
 				this.messageType = 'success';
-				this.message = response.data.message || '文件上传成功！';
+				this.message = response.data.message || this.$t('文件上传成功！');
 				EventBus.emit('notify', {
 					type: 'success',
-					title: '创建成功',
-					message: '新版本已成功创建'
+					title: this.$t('创建成功'),
+					message: this.$t('新版本已成功创建')
 				});
 			} catch (error) {
 				this.messageType = 'error';
-				this.message = error.response?.data?.error || '文件上传失败';
+				this.message = error.response?.data?.error || this.$t('文件上传失败');
 			}
 		},
 
@@ -177,11 +177,11 @@ export default {
 		 */
 		onObjectaryImported(version) {
 			this.messageType = 'success';
-			this.message = '已从 Objectary 导入文件：' + (version?.file_name || '');
+			this.message = this.$t('已从 Objectary 导入文件：') + (version?.file_name || '');
 			EventBus.emit('notify', {
 				type: 'success',
-				title: '导入成功',
-				message: '已从 Objectary 导入新版本'
+				title: this.$t('导入成功'),
+				message: this.$t('已从 Objectary 导入新版本')
 			});
 		},
 	},

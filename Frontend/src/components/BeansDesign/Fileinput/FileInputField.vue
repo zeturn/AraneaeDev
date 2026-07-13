@@ -42,7 +42,7 @@ export default {
 	},
 	computed: {
 		buttonText() {
-			return this.acceptTypes ? `选择文件 (${this.acceptTypes})` : '选择文件';
+			return this.acceptTypes ? `选择文件 (${this.acceptTypes})` : this.$t('选择文件');
 		},
 	},
 	methods: {

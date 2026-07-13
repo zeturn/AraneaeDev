@@ -29,37 +29,37 @@
 
 					<!-- 名称 -->
 					<div>
-						<label for="name" class="block mb-2 text-gray-700 text-sm font-medium">名称</label>
+						<label for="name" class="block mb-2 text-gray-700 text-sm font-medium">{{ $t('名称') }}</label>
 						<input
 							v-model="form.name"
 							id="name"
 							type="text"
 							required
 							class="field-input"
-							placeholder="请输入任务名称"
+							:placeholder="$t('请输入任务名称')"
 						/>
 					</div>
 
 					<!-- 模式 -->
 					<div v-if="!isGoApi">
-						<label for="mode" class="block mb-2 text-gray-700 text-sm font-medium">模式</label>
+						<label for="mode" class="block mb-2 text-gray-700 text-sm font-medium">{{ $t('模式') }}</label>
 						<el-select
 							v-model="form.mode"
 							id="mode"
 							class="w-full"
 						>
-							<el-option label="一次性" value="once" />
-							<el-option label="循环" value="recurring" />
+							<el-option :label="$t('一次性')" value="once" />
+							<el-option :label="$t('循环')" value="recurring" />
 						</el-select>
 					</div>
 				<div v-if="isGoApi && goForm.type === 'code'" class="grid grid-cols-1 gap-5 md:grid-cols-2">
 					<div>
-						<label for="project_id" class="block mb-2 text-gray-700 text-sm font-medium">项目</label>
+						<label for="project_id" class="block mb-2 text-gray-700 text-sm font-medium">{{ $t('项目') }}</label>
 							<el-select
 								v-model="goForm.project_id"
 								id="project_id"
 								class="w-full"
-								placeholder="请选择项目"
+								:placeholder="$t('请选择项目')"
 								:loading="goProjectLoading"
 							>
 								<el-option
@@ -69,10 +69,10 @@
 									:value="project.id"
 								/>
 							</el-select>
-							<p v-if="!goProjectLoading && goProjects.length === 0" class="mt-2 text-xs text-slate-500">暂无可用项目，请先创建项目。</p>
+							<p v-if="!goProjectLoading && goProjects.length === 0" class="mt-2 text-xs text-slate-500">{{ $t('暂无可用项目，请先创建项目。') }}</p>
 						</div>
 						<div>
-							<label for="version_id" class="block mb-2 text-gray-700 text-sm font-medium">版本</label>
+							<label for="version_id" class="block mb-2 text-gray-700 text-sm font-medium">{{ $t('版本') }}</label>
 							<el-select
 								v-model="goForm.version_id"
 								id="version_id"
@@ -88,42 +88,42 @@
 									:value="version.id"
 								/>
 							</el-select>
-							<p v-if="goForm.project_id && !goVersionLoading && goVersions.length === 0" class="mt-2 text-xs text-slate-500">该项目暂无可用版本，请先上传版本。</p>
+							<p v-if="goForm.project_id && !goVersionLoading && goVersions.length === 0" class="mt-2 text-xs text-slate-500">{{ $t('该项目暂无可用版本，请先上传版本。') }}</p>
 						</div>
 					</div>
 				<div v-if="isGoApi && goForm.type === 'code'" class="grid grid-cols-1 gap-5 md:grid-cols-2">
 					<div>
-						<label for="entry_command" class="block mb-2 text-gray-700 text-sm font-medium">执行命令</label>
+						<label for="entry_command" class="block mb-2 text-gray-700 text-sm font-medium">{{ $t('执行命令') }}</label>
 							<input
 								v-model="goForm.entry_command"
 								id="entry_command"
 								type="text"
 								required
 								class="field-input"
-								placeholder="例如: bash run.sh"
+								:placeholder="$t('例如: bash run.sh')"
 							/>
 						</div>
 						<div>
-							<label for="node_queue" class="block mb-2 text-gray-700 text-sm font-medium">节点队列</label>
+							<label for="node_queue" class="block mb-2 text-gray-700 text-sm font-medium">{{ $t('节点队列') }}</label>
 							<input
 								v-model="goForm.node_queue"
 								id="node_queue"
 								type="text"
 								class="field-input"
-								placeholder="默认 default"
+								:placeholder="$t('默认 default')"
 							/>
 						</div>
 					</div>
 
 				<!-- 描述 -->
 				<div>
-					<label for="description" class="block mb-2 text-gray-700 text-sm font-medium">描述</label>
+					<label for="description" class="block mb-2 text-gray-700 text-sm font-medium">{{ $t('描述') }}</label>
 					<textarea
 						v-model="form.description"
 						id="description"
 						rows="3"
 						class="field-input resize-none"
-						placeholder="请输入任务描述"
+						:placeholder="$t('请输入任务描述')"
 					></textarea>
 				</div>
 
@@ -143,19 +143,19 @@
 						/>
 					</div>
 					<div>
-						<label for="node_queue" class="block mb-2 text-gray-700 text-sm font-medium">节点队列</label>
+						<label for="node_queue" class="block mb-2 text-gray-700 text-sm font-medium">{{ $t('节点队列') }}</label>
 						<input
 							v-model="goForm.node_queue"
 							id="node_queue"
 							type="text"
 							class="field-input"
-							placeholder="默认 default"
+							:placeholder="$t('默认 default')"
 						/>
 					</div>
 				</div>
 					<!-- 启用 -->
 					<div v-if="!isGoApi" class="mb-2">
-						<CheckboxSquareField id="enabled" v-model="form.enabled">启用</CheckboxSquareField>
+						<CheckboxSquareField id="enabled" v-model="form.enabled">{{ $t('启用') }}</CheckboxSquareField>
 					</div>
 					<!-- 提交按钮 -->
 					<div>
@@ -175,7 +175,9 @@
 </template>
 
 
-<script setup lang="ts">
+<script setup lang="ts">import { useI18n } from '@/i18n';
+const { t } = useI18n();
+
 import {onMounted, reactive, ref, watch} from 'vue';
 import {useRoute, useRouter} from 'vue-router';
 import ApiService from '@/services/ApiService.js';
@@ -211,7 +213,7 @@ const goVersionLoading = ref(false);
 const goProjects = ref<Array<{id: string; name?: string}>>([]);
 const goVersions = ref<Array<{id: string; file_name?: string; version_hash?: string; created_at?: string; release_date?: string}>>([]);
 const taskTypeTabs = [
-	{value: 'code', label: '上传爬虫'},
+	{value: 'code', label: t('上传爬虫')},
 	{value: 'rss', label: 'RSS'},
 	{value: 'api', label: 'JSON API'},
 ];
@@ -307,25 +309,25 @@ async function submitForm() {
 	loading.value = true;
 	error.value = null;
 	if (!isGoApi && !form.mode) {
-		error.value = '请选择模式';
+		error.value = t('请选择模式');
 		loading.value = false;
 		return;
 	}
 	if (isGoApi && goForm.type === 'code') {
 		if (!goForm.project_id) {
-			error.value = '请选择项目';
+			error.value = t('请选择项目');
 			loading.value = false;
 			return;
 		}
 		if (!goForm.version_id) {
-			error.value = '请选择版本';
+			error.value = t('请选择版本');
 			loading.value = false;
 			return;
 		}
 	}
 	if (isGoApi && (goForm.type === 'rss' || goForm.type === 'api')) {
 		if (!String(goForm.source_url || '').trim()) {
-			error.value = '请填写源地址';
+			error.value = t('请填写源地址');
 			loading.value = false;
 			return;
 		}
@@ -359,7 +361,7 @@ async function submitForm() {
 		// English: Redirect to task list on success
 		await router.push(`/aprons/workplaces/${workplaceId}/tasks`);
 	} catch (err: any) {
-		error.value = err.response?.data?.message || '创建任务失败';
+		error.value = err.response?.data?.message || t('创建任务失败');
 	} finally {
 		loading.value = false;
 	}

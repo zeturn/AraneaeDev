@@ -9,7 +9,9 @@
   - is strictly prohibited unless prior written permission is obtained.
   -->
 
-<script lang="ts" setup>
+<script lang="ts" setup>import { useI18n } from '@/i18n';
+const { t } = useI18n();
+
 import {ref, onMounted} from 'vue';
 import ApiService from '@/services/ApiService.js';
 import Aprons from "@/views/Aprons/Aprons.vue";
@@ -31,7 +33,7 @@ const getErrorMessage = (err: unknown): string => {
 			return maybeAxiosError.message;
 		}
 	}
-	return '无法获取版本信息';
+	return t('无法获取版本信息');
 };
 
 const loadVersionInfo = async () => {
@@ -59,14 +61,14 @@ onMounted(() => {
 <template>
 	<Aprons>
 		<h1 class="text-gray-500 text-3xl m-4">
-			关于
+			{{ $t('关于') }}
 		</h1>
 		<p class="text-gray-500 text-sm m-4">
-			Aprons 是一个开源的自动化工具，HD网络数据套件之一，旨在帮助用户更高效地获取数据以及实现数据源封装。
+			{{ $t('Aprons 是一个开源的自动化工具，HD网络数据套件之一，旨在帮助用户更高效地获取数据以及实现数据源封装。') }}
 		</p>
 
 		<h2 class="text-gray-500 text-2xl m-4">
-			版本信息
+			{{ $t('版本信息') }}
 		</h2>
 		<p class="text-green-400  m-4">
 			{{ version }}
@@ -78,14 +80,14 @@ onMounted(() => {
 			Build Time: {{ buildTime }}
 		</p>
 		<p class="text-gray-400 text-sm m-4" v-if="loading">
-			版本信息加载中...
+			{{ $t('版本信息加载中...') }}
 		</p>
 		<p class="text-red-500 text-sm m-4" v-if="loadError">
 			{{ loadError }}
 		</p>
 
 		<p class="text-gray-500 text-sm m-4">
-			版本号来自当前服务端构建，自动跟随 git revision。
+			{{ $t('版本号来自当前服务端构建，自动跟随 git revision。') }}
 		</p>
 
 	</Aprons>

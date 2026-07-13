@@ -11,13 +11,13 @@
 <template>
 	<Schedules>
 		<div>
-			<div v-if="loading" class="text-center text-gray-500 text-lg">加载中...</div>
+			<div v-if="loading" class="text-center text-gray-500 text-lg">{{ $t('加载中...') }}</div>
 			<div v-else>
 				<div v-if="error" class="text-red-600 mb-4">{{ error }}</div>
 				<div v-if="actionError" class="text-red-600 mb-4">{{ actionError }}</div>
 				<div v-else class="space-y-6">
 					<div class="bg-white shadow rounded-lg p-6 space-y-6">
-						<h2 class="text-2xl font-semibold border-b pb-2">调度详情</h2>
+						<h2 class="text-2xl font-semibold border-b pb-2">{{ $t('调度详情') }}</h2>
 						<div class="flex flex-wrap items-center gap-3">
 							<button
 								class="btn-ghost px-4 py-2 text-sm font-medium"
@@ -32,7 +32,7 @@
 								:disabled="actionLoading"
 								@click="deleteSchedule"
 							>
-								删除计划
+								{{ $t('删除计划') }}
 							</button>
 						</div>
 						<dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
@@ -41,33 +41,33 @@
 								<dd class="mt-1 text-gray-700">{{ schedule.id }}</dd>
 							</div>
 							<div>
-								<dt class="text-sm font-medium text-gray-500">名称</dt>
+								<dt class="text-sm font-medium text-gray-500">{{ $t('名称') }}</dt>
 								<dd class="mt-1 text-gray-700">{{ schedule.name }}</dd>
 							</div>
 							<div>
-								<dt class="text-sm font-medium text-gray-500">描述</dt>
+								<dt class="text-sm font-medium text-gray-500">{{ $t('描述') }}</dt>
 								<dd class="mt-1 text-gray-700">{{ schedule.description }}</dd>
 							</div>
 							<div>
-								<dt class="text-sm font-medium text-gray-500">启用</dt>
+								<dt class="text-sm font-medium text-gray-500">{{ $t('启用') }}</dt>
 								<dd class="mt-1 text-gray-700">{{ schedule.enabled ? '是' : '否' }}</dd>
 							</div>
 							<div>
-								<dt class="text-sm font-medium text-gray-500">工作区</dt>
+								<dt class="text-sm font-medium text-gray-500">{{ $t('工作区') }}</dt>
 								<dd class="mt-1 text-gray-700">{{ schedule.workplace }}</dd>
 							</div>
 							<div class="sm:col-span-2">
-								<dt class="text-sm font-medium text-gray-500">顺序</dt>
+								<dt class="text-sm font-medium text-gray-500">{{ $t('顺序') }}</dt>
 								<dd class="mt-1">
 									<pre class="bg-gray-100 p-2 rounded text-sm overflow-auto">{{ formattedOrder }}</pre>
 								</dd>
 							</div>
 							<div>
-								<dt class="text-sm font-medium text-gray-500">创建时间</dt>
+								<dt class="text-sm font-medium text-gray-500">{{ $t('创建时间') }}</dt>
 								<dd class="mt-1 text-gray-700">{{ formattedCreatedAt }}</dd>
 							</div>
 							<div>
-								<dt class="text-sm font-medium text-gray-500">更新时间</dt>
+								<dt class="text-sm font-medium text-gray-500">{{ $t('更新时间') }}</dt>
 								<dd class="mt-1 text-gray-700">{{ formattedUpdatedAt }}</dd>
 							</div>
 						</dl>
@@ -75,15 +75,15 @@
 
 					<div class="bg-white shadow rounded-lg p-6 space-y-5">
 						<div class="flex flex-wrap items-center justify-between gap-3 border-b pb-2">
-							<h3 class="text-xl font-semibold">运行记录与终端输出</h3>
+							<h3 class="text-xl font-semibold">{{ $t('运行记录与终端输出') }}</h3>
 							<button class="btn-muted px-3 py-1.5 text-sm font-medium" :disabled="runsLoading" @click="fetchScheduleRuns">
 								{{ runsLoading ? '刷新中...' : '刷新' }}
 							</button>
 						</div>
 
 						<div v-if="runsError" class="text-red-600 text-sm">{{ runsError }}</div>
-						<div v-if="runsLoading" class="text-gray-500 text-sm">正在加载运行记录...</div>
-						<div v-else-if="scheduleRuns.length === 0" class="text-gray-500 text-sm">当前计划还没有运行记录。</div>
+						<div v-if="runsLoading" class="text-gray-500 text-sm">{{ $t('正在加载运行记录...') }}</div>
+						<div v-else-if="scheduleRuns.length === 0" class="text-gray-500 text-sm">{{ $t('当前计划还没有运行记录。') }}</div>
 
 						<div v-else class="grid gap-4 lg:grid-cols-[2fr,3fr]">
 							<div class="max-h-[420px] space-y-2 overflow-auto rounded-lg border border-gray-200 p-3">
@@ -106,15 +106,15 @@
 								<div class="rounded-lg bg-gray-50 p-4 text-sm text-gray-700">
 									<div class="grid gap-2 md:grid-cols-2">
 										<p><span class="font-medium">Run ID:</span> {{ selectedRun?.id || '-' }}</p>
-										<p><span class="font-medium">状态:</span> {{ selectedRun?.status || '-' }}</p>
-										<p><span class="font-medium">任务ID:</span> {{ selectedRun?.task_id || '-' }}</p>
-										<p><span class="font-medium">退出码:</span> {{ normalizeExitCode(selectedRun?.exit_code) }}</p>
-										<p><span class="font-medium">开始时间:</span> {{ formatDate(selectedRun?.started_at) }}</p>
-										<p><span class="font-medium">结束时间:</span> {{ formatDate(selectedRun?.finished_at) }}</p>
+										<p><span class="font-medium">{{ $t('状态:') }}</span> {{ selectedRun?.status || '-' }}</p>
+										<p><span class="font-medium">{{ $t('任务ID:') }}</span> {{ selectedRun?.task_id || '-' }}</p>
+										<p><span class="font-medium">{{ $t('退出码:') }}</span> {{ normalizeExitCode(selectedRun?.exit_code) }}</p>
+										<p><span class="font-medium">{{ $t('开始时间:') }}</span> {{ formatDate(selectedRun?.started_at) }}</p>
+										<p><span class="font-medium">{{ $t('结束时间:') }}</span> {{ formatDate(selectedRun?.finished_at) }}</p>
 									</div>
 								</div>
 								<div>
-									<p class="mb-2 text-sm font-medium text-gray-700">终端输出</p>
+									<p class="mb-2 text-sm font-medium text-gray-700">{{ $t('终端输出') }}</p>
 									<pre class="min-h-[300px] overflow-auto rounded-lg bg-slate-950 p-4 text-xs text-slate-100 whitespace-pre-wrap">{{ selectedRunOutput }}</pre>
 								</div>
 							</div>
@@ -127,7 +127,9 @@
 </template>
 
 
-<script setup>
+<script setup>import { useI18n } from '@/i18n';
+const { t } = useI18n();
+
 import {ref, onMounted, computed} from 'vue';
 import {useRoute} from 'vue-router';
 import {useRouter} from 'vue-router';
@@ -169,7 +171,7 @@ async function fetchSchedule() {
 		const response = await ApiService.getSchedule(scheduleId);
 		schedule.value = response.data;
 	} catch (err) {
-		error.value = err.response?.data?.message || '获取调度失败';
+		error.value = err.response?.data?.message || t('获取调度失败');
 	} finally {
 		loading.value = false;
 	}
@@ -189,7 +191,7 @@ async function fetchScheduleRuns() {
 			selectedRunId.value = list[0]?.id || '';
 		}
 	} catch (err) {
-		runsError.value = err.response?.data?.message || '获取运行记录失败';
+		runsError.value = err.response?.data?.message || t('获取运行记录失败');
 	} finally {
 		runsLoading.value = false;
 	}
@@ -224,7 +226,7 @@ const selectedRun = computed(() => {
 const selectedRunOutput = computed(() => {
 	const output = selectedRun.value?.output;
 	if (typeof output !== 'string' || output.trim() === '') {
-		return '暂无输出';
+		return t('暂无输出');
 	}
 	return output;
 });
@@ -250,7 +252,7 @@ async function toggleScheduleEnabled() {
 			...response.data,
 		};
 	} catch (err) {
-		actionError.value = err.response?.data?.message || '更新计划状态失败';
+		actionError.value = err.response?.data?.message || t('更新计划状态失败');
 	} finally {
 		actionLoading.value = false;
 	}
@@ -270,7 +272,7 @@ async function deleteSchedule() {
 		const workplace = schedule.value.workplace || 'go-workspace';
 		await router.push(`/aprons/workplaces/${workplace}/schedules`);
 	} catch (err) {
-		actionError.value = err.response?.data?.message || '删除计划失败';
+		actionError.value = err.response?.data?.message || t('删除计划失败');
 		actionLoading.value = false;
 	}
 }

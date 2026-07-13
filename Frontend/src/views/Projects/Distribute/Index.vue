@@ -13,12 +13,12 @@
 	<Project>
 		<Distribute>
 			<div class="flex items-center justify-between mb-4">
-				<h2 class="text-lg font-semibold text-gray-700">分发记录</h2>
+				<h2 class="text-lg font-semibold text-gray-700">{{ $t('分发记录') }}</h2>
 				<button
 					class="border border-indigo-300 text-indigo-600 rounded py-2 px-4 hover:bg-indigo-50"
 					@click="showObjectaryPicker = true"
 				>
-					从 Objectary 导入
+					{{ $t('从 Objectary 导入') }}
 				</button>
 			</div>
 			<div class="overflow-x-auto">
@@ -100,8 +100,8 @@ export default {
 		onObjectaryImported(version) {
 			EventBus.emit('notify', {
 				type: 'success',
-				title: '导入成功',
-				message: '已从 Objectary 导入新版本：' + (version?.file_name || '')
+				title: this.$t('导入成功'),
+				message: this.$t('已从 Objectary 导入新版本：') + (version?.file_name || '')
 			});
 		},
 	}
