@@ -142,6 +142,21 @@ func (a *App) processSinkFile(ctx context.Context, msg contracts.QueueTaskMessag
 }
 
 func (a *App) forwardSinkEvent(ctx context.Context, msg contracts.QueueTaskMessage, eventType string, payload json.RawMessage) error {
+	if eventType == "structured" {
+		if datasetID := slotDatasetID(msg.Metadata); datasetID != "" {
+			var envelope struct {
+				Data map[string]any `json:"data"`
+			}
+			if err := json.Unmarshal(payload, &envelope); err != nil {
+				return fmt.Errorf("decode structured sink event: %w", err)
+			}
+			if envelope.Data == nil {
+				return errors.New("structured sink event has no data")
+			}
+			payload, _ = json.Marshal(map[string]any{"data": envelope.Data})
+			return a.forwardToHashSlip(ctx, msg, "/api/v1/datasets/"+url.PathEscape(datasetID)+"/records", payload)
+		}
+	}
 	var endpoint string
 	switch eventType {
 	case "timeseries":
@@ -156,6 +171,19 @@ func (a *App) forwardSinkEvent(ctx context.Context, msg contracts.QueueTaskMessa
 	if endpoint == "" {
 		return errors.New("empty hashslip endpoint path")
 	}
+	return a.forwardToHashSlip(ctx, msg, endpoint, payload)
+}
+
+func slotDatasetID(metadata map[string]any) string {
+	slot, ok := metadata["hashslip_slot"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	value, _ := slot["dataset_id"].(string)
+	return strings.TrimSpace(value)
+}
+
+func (a *App) forwardToHashSlip(ctx context.Context, msg contracts.QueueTaskMessage, endpoint string, payload []byte) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(a.cfg.HashSlipBaseURL, "/")+ensureLeadingSlash(endpoint), bytes.NewReader(payload))
 	if err != nil {
 		return err

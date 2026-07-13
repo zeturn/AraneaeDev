@@ -103,6 +103,13 @@ func (a *App) triggerNextScheduleChainRun(prevRun common.TaskRun) error {
 		return nil
 	}
 	next := steps[nextIndex]
+	metadata := map[string]any{}
+	if next.TaskID != "" {
+		var task common.Task
+		if err := a.db.Where("id = ?", next.TaskID).First(&task).Error; err == nil {
+			metadata = parseMetadataJSON(task.MetadataJSON)
+		}
+	}
 
 	_, err = a.publishRun(
 		next.TaskID,
@@ -114,6 +121,7 @@ func (a *App) triggerNextScheduleChainRun(prevRun common.TaskRun) error {
 		next.NodeQueue,
 		next.Type,
 		next.SourceURL,
+		metadata,
 		&chainRunMeta{
 			ChainID:    prevRun.ChainID,
 			ChainIndex: nextIndex,

@@ -48,7 +48,7 @@ func (a *App) publishCrawlSucceededEvent(ctx context.Context, run common.TaskRun
 	}
 	metadata := parseMetadataJSON(task.MetadataJSON)
 	collection := firstNonEmpty(metadataString(metadata, "hashslip_collection"), metadataString(metadata, "collection"), defaultCollectionForTask(task))
-	outputCollection := firstNonEmpty(metadataString(metadata, "analysis_collection"), "artifacts."+collection)
+	outputCollection := firstNonEmpty(metadataString(metadata, "analysis_collection"), "analysis."+collection)
 	missionID := firstNonEmpty(metadataString(metadata, "mission_id"), "mission_"+stableShortHex(collection))
 	traceID := firstNonEmpty(metadataString(metadata, "trace_id"), run.CorrelationID, "trace_"+stableShortHex(run.ID))
 	now := time.Now().UTC().Format(time.RFC3339Nano)
@@ -82,8 +82,8 @@ func (a *App) publishCrawlSucceededEvent(ctx context.Context, run common.TaskRun
 			"hashslip_collection": collection,
 			"schema_id":           firstNonEmpty(metadataString(metadata, "schema_id"), collection),
 			"analysis_collection": outputCollection,
-			"artifact_type":       firstNonEmpty(metadataString(metadata, "artifact_type"), "tdt_news_brief"),
-			"vesper_job":         metadata["vesper_job"],
+			"artifact_type":       firstNonEmpty(metadataString(metadata, "artifact_type"), "analysis_result"),
+			"vesper_job":          metadata["vesper_job"],
 			"sink_summary":        run.Output,
 			"exit_code":           run.ExitCode,
 			"finished_at":         timePtrString(run.FinishedAt),

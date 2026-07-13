@@ -172,12 +172,15 @@ func tryEmitRSS2(raw []byte, sourceURL, sinkDir string) (int, error) {
 	}
 	count := 0
 	for _, it := range f.Channel.Items {
+		link := strings.TrimSpace(it.Link)
+		publishedAt := strings.TrimSpace(it.PubDate)
 		data := map[string]interface{}{
 			"title":        strings.TrimSpace(it.Title),
-			"link":         strings.TrimSpace(it.Link),
+			"link":         link,
 			"summary":      strings.TrimSpace(it.Description),
-			"published_at": strings.TrimSpace(it.PubDate),
+			"published_at": publishedAt,
 			"source_url":   sourceURL,
+			"id":           sourceItemID(strings.TrimSpace(it.GUID), link, strings.TrimSpace(it.Title), publishedAt),
 		}
 		if err := emitStructured(sinkDir, sourceURL, "rss_item", data); err != nil {
 			return count, err
@@ -210,6 +213,7 @@ func tryEmitAtom(raw []byte, sourceURL, sinkDir string) (int, error) {
 			"content":      strings.TrimSpace(e.Content),
 			"published_at": strings.TrimSpace(e.Updated),
 			"source_url":   sourceURL,
+			"id":           sourceItemID(strings.TrimSpace(e.ID), link, strings.TrimSpace(e.Title), strings.TrimSpace(e.Updated)),
 		}
 		if err := emitStructured(sinkDir, sourceURL, "rss_item", data); err != nil {
 			return count, err
@@ -226,12 +230,15 @@ func tryEmitRDF(raw []byte, sourceURL, sinkDir string) (int, error) {
 	}
 	count := 0
 	for _, it := range f.Items {
+		link := strings.TrimSpace(it.Link)
+		publishedAt := strings.TrimSpace(it.PubDate)
 		data := map[string]interface{}{
 			"title":        strings.TrimSpace(it.Title),
-			"link":         strings.TrimSpace(it.Link),
+			"link":         link,
 			"summary":      strings.TrimSpace(it.Description),
-			"published_at": strings.TrimSpace(it.PubDate),
+			"published_at": publishedAt,
 			"source_url":   sourceURL,
+			"id":           sourceItemID(strings.TrimSpace(it.GUID), link, strings.TrimSpace(it.Title), publishedAt),
 		}
 		if err := emitStructured(sinkDir, sourceURL, "rss_item", data); err != nil {
 			return count, err
@@ -239,6 +246,16 @@ func tryEmitRDF(raw []byte, sourceURL, sinkDir string) (int, error) {
 		count++
 	}
 	return count, nil
+}
+
+func sourceItemID(preferred, link, title, publishedAt string) string {
+	if preferred != "" {
+		return preferred
+	}
+	if link != "" {
+		return link
+	}
+	return title + "\n" + publishedAt
 }
 
 // ---- JSON API parsing ----
