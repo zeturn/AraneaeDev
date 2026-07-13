@@ -18,6 +18,9 @@ type ControlConfig struct {
 	DBPath                string
 	RabbitURL             string
 	RabbitExchange        string
+	MOIIPEventsEnabled    bool
+	MOIIPRabbitURL        string
+	MOIIPEventExchange    string
 	InitAdminPassword     string
 	JWTSecret             string
 	ArtifactRoot          string
@@ -132,6 +135,9 @@ func LoadControlConfig() ControlConfig {
 		DBPath:                GetEnv("CONTROL_DB_PATH", "./data/control.db"),
 		RabbitURL:             GetEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
 		RabbitExchange:        GetEnv("RABBITMQ_EXCHANGE", "tasks.direct"),
+		MOIIPEventsEnabled:    GetEnvBool("MOIIP_EVENTS_ENABLED", false),
+		MOIIPRabbitURL:        GetEnv("MOIIP_RABBITMQ_URL", GetEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")),
+		MOIIPEventExchange:    GetEnv("MOIIP_EVENT_EXCHANGE", "moiip.events"),
 		InitAdminPassword:     GetEnv("INIT_ADMIN_PASSWORD", ""),
 		JWTSecret:             GetEnv("CONTROL_JWT_SECRET", ""),
 		ArtifactRoot:          GetEnv("ARTIFACT_ROOT", "./data/artifacts"),

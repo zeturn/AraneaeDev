@@ -52,6 +52,7 @@ type Task struct {
 	EntryCommand string    `gorm:"size:512" json:"entry_command"`
 	Type         string    `gorm:"size:16;not null;default:code" json:"type"`
 	SourceURL    string    `gorm:"size:1024" json:"source_url"`
+	MetadataJSON string    `gorm:"type:text" json:"metadata,omitempty"`
 	CronExpr     string    `gorm:"size:128" json:"cron_expr"`
 	NodeQueue    string    `gorm:"size:64;not null" json:"node_queue"`
 	Enabled      bool      `gorm:"not null;default:true" json:"enabled"`

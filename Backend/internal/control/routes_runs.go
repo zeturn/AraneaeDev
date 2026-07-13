@@ -141,6 +141,7 @@ func (a *App) runCallback(c *fiber.Ctx) error {
 	if status == "success" {
 		var run common.TaskRun
 		if err := a.db.Where("id = ?", runID).First(&run).Error; err == nil {
+			a.publishCrawlSucceededEventAsync(run)
 			if err := a.triggerNextScheduleChainRun(run); err != nil {
 				a.log.Error("chain next step trigger failed", zap.Error(err), zap.String("run_id", runID), zap.String("schedule_id", run.ScheduleID))
 			}

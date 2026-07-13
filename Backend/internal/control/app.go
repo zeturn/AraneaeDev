@@ -444,6 +444,7 @@ func (a *App) publishScheduleRun(schedule common.Schedule, source string) (*comm
 			VersionID:    schedule.VersionID,
 			EntryCommand: schedule.EntryCommand,
 			NodeQueue:    schedule.NodeQueue,
+			Type:         "code",
 		}}
 	}
 
@@ -457,7 +458,7 @@ func (a *App) publishScheduleRun(schedule common.Schedule, source string) (*comm
 	}
 
 	first := steps[0]
-	run, err := a.publishRun(first.TaskID, schedule.ID, source, first.ProjectID, first.VersionID, first.EntryCommand, first.NodeQueue, "", "", chainMeta)
+	run, err := a.publishRun(first.TaskID, schedule.ID, source, first.ProjectID, first.VersionID, first.EntryCommand, first.NodeQueue, first.Type, first.SourceURL, chainMeta)
 	if err != nil {
 		return nil, err
 	}

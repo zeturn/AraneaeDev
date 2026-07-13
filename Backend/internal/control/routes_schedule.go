@@ -61,16 +61,16 @@ func (a *App) createSchedule(c *fiber.Ctx) error {
 		if err := a.db.Where("id = ?", req.TaskID).First(&task).Error; err != nil {
 			return fiber.NewError(fiber.StatusBadRequest, "task not found")
 		}
-		if req.ProjectID != "" && strings.TrimSpace(req.ProjectID) != task.ProjectID {
+		if task.ProjectID != "" && req.ProjectID != "" && strings.TrimSpace(req.ProjectID) != task.ProjectID {
 			return fiber.NewError(fiber.StatusBadRequest, "task_id does not belong to project_id")
 		}
-		if req.VersionID != "" && strings.TrimSpace(req.VersionID) != task.VersionID {
+		if task.VersionID != "" && req.VersionID != "" && strings.TrimSpace(req.VersionID) != task.VersionID {
 			return fiber.NewError(fiber.StatusBadRequest, "task_id does not belong to version_id")
 		}
-		if req.ProjectID == "" {
+		if req.ProjectID == "" && task.ProjectID != "" {
 			req.ProjectID = task.ProjectID
 		}
-		if req.VersionID == "" {
+		if req.VersionID == "" && task.VersionID != "" {
 			req.VersionID = task.VersionID
 		}
 		if req.EntryCommand == "" {

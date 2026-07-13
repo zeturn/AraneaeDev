@@ -117,7 +117,7 @@ func emitStructured(sinkDir, instanceID, schemaID string, data map[string]interf
 type rss2Feed struct {
 	XMLName xml.Name `xml:"rss"`
 	Channel struct {
-		Items []rssItem `xml:"channel>item"`
+		Items []rssItem `xml:"item"`
 	} `xml:"channel"`
 }
 
@@ -134,17 +134,17 @@ type rssItem struct {
 }
 
 type atomFeed struct {
-	XMLName xml.Name     `xml:"feed"`
+	XMLName xml.Name    `xml:"feed"`
 	Entries []atomEntry `xml:"entry"`
 }
 
 type atomEntry struct {
-	Title   string      `xml:"title"`
-	Links   []atomLink  `xml:"link"`
-	Summary string      `xml:"summary"`
-	Content string      `xml:"content"`
-	ID      string      `xml:"id"`
-	Updated string      `xml:"updated"`
+	Title   string     `xml:"title"`
+	Links   []atomLink `xml:"link"`
+	Summary string     `xml:"summary"`
+	Content string     `xml:"content"`
+	ID      string     `xml:"id"`
+	Updated string     `xml:"updated"`
 }
 
 type atomLink struct {

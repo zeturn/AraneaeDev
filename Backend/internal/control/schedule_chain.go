@@ -12,6 +12,8 @@ type scheduleExecutionStep struct {
 	VersionID    string
 	EntryCommand string
 	NodeQueue    string
+	Type         string
+	SourceURL    string
 }
 
 func (a *App) resolveScheduleExecutionSteps(schedule common.Schedule) ([]scheduleExecutionStep, error) {
@@ -21,6 +23,7 @@ func (a *App) resolveScheduleExecutionSteps(schedule common.Schedule) ([]schedul
 		VersionID:    strings.TrimSpace(schedule.VersionID),
 		EntryCommand: strings.TrimSpace(schedule.EntryCommand),
 		NodeQueue:    strings.TrimSpace(schedule.NodeQueue),
+		Type:         "code",
 	}
 	if defaultStep.NodeQueue == "" {
 		defaultStep.NodeQueue = "default"
@@ -42,6 +45,8 @@ func (a *App) resolveScheduleExecutionSteps(schedule common.Schedule) ([]schedul
 				step.VersionID = task.VersionID
 				step.EntryCommand = task.EntryCommand
 				step.NodeQueue = task.NodeQueue
+				step.Type = task.Type
+				step.SourceURL = task.SourceURL
 			}
 		}
 		if projectID := strings.TrimSpace(item.ProjectID); projectID != "" {
@@ -55,10 +60,17 @@ func (a *App) resolveScheduleExecutionSteps(schedule common.Schedule) ([]schedul
 		if step.TaskID == "" {
 			step.TaskID = schedule.ID
 		}
+		if step.Type == "" {
+			step.Type = "code"
+		}
 		if step.NodeQueue == "" {
 			step.NodeQueue = "default"
 		}
-		if step.ProjectID == "" || step.VersionID == "" || step.EntryCommand == "" {
+		if step.Type == "rss" || step.Type == "api" {
+			if step.SourceURL == "" {
+				continue
+			}
+		} else if step.ProjectID == "" || step.VersionID == "" || step.EntryCommand == "" {
 			continue
 		}
 		steps = append(steps, step)
@@ -100,8 +112,8 @@ func (a *App) triggerNextScheduleChainRun(prevRun common.TaskRun) error {
 		next.VersionID,
 		next.EntryCommand,
 		next.NodeQueue,
-		"",
-		"",
+		next.Type,
+		next.SourceURL,
 		&chainRunMeta{
 			ChainID:    prevRun.ChainID,
 			ChainIndex: nextIndex,

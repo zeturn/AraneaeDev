@@ -47,6 +47,7 @@ type createTaskRequest struct {
 	EntryCommand string `json:"entry_command"`
 	Type         string `json:"type"`
 	SourceURL    string `json:"source_url"`
+	Metadata     any    `json:"metadata"`
 	CronExpr     string `json:"cron_expr"`
 	NodeQueue    string `json:"node_queue"`
 }
@@ -58,6 +59,7 @@ type updateTaskRequest struct {
 	EntryCommand *string `json:"entry_command"`
 	Type         *string `json:"type"`
 	SourceURL    *string `json:"source_url"`
+	Metadata     any     `json:"metadata"`
 	CronExpr     *string `json:"cron_expr"`
 	NodeQueue    *string `json:"node_queue"`
 	Enabled      *bool   `json:"enabled"`
@@ -830,6 +832,11 @@ func (a *App) createTask(c *fiber.Ctx) error {
 		CreatedBy: uid,
 		CreatedAt: time.Now(),
 	}
+	if metadataJSON, err := normalizeMetadataJSON(req.Metadata); err != nil {
+		return fiber.NewError(fiber.StatusBadRequest, err.Error())
+	} else {
+		task.MetadataJSON = metadataJSON
+	}
 
 	if taskType == "code" {
 		if strings.TrimSpace(req.EntryCommand) == "" {
@@ -950,6 +957,13 @@ func (a *App) updateTask(c *fiber.Ctx) error {
 	}
 	if req.SourceURL != nil {
 		task.SourceURL = strings.TrimSpace(*req.SourceURL)
+	}
+	if req.Metadata != nil {
+		metadataJSON, err := normalizeMetadataJSON(req.Metadata)
+		if err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, err.Error())
+		}
+		task.MetadataJSON = metadataJSON
 	}
 	if req.Type != nil {
 		t := strings.ToLower(strings.TrimSpace(*req.Type))
