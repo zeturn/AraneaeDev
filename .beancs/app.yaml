@@ -68,7 +68,7 @@ spec:
         - name: http
           port: 8180
           protocol: http
-          exposure: public
+          exposure: internal-only
         - name: grpc
           port: 9190
           protocol: grpc
@@ -218,7 +218,7 @@ spec:
         - name: http
           port: 80
           protocol: http
-          exposure: public
+          exposure: internal-only
 
       healthCheck:
         type: tcp
