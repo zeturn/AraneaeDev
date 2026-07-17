@@ -98,7 +98,7 @@ spec:
         CONTROL_DB_PATH: /data/control.db
         ARTIFACT_ROOT: /data/artifacts
         CONTROL_CORS_ALLOW_ORIGINS: "*"
-        FRONTEND_BASE_URL: https://araneae-front.hollowdata.com
+        FRONTEND_BASE_URL: https://araneae.hollowdata.com
         BASALTPASS_ADMIN_EMAILS: testbeancsbasaltpass-tenant@hollowdata.com
         BASALTPASS_OAUTH_SCOPE: "openid profile email araneae.read araneae.write araneae.admin"
         BASALTPASS_INTERNAL_BASE_URL: http://backend.testbeancsbasaltpass.svc.cluster.local:8101
@@ -128,6 +128,12 @@ spec:
     - name: executor
       kind: worker
       projectName: araneae-executor
+      basaltPass:
+        scopes:
+          - openid
+          - profile
+          - email
+          - hashslip.write
 
       build:
         context: Backend
@@ -174,6 +180,9 @@ spec:
         CONTROL_HTTP_BASE: http://araneae-control:8180
         EXECUTOR_SINK_ENABLED: "true"
         HASHSLIP_BASE_URL: http://hashslip-backend.app-hashslip.svc.cluster.local:8106
+        HASHSLIP_STRUCTURED_PATH: /api/v1/structured/records
+        BASALTPASS_TOKEN_URL: http://backend.testbeancsbasaltpass.svc.cluster.local:8101/api/v1/oauth/token
+        BASALTPASS_S2S_SCOPE: hashslip.write
 
       secrets:
         - name: EXECUTION_CALLBACK_KEY
@@ -199,7 +208,7 @@ spec:
         dockerfile: Frontend/Dockerfile
         args:
           VITE_API_FLAVOR: go
-          VITE_BACKEND_BASE_URL: https://araneae-control.hollowdata.com
+          VITE_BACKEND_BASE_URL: https://araneae.hollowdata.com
 
       image:
         repository: araneae-front
