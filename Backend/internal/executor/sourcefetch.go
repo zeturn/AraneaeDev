@@ -259,11 +259,17 @@ type rdfFeed struct {
 }
 
 type rssItem struct {
-	Title       string `xml:"title"`
-	Link        string `xml:"link"`
-	Description string `xml:"description"`
-	PubDate     string `xml:"pubDate"`
-	GUID        string `xml:"guid"`
+	Title       string        `xml:"title"`
+	Links       []rssItemLink `xml:"link"`
+	Description string        `xml:"description"`
+	PubDate     string        `xml:"pubDate"`
+	GUID        string        `xml:"guid"`
+}
+
+type rssItemLink struct {
+	XMLName xml.Name `xml:"link"`
+	Href    string   `xml:"href,attr"`
+	Text    string   `xml:",chardata"`
 }
 
 type atomFeed struct {
@@ -305,7 +311,7 @@ func tryEmitRSS2(ctx context.Context, raw []byte, sourceURL, sinkDir string) (in
 	}
 	count := 0
 	for _, it := range f.Channel.Items {
-		link := strings.TrimSpace(it.Link)
+		link := bestRSSItemLink(it.Links)
 		publishedAt := strings.TrimSpace(it.PubDate)
 		summary := strings.TrimSpace(it.Description)
 		content, contentStatus := fetchArticleContent(ctx, link, sourceURL, summary)
@@ -370,7 +376,7 @@ func tryEmitRDF(ctx context.Context, raw []byte, sourceURL, sinkDir string) (int
 	}
 	count := 0
 	for _, it := range f.Items {
-		link := strings.TrimSpace(it.Link)
+		link := bestRSSItemLink(it.Links)
 		publishedAt := strings.TrimSpace(it.PubDate)
 		summary := strings.TrimSpace(it.Description)
 		content, contentStatus := fetchArticleContent(ctx, link, sourceURL, summary)
@@ -571,6 +577,27 @@ func truncateRunes(s string, max int) string {
 		return s
 	}
 	return string(runes[:max])
+}
+
+func bestRSSItemLink(links []rssItemLink) string {
+	for _, link := range links {
+		if link.XMLName.Space == "" {
+			if text := strings.TrimSpace(link.Text); text != "" {
+				return text
+			}
+		}
+	}
+	for _, link := range links {
+		if href := strings.TrimSpace(link.Href); href != "" {
+			return href
+		}
+	}
+	for _, link := range links {
+		if text := strings.TrimSpace(link.Text); text != "" {
+			return text
+		}
+	}
+	return ""
 }
 
 func sourceItemID(preferred, link, title, publishedAt string) string {
