@@ -99,9 +99,9 @@ spec:
         ARTIFACT_ROOT: /data/artifacts
         CONTROL_CORS_ALLOW_ORIGINS: "*"
         FRONTEND_BASE_URL: https://araneae.hollowdata.com
-        BASALTPASS_ADMIN_EMAILS: testbeancsbasaltpass-tenant@hollowdata.com
+        BASALTPASS_ADMIN_EMAILS: ""
         BASALTPASS_OAUTH_SCOPE: "openid profile email araneae.read araneae.write araneae.admin"
-        BASALTPASS_INTERNAL_BASE_URL: http://backend.testbeancsbasaltpass.svc.cluster.local:8101
+        BASALTPASS_INTERNAL_BASE_URL: http://basaltpass-backend.beancs-system.svc.cluster.local:8101
 
       secrets:
         - name: INIT_ADMIN_PASSWORD
@@ -181,7 +181,7 @@ spec:
         EXECUTOR_SINK_ENABLED: "true"
         HASHSLIP_BASE_URL: https://hashslip.hollowdata.com
         HASHSLIP_STRUCTURED_PATH: /api/v1/structured/records
-        BASALTPASS_TOKEN_URL: http://backend.testbeancsbasaltpass.svc.cluster.local:8101/api/v1/oauth/token
+        BASALTPASS_TOKEN_URL: http://basaltpass-backend.beancs-system.svc.cluster.local:8101/api/v1/oauth/token
         BASALTPASS_S2S_SCOPE: hashslip.write
 
       secrets:
