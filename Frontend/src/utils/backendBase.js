@@ -16,13 +16,14 @@ export function resolveBackendBase() {
     }
 
     if (typeof window !== 'undefined') {
-        const { protocol, hostname } = window.location;
+        const { protocol, hostname, origin } = window.location;
         if (hostname === 'localhost' || hostname === '127.0.0.1') {
             return 'http://localhost:8180';
         }
         if (hostname.startsWith('araneae-front.')) {
             return `${protocol}//${hostname.replace(/^araneae-front\./, 'araneae-control.')}`;
         }
+        return origin;
     }
 
     return 'http://localhost:8180';
