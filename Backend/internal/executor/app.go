@@ -522,13 +522,28 @@ func (a *App) processMessage(ctx context.Context, raw []byte) error {
 		return err
 	}
 
-	return a.reportCallback(m.RunID, m.RunToken, m.CorrelationID, contracts.CallbackPayload{
+	if err := a.reportCallback(m.RunID, m.RunToken, m.CorrelationID, contracts.CallbackPayload{
 		Status:     status,
 		Output:     output,
 		ExitCode:   exitCode,
 		StartedAt:  &startedAt,
 		FinishedAt: &finishedAt,
-	})
+	}); err != nil {
+		a.log.Warn("report callback failed after task completion",
+			zap.String("run_id", m.RunID),
+			zap.String("task_id", m.TaskID),
+			zap.String("status", status),
+			zap.Error(err),
+		)
+		// The task already ran and any sink output has already been processed.
+		// Do not Nack the RabbitMQ message, otherwise non-idempotent crawlers or
+		// partially successful sink transfers may execute repeatedly.
+		_ = a.db.Model(&store.ExecutionRecord{}).Where("run_id = ?", m.RunID).Updates(map[string]interface{}{
+			"status": "callback_failed",
+			"output": truncateOutput(output+"\ncallback error: "+err.Error(), maxExecutorOutputBytes),
+		}).Error
+	}
+	return nil
 }
 
 func (a *App) executeTask(ctx context.Context, msg contracts.QueueTaskMessage) (string, int, string, error) {
