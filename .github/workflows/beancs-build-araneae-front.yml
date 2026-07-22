@@ -74,7 +74,7 @@ jobs:
           else
             cat <<'EOF' >/tmp/beancs-build-args
           VITE_API_FLAVOR=go
-          VITE_BACKEND_BASE_URL=https://araneae.hollowdata.com
+          VITE_BACKEND_BASE_URL=https://araneae.beancs.com
           EOF
             {
               echo "value<<EOF"
