@@ -1,0 +1,30 @@
+name: Temporary Araneae Front Sync
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure kubeconfig
+        shell: bash
+        run: |
+          if [ -z "${{ secrets.KUBE_CONFIG }}" ]; then
+            echo "KUBE_CONFIG secret is required"
+            exit 1
+          fi
+          mkdir -p ~/.kube
+          printf '%s' "${{ secrets.KUBE_CONFIG }}" > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Update araneae front image
+        shell: bash
+        run: |
+          kubectl -n app-araneae get deployment araneae-front -o wide
+          kubectl -n app-araneae set image deployment/araneae-front app=registry.beancs.com/hollowdata/araneae-front:beancs-d374637de8f1
+          kubectl -n app-araneae rollout status deployment/araneae-front --timeout=240s
+          kubectl -n app-araneae get deployment araneae-front -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
