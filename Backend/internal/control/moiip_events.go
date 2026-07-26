@@ -38,15 +38,24 @@ func (a *App) publishCrawlSucceededEvent(ctx context.Context, run common.TaskRun
 	if !a.cfg.MOIIPEventsEnabled {
 		return nil
 	}
-	var task common.Task
-	if err := a.db.WithContext(ctx).Where("id = ?", run.TaskID).First(&task).Error; err != nil {
+	envelope, ok, err := a.buildCrawlSucceededEnvelope(ctx, run)
+	if err != nil || !ok {
 		return err
 	}
-	taskType := strings.ToLower(strings.TrimSpace(task.Type))
-	if taskType != "rss" && taskType != "api" {
-		return nil
+	return a.publishMOIIPEnvelope(ctx, envelope)
+}
+
+func (a *App) buildCrawlSucceededEnvelope(ctx context.Context, run common.TaskRun) (moiipEnvelope, bool, error) {
+	var task common.Task
+	if err := a.db.WithContext(ctx).Where("id = ?", run.TaskID).First(&task).Error; err != nil {
+		return moiipEnvelope{}, false, err
 	}
+	taskType := strings.ToLower(strings.TrimSpace(task.Type))
 	metadata := parseMetadataJSON(task.MetadataJSON)
+	hashslipSlot := metadataMap(metadata, "hashslip_slot")
+	if taskType != "rss" && taskType != "api" && len(hashslipSlot) == 0 {
+		return moiipEnvelope{}, false, nil
+	}
 	collection := firstNonEmpty(metadataString(metadata, "hashslip_collection"), metadataString(metadata, "collection"), defaultCollectionForTask(task))
 	outputCollection := firstNonEmpty(metadataString(metadata, "analysis_collection"), "analysis."+collection)
 	missionID := firstNonEmpty(metadataString(metadata, "mission_id"), "mission_"+stableShortHex(collection))
@@ -80,6 +89,7 @@ func (a *App) publishCrawlSucceededEvent(ctx context.Context, run common.TaskRun
 			"schedule_id":         run.ScheduleID,
 			"source_url":          task.SourceURL,
 			"hashslip_collection": collection,
+			"hashslip_slot":       hashslipSlot,
 			"schema_id":           firstNonEmpty(metadataString(metadata, "schema_id"), collection),
 			"analysis_collection": outputCollection,
 			"artifact_type":       firstNonEmpty(metadataString(metadata, "artifact_type"), "analysis_result"),
@@ -90,7 +100,7 @@ func (a *App) publishCrawlSucceededEvent(ctx context.Context, run common.TaskRun
 			"metadata":            metadata,
 		},
 	}
-	return a.publishMOIIPEnvelope(ctx, envelope)
+	return envelope, true, nil
 }
 
 func (a *App) publishMOIIPEnvelope(ctx context.Context, envelope moiipEnvelope) error {
@@ -160,6 +170,28 @@ func metadataString(metadata map[string]any, key string) string {
 		return ""
 	}
 	return strings.TrimSpace(fmt.Sprint(value))
+}
+
+func metadataMap(metadata map[string]any, key string) map[string]any {
+	if metadata == nil {
+		return nil
+	}
+	value, ok := metadata[key]
+	if !ok {
+		return nil
+	}
+	if typed, ok := value.(map[string]any); ok {
+		return typed
+	}
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return nil
+	}
+	var out map[string]any
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil
+	}
+	return out
 }
 
 func stableShortHex(value string) string {

@@ -40,6 +40,7 @@ type App struct {
 	log        *zap.Logger
 	db         *gorm.DB
 	http       *fiber.App
+	rabbitMu   sync.Mutex
 	rabbitConn *amqp.Connection
 	rabbitCh   *amqp.Channel
 	grpcConn   *grpc.ClientConn
@@ -363,40 +364,113 @@ func (a *App) Shutdown(ctx context.Context) error {
 	if a.grpcConn != nil {
 		_ = a.grpcConn.Close()
 	}
-	if a.rabbitCh != nil {
-		_ = a.rabbitCh.Close()
-	}
-	if a.rabbitConn != nil {
-		_ = a.rabbitConn.Close()
-	}
+	a.closeRabbit()
 	return a.http.ShutdownWithContext(ctx)
 }
 
 func (a *App) startConsumer(ctx context.Context) error {
-	qName := "executor." + a.cfg.RabbitQueue
-	msgs, err := a.rabbitCh.Consume(qName, "", false, false, false, false, nil)
+	msgs, err := a.openConsumer()
 	if err != nil {
 		return err
 	}
-	go func() {
-		for {
-			select {
-			case msg, ok := <-msgs:
-				if !ok {
+	go a.consumeLoop(ctx, msgs)
+	return nil
+}
+
+func (a *App) openConsumer() (<-chan amqp.Delivery, error) {
+	a.rabbitMu.Lock()
+	defer a.rabbitMu.Unlock()
+
+	if a.rabbitConn == nil || a.rabbitConn.IsClosed() || a.rabbitCh == nil {
+		conn, ch, err := initRabbit(a.cfg)
+		if err != nil {
+			return nil, err
+		}
+		a.rabbitConn = conn
+		a.rabbitCh = ch
+	}
+
+	if err := a.rabbitCh.Qos(1, 0, false); err != nil {
+		a.closeRabbitLocked()
+		return nil, err
+	}
+
+	qName := "executor." + a.cfg.RabbitQueue
+	msgs, err := a.rabbitCh.Consume(qName, "", false, false, false, false, nil)
+	if err != nil {
+		a.closeRabbitLocked()
+		return nil, err
+	}
+	return msgs, nil
+}
+
+func (a *App) consumeLoop(ctx context.Context, msgs <-chan amqp.Delivery) {
+	for {
+		select {
+		case msg, ok := <-msgs:
+			if !ok {
+				a.log.Warn("rabbit consumer channel closed; reconnecting", zap.String("queue", a.cfg.RabbitQueue))
+				reconnected, err := a.reconnectConsumer(ctx)
+				if err != nil {
 					return
 				}
-				if err := a.processMessage(ctx, msg.Body); err != nil {
-					a.log.Error("process message failed", zap.Error(err))
-					_ = msg.Nack(false, false)
-					continue
-				}
-				_ = msg.Ack(false)
-			case <-ctx.Done():
-				return
+				msgs = reconnected
+				continue
+			}
+			if err := a.processMessage(ctx, msg.Body); err != nil {
+				a.log.Error("process message failed", zap.Error(err))
+				_ = msg.Nack(false, false)
+				continue
+			}
+			_ = msg.Ack(false)
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (a *App) reconnectConsumer(ctx context.Context) (<-chan amqp.Delivery, error) {
+	backoff := time.Second
+	for {
+		a.closeRabbit()
+		msgs, err := a.openConsumer()
+		if err == nil {
+			a.log.Info("rabbit consumer reconnected", zap.String("queue", a.cfg.RabbitQueue))
+			return msgs, nil
+		}
+		a.log.Warn("rabbit consumer reconnect failed", zap.Error(err), zap.Duration("retry_in", backoff))
+
+		timer := time.NewTimer(backoff)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+		if backoff < 30*time.Second {
+			backoff *= 2
+			if backoff > 30*time.Second {
+				backoff = 30 * time.Second
 			}
 		}
-	}()
-	return nil
+	}
+}
+
+func (a *App) closeRabbit() {
+	a.rabbitMu.Lock()
+	defer a.rabbitMu.Unlock()
+	a.closeRabbitLocked()
+}
+
+func (a *App) closeRabbitLocked() {
+	if a.rabbitCh != nil {
+		_ = a.rabbitCh.Close()
+		a.rabbitCh = nil
+	}
+	if a.rabbitConn != nil {
+		_ = a.rabbitConn.Close()
+		a.rabbitConn = nil
+	}
 }
 
 func (a *App) processMessage(ctx context.Context, raw []byte) error {
@@ -448,13 +522,28 @@ func (a *App) processMessage(ctx context.Context, raw []byte) error {
 		return err
 	}
 
-	return a.reportCallback(m.RunID, m.RunToken, m.CorrelationID, contracts.CallbackPayload{
+	if err := a.reportCallback(m.RunID, m.RunToken, m.CorrelationID, contracts.CallbackPayload{
 		Status:     status,
 		Output:     output,
 		ExitCode:   exitCode,
 		StartedAt:  &startedAt,
 		FinishedAt: &finishedAt,
-	})
+	}); err != nil {
+		a.log.Warn("report callback failed after task completion",
+			zap.String("run_id", m.RunID),
+			zap.String("task_id", m.TaskID),
+			zap.String("status", status),
+			zap.Error(err),
+		)
+		// The task already ran and any sink output has already been processed.
+		// Do not Nack the RabbitMQ message, otherwise non-idempotent crawlers or
+		// partially successful sink transfers may execute repeatedly.
+		_ = a.db.Model(&store.ExecutionRecord{}).Where("run_id = ?", m.RunID).Updates(map[string]interface{}{
+			"status": "callback_failed",
+			"output": truncateOutput(output+"\ncallback error: "+err.Error(), maxExecutorOutputBytes),
+		}).Error
+	}
+	return nil
 }
 
 func (a *App) executeTask(ctx context.Context, msg contracts.QueueTaskMessage) (string, int, string, error) {
