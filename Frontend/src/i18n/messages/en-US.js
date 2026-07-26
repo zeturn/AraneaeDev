@@ -55,16 +55,16 @@ export default {
   "创建任务": "Create Task",
   "创建任务失败": "Failed to create task",
   "创建团队": "Create Team",
-  "创建团队↗": "Create Team ↗",
+  // removed: emoji key "创建团队↗"
   "创建失败": "Creation failed",
   "创建失败，请重试": "Creation failed, please retry",
   "创建工作区": "Create Workspace",
-  "创建工作区↗": "Create Workspace ↗",
+  // removed: emoji key "创建工作区↗"
   "创建成功": "Created successfully",
   "创建成功！": "Created successfully!",
   "创建时间": "Created At",
   "创建节点": "Create Node",
-  "创建节点↗": "Create Node ↗",
+  // removed: emoji key "创建节点↗"
   "创建计划": "Create Schedule",
   "创建项目": "Create Project",
   "创建项目分发": "Create Project Distribution",

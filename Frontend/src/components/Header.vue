@@ -7,8 +7,8 @@
   <header class="border-b border-slate-100 bg-white px-4 py-3">
     <div class="flex items-center justify-between gap-4">
       <div class="flex min-w-0 items-center gap-3">
-        <button class="btn-muted px-2 py-1" @click="$emit('toggleSidebar')">
-          ☰
+        <button class="btn-muted px-2 py-1" @click="$emit('toggleSidebar')" aria-label="菜单">
+          <Icon library="lucide" name="menu" :size="18" />
         </button>
 
         <div class="min-w-0">
@@ -48,6 +48,7 @@ const { t } = useI18n();
 
 import {computed} from 'vue';
 import {useRoute} from 'vue-router';
+import { Icon } from '@zeturn/watercolor-vue';
 import AvatarToggle from "@/components/AvatarToggle.vue";
 import LocaleSwitcher from "@/components/LocaleSwitcher.vue";
 

@@ -188,7 +188,7 @@ onMounted(fetchNodes);
 				class="mt-4 rounded text-green-600 hover:bg-gray-200 p-2"
 				to="/aprons/node/create"
 			>
-				{{ $t('创建节点↗') }}
+				{{ $t('创建节点') }}
 			</RouterLink>
 		</div>
 	</Aprons>

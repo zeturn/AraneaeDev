@@ -1,0 +1,81 @@
+/* =========================================================================
+ * Watercolor design-language overrides — Araneae
+ * 目标：简洁、少阴影、少动效、少细黑线。
+ * 该文件需在 watercolor 组件样式与 Element Plus 之后引入，以确保覆盖生效。
+ * ========================================================================= */
+
+:root {
+  --wc-shadow-sm: none;
+  --wc-shadow-md: none;
+  --wc-shadow-lg: none;
+  --wc-shadow-xl: none;
+
+  --wc-motion-fast: 90ms;
+  --wc-motion-normal: 120ms;
+
+  --wc-border-default: var(--wc-neutral-200);
+  --wc-border-subtle: var(--wc-neutral-100);
+  --wc-border-strong: var(--wc-neutral-300);
+
+  /* 沿用 Araneae 绿色品牌强调色 */
+  --wc-mode-accent: #166534;
+  --wc-mode-accent-hover: #14532d;
+  --wc-mode-accent-active: #14532d;
+  --wc-mode-accent-subtle: #dcfce7;
+  --wc-mode-on-accent: #ffffff;
+  --wc-primary-600: #166534;
+  --wc-primary-700: #14532d;
+  --wc-primary-800: #14532d;
+  --wc-primary-400: #4ade80;
+}
+
+.wc-btn__ripple {
+  display: none !important;
+}
+
+/* 收敛 Element Plus 的投影与硬边框，贴合水彩“无边框”语言 */
+.el-overlay,
+.el-dialog,
+.el-message-box,
+.el-drawer,
+.el-card,
+.el-dropdown-menu,
+.el-popper {
+  box-shadow: none !important;
+}
+
+.el-card,
+.el-dialog,
+.el-message-box,
+.el-drawer {
+  border: 1px solid var(--wc-border-subtle) !important;
+}
+
+/* 业务层投影清理 */
+.shadow,
+.shadow-sm,
+.shadow-md,
+.shadow-lg,
+.shadow-xl {
+  box-shadow: none !important;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--wc-border-strong);
+  border-radius: 9999px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

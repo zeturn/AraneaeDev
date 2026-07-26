@@ -74,7 +74,7 @@ onMounted(() => {
 				class="btn-primary"
 				to="/aprons/workplaces/create"
 			>
-				{{ $t('创建工作区↗') }}
+				{{ $t('创建工作区') }}
 			</RouterLink>
 		</div>
 	</Aprons>

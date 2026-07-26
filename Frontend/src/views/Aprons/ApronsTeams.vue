@@ -84,7 +84,7 @@ onMounted(() => {
 				class="btn-primary mt-4"
 				to="/aprons/teams/create"
 			>
-				{{ $t('创建团队↗') }}
+				{{ $t('创建团队') }}
 			</RouterLink>
 		</div>
 	</Aprons>

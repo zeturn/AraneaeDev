@@ -11,6 +11,9 @@
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",
+    "@zeturn/watercolor-core": "^1.2.8",
+    "@zeturn/watercolor-icons-lucide-vue": "^1.2.8",
+    "@zeturn/watercolor-vue": "^1.2.8",
     "axios": "^1.13.5",
     "echarts": "^5.6.0",
     "element-plus": "^2.13.2",
@@ -19,7 +22,8 @@
     "pinia": "^2.2.0",
     "vue": "^3.4.31",
     "vue-router": "^4.4.2",
-    "vuex": "^4.1.0"
+    "vuex": "^4.1.0",
+    "watercolor-ui": "^1.2.8"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.4",

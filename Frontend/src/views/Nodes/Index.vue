@@ -38,7 +38,7 @@
 						@click="doRefreshCapabilities"
 					>
 						<span v-if="capLoading">{{ $t('检测中...') }}</span>
-						<span v-else>{{ $t('🔍 刷新检测') }}</span>
+						<span v-else>{{ $t('刷新检测') }}</span>
 					</button>
 				</div>
 
@@ -77,7 +77,7 @@
 
 						<!-- Status text / version -->
 						<p v-if="isInstalling(cap.key)" class="text-xs text-yellow-600">{{ $t('安装中...') }}</p>
-						<p v-else-if="installJobs[cap.key]?.status === 'success'" class="text-xs text-green-600">{{ $t('安装成功 ✓') }}</p>
+						<p v-else-if="installJobs[cap.key]?.status === 'success'" class="text-xs text-green-600">{{ $t('安装成功') }}</p>
 						<p v-else-if="installJobs[cap.key]?.status === 'failed'" class="text-xs text-red-500">{{ $t('安装失败') }}</p>
 						<p v-else-if="cap.available" class="text-xs text-gray-500 truncate" :title="cap.version">{{ cap.version || '已安装' }}</p>
 						<p v-else class="text-xs text-gray-400">{{ $t('未安装') }}</p>
@@ -88,7 +88,7 @@
 							class="btn-primary mt-2 w-full px-2 py-1 text-xs"
 							@click="doInstall(cap.key)"
 						>
-							{{ $t('📦 安装') }}
+							{{ $t('安装') }}
 						</button>
 
 						<!-- View log button (show when a job exists) -->
@@ -97,7 +97,7 @@
 							class="btn-muted mt-1 w-full px-2 py-1 text-xs"
 							@click="openLog(cap.key)"
 						>
-							{{ $t('📋 查看日志') }}
+							{{ $t('查看日志') }}
 						</button>
 					</div>
 				</div>
@@ -105,8 +105,8 @@
 				<!-- 安装日志面板 -->
 				<div v-if="logPanelKey" class="mt-6 rounded-xl border border-gray-200 overflow-hidden">
 					<div class="flex items-center justify-between bg-gray-800 px-4 py-2">
-						<span class="text-sm font-medium text-white">📋 安装日志 — {{ logPanelKey }}</span>
-						<button class="btn-muted px-2 py-1 text-xs text-gray-200" @click="logPanelKey = null">{{ $t('✕ 关闭') }}</button>
+						<span class="text-sm font-medium text-white">安装日志 — {{ logPanelKey }}</span>
+						<button class="btn-muted px-2 py-1 text-xs text-gray-200" @click="logPanelKey = null">{{ $t('关闭') }}</button>
 					</div>
 					<pre
 						ref="logPanelRef"

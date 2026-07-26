@@ -80,7 +80,9 @@
 						@click="onRowClick(item)"
 					>
 						<div class="flex items-center gap-2 min-w-0">
-							<span class="text-xl">{{ item.type === 'dir' ? '📁' : '📄' }}</span>
+							<span class="text-xl flex-shrink-0">
+								<Icon library="lucide" :name="item.type === 'dir' ? 'folder' : 'file'" :size="20" />
+							</span>
 							<span class="truncate">{{ item.name }}</span>
 							<span
 								v-if="item.type === 'file' && item.size"
@@ -125,6 +127,7 @@
 </template>
 
 <script>
+import { Icon } from '@zeturn/watercolor-vue';
 import ApiService from '@/services/ApiService';
 
 export default {

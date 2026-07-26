@@ -7,8 +7,8 @@
   <div :class="sidebarClasses">
     <div class="p-4">
       <div :class="smallSidebarClasses" class="flex items-center">
-        <button class="btn-muted mr-4 px-2 py-1" @click="$emit('toggleSidebar')">
-          ☰
+        <button class="btn-muted mr-4 px-2 py-1" @click="$emit('toggleSidebar')" aria-label="菜单">
+          <Icon library="lucide" name="menu" :size="18" />
         </button>
         <h1 class="text-lg text-blue-600">Araneae</h1>
       </div>
@@ -23,6 +23,7 @@
 
 <script lang="ts" setup>
 import {computed} from 'vue';
+import { Icon } from '@zeturn/watercolor-vue';
 
 const props = defineProps<{
   links: { name: string; url: string }[];

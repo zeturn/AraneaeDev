@@ -13,9 +13,7 @@
           :name="item.tabKey">
         <template #label>
           {{ item.title }}
-          <el-icon v-if="item.tabKey === curTabKey" @click="refreshTab(item)">
-            <Refresh/>
-          </el-icon>
+          <Icon v-if="item.tabKey === curTabKey" library="lucide" name="refresh-cw" :size="14" @click="refreshTab(item)" class="cursor-pointer ml-1 inline-flex align-middle" />
         </template>
       </el-tab-pane>
     </el-tabs>
@@ -35,7 +33,7 @@ import {
   RouteLocationMatched
 } from 'vue-router'
 import type {TabsPaneContext} from 'element-plus'
-import {Refresh} from '@element-plus/icons-vue'
+import { Icon } from '@zeturn/watercolor-vue'
 import useRouteCache from '@/hooks/useRouteCache'
 import useLayoutStore from '@/store/layout'
 import EventBus from '@/utils/event-bus'

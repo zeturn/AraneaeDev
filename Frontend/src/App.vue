@@ -10,14 +10,19 @@
   -->
 
 <template>
-  <div id="app" class="h-screen w-full overflow-x-hidden">
-		<router-view></router-view>
-		<NotificationContainer ref="notificationContainer" position="bottom-right"/>
+  <ThemeProvider :default-mode="'system'" storage-key="theme">
+    <LocaleProvider>
+      <div id="app" class="h-screen w-full overflow-x-hidden">
+        <router-view></router-view>
+        <NotificationContainer ref="notificationContainer" position="bottom-right" />
 
-	</div>
+      </div>
+    </LocaleProvider>
+  </ThemeProvider>
 </template>
 
 <script lang="ts" setup>
+import { ThemeProvider, LocaleProvider } from '@zeturn/watercolor-vue'
 import useRouteCache from '@/hooks/useRouteCache'
 import NotificationContainer from '@/components/BeansDesign/Notification/NotificationContainer.vue';
 
