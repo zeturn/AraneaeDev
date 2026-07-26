@@ -14,11 +14,14 @@ func TestRunCronScheduleReloadsEnabledState(t *testing.T) {
 		Name:        "disabled cron schedule",
 		TriggerType: "crons",
 		CronExpr:    "* * * * *",
-		Enabled:     false,
+		Enabled:     true,
 		CreatedAt:   time.Now(),
 		UpdatedAt:   time.Now(),
 	}
 	if err := app.db.Create(&schedule).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := app.db.Model(&common.Schedule{}).Where("id = ?", schedule.ID).Update("enabled", false).Error; err != nil {
 		t.Fatal(err)
 	}
 

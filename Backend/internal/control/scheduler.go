@@ -125,7 +125,11 @@ func (a *App) runCronSchedule(scheduleID string) {
 	if !fresh.Enabled {
 		return
 	}
-	if _, err := a.publishScheduleRun(fresh, "schedule"); err != nil {
+	if a.runPublisher == nil {
+		a.log.Error("scheduled trigger skipped; publisher unavailable", zap.String("schedule_id", scheduleID))
+		return
+	}
+	if _, err := a.runPublisher(fresh, "schedule"); err != nil {
 		a.log.Error("scheduled trigger failed", zap.Error(err), zap.String("schedule_id", scheduleID))
 	}
 }
