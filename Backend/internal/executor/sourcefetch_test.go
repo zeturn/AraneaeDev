@@ -119,6 +119,36 @@ func TestFetchAndEmitRSSFallsBackToSummaryWhenArticleBlocked(t *testing.T) {
 	}
 }
 
+func TestEmitRSSHonorsTaskFetchBudget(t *testing.T) {
+	var articleRequests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/article" {
+			articleRequests++
+		}
+		_, _ = w.Write([]byte("unexpected article fetch"))
+	}))
+	defer server.Close()
+
+	raw := []byte(`<rss version="2.0"><channel>
+		<item><title>one</title><link>` + server.URL + `/article</link><guid>one</guid><description>one</description></item>
+		<item><title>two</title><link>` + server.URL + `/article</link><guid>two</guid><description>two</description></item>
+	</channel></rss>`)
+	sinkDir := t.TempDir()
+	count, err := emitRSS(context.Background(), raw, server.URL+"/feed.xml", sinkDir, sourceFetchOptions{
+		MaxItems:           1,
+		FetchArticleBodies: false,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("count=%d, want 1", count)
+	}
+	if articleRequests != 0 {
+		t.Fatalf("article requests=%d, want 0", articleRequests)
+	}
+}
+
 func TestSourceFetchUsesConditionalRequestAndPersistsValidators(t *testing.T) {
 	var requests int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -146,10 +176,10 @@ func TestSourceFetchUsesConditionalRequestAndPersistsValidators(t *testing.T) {
 		t.Fatal(err)
 	}
 	app := &App{db: db, log: zap.NewNop()}
-	if _, err := app.fetchAndEmitSource(context.Background(), "rss", server.URL, t.TempDir(), "task-cached"); err != nil {
+	if _, err := app.fetchAndEmitSource(context.Background(), "rss", server.URL, t.TempDir(), "task-cached", defaultSourceFetchOptions()); err != nil {
 		t.Fatal(err)
 	}
-	out, err := app.fetchAndEmitSource(context.Background(), "rss", server.URL, t.TempDir(), "task-cached")
+	out, err := app.fetchAndEmitSource(context.Background(), "rss", server.URL, t.TempDir(), "task-cached", defaultSourceFetchOptions())
 	if err != nil {
 		t.Fatal(err)
 	}

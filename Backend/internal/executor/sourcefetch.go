@@ -43,6 +43,46 @@ type httpFetchOptions struct {
 	RetryEnabled bool
 }
 
+// sourceFetchOptions is carried in task metadata so each source task can set a
+// bounded, source-appropriate fetch policy without making a service-wide rule.
+// A zero MaxItems preserves the legacy "all feed items" behavior.
+type sourceFetchOptions struct {
+	MaxItems           int
+	FetchArticleBodies bool
+}
+
+func defaultSourceFetchOptions() sourceFetchOptions {
+	return sourceFetchOptions{FetchArticleBodies: true}
+}
+
+func sourceFetchOptionsFromMetadata(metadata map[string]any) sourceFetchOptions {
+	opts := defaultSourceFetchOptions()
+	raw, ok := metadata["source_fetch"].(map[string]any)
+	if !ok {
+		return opts
+	}
+	if value, ok := sourceFetchInt(raw["max_items"]); ok {
+		opts.MaxItems = value
+	}
+	if value, ok := raw["fetch_article_bodies"].(bool); ok {
+		opts.FetchArticleBodies = value
+	}
+	return opts
+}
+
+func sourceFetchInt(value any) (int, bool) {
+	switch typed := value.(type) {
+	case int:
+		return max(0, typed), true
+	case int64:
+		return max(0, int(typed)), true
+	case float64:
+		return max(0, int(typed)), true
+	default:
+		return 0, false
+	}
+}
+
 // executeSourceFetch handles non-code tasks (rss / json api). It does not download
 // an artifact; instead it fetches the source URL and emits each record into the sink
 // directory so the existing sink pipeline forwards them to HashSlip.
@@ -59,7 +99,7 @@ func (a *App) executeSourceFetch(ctx context.Context, taskType, sourceURL string
 		return "", 1, runDir, err
 	}
 
-	out, err := a.fetchAndEmitSource(runCtx, taskType, sourceURL, sinkDir, msg.TaskID)
+	out, err := a.fetchAndEmitSource(runCtx, taskType, sourceURL, sinkDir, msg.TaskID, sourceFetchOptionsFromMetadata(msg.Metadata))
 	if err != nil {
 		return out, 1, runDir, err
 	}
@@ -76,10 +116,10 @@ func fetchAndEmit(ctx context.Context, taskType, sourceURL, sinkDir string) (str
 	if err != nil {
 		return "", err
 	}
-	return emitSourceBody(ctx, taskType, sourceURL, sinkDir, result.Body)
+	return emitSourceBody(ctx, taskType, sourceURL, sinkDir, result.Body, defaultSourceFetchOptions())
 }
 
-func (a *App) fetchAndEmitSource(ctx context.Context, taskType, sourceURL, sinkDir, taskID string) (string, error) {
+func (a *App) fetchAndEmitSource(ctx context.Context, taskType, sourceURL, sinkDir, taskID string, options sourceFetchOptions) (string, error) {
 	now := time.Now().UTC()
 	state := store.SourceFetchState{TaskID: taskID}
 	if err := a.db.Where("task_id = ?", taskID).First(&state).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -110,7 +150,7 @@ func (a *App) fetchAndEmitSource(ctx context.Context, taskType, sourceURL, sinkD
 		a.recordSourceFetchSuccess(state, now, result)
 		return "source not modified (conditional request)", nil
 	}
-	out, err := emitSourceBody(ctx, taskType, sourceURL, sinkDir, result.Body)
+	out, err := emitSourceBody(ctx, taskType, sourceURL, sinkDir, result.Body, options)
 	if err != nil {
 		a.recordSourceFetchFailure(state, now, err)
 		return out, err
@@ -119,10 +159,10 @@ func (a *App) fetchAndEmitSource(ctx context.Context, taskType, sourceURL, sinkD
 	return out, nil
 }
 
-func emitSourceBody(ctx context.Context, taskType, sourceURL, sinkDir string, body []byte) (string, error) {
+func emitSourceBody(ctx context.Context, taskType, sourceURL, sinkDir string, body []byte, options sourceFetchOptions) (string, error) {
 	switch taskType {
 	case "rss":
-		n, ferr := emitRSS(ctx, body, sourceURL, sinkDir)
+		n, ferr := emitRSS(ctx, body, sourceURL, sinkDir, options)
 		if ferr != nil {
 			return "", ferr
 		}
@@ -400,30 +440,33 @@ type atomLink struct {
 	Rel  string `xml:"rel,attr"`
 }
 
-func emitRSS(ctx context.Context, raw []byte, sourceURL, sinkDir string) (int, error) {
-	if v, err := tryEmitRSS2(ctx, raw, sourceURL, sinkDir); err == nil {
+func emitRSS(ctx context.Context, raw []byte, sourceURL, sinkDir string, options sourceFetchOptions) (int, error) {
+	if v, err := tryEmitRSS2(ctx, raw, sourceURL, sinkDir, options); err == nil {
 		return v, nil
 	}
-	if v, err := tryEmitAtom(ctx, raw, sourceURL, sinkDir); err == nil {
+	if v, err := tryEmitAtom(ctx, raw, sourceURL, sinkDir, options); err == nil {
 		return v, nil
 	}
-	if v, err := tryEmitRDF(ctx, raw, sourceURL, sinkDir); err == nil {
+	if v, err := tryEmitRDF(ctx, raw, sourceURL, sinkDir, options); err == nil {
 		return v, nil
 	}
 	return 0, fmt.Errorf("unrecognized feed format (not RSS 2.0 / Atom / RDF)")
 }
 
-func tryEmitRSS2(ctx context.Context, raw []byte, sourceURL, sinkDir string) (int, error) {
+func tryEmitRSS2(ctx context.Context, raw []byte, sourceURL, sinkDir string, options sourceFetchOptions) (int, error) {
 	var f rss2Feed
 	if err := xml.Unmarshal(raw, &f); err != nil || len(f.Channel.Items) == 0 {
 		return 0, fmt.Errorf("not rss2")
 	}
 	count := 0
-	for _, it := range f.Channel.Items {
+	for index, it := range f.Channel.Items {
+		if options.MaxItems > 0 && index >= options.MaxItems {
+			break
+		}
 		link := bestRSSItemLink(it.Links)
 		publishedAt := strings.TrimSpace(it.PubDate)
 		summary := strings.TrimSpace(it.Description)
-		content, contentStatus := fetchArticleContent(ctx, link, sourceURL, summary)
+		content, contentStatus := fetchArticleContentWithOptions(ctx, link, sourceURL, summary, options)
 		data := map[string]interface{}{
 			"title":          strings.TrimSpace(it.Title),
 			"link":           link,
@@ -442,13 +485,16 @@ func tryEmitRSS2(ctx context.Context, raw []byte, sourceURL, sinkDir string) (in
 	return count, nil
 }
 
-func tryEmitAtom(ctx context.Context, raw []byte, sourceURL, sinkDir string) (int, error) {
+func tryEmitAtom(ctx context.Context, raw []byte, sourceURL, sinkDir string, options sourceFetchOptions) (int, error) {
 	var f atomFeed
 	if err := xml.Unmarshal(raw, &f); err != nil || len(f.Entries) == 0 {
 		return 0, fmt.Errorf("not atom")
 	}
 	count := 0
-	for _, e := range f.Entries {
+	for index, e := range f.Entries {
+		if options.MaxItems > 0 && index >= options.MaxItems {
+			break
+		}
 		link := strings.TrimSpace(e.ID)
 		for _, l := range e.Links {
 			if l.Rel == "alternate" || l.Rel == "" {
@@ -459,7 +505,7 @@ func tryEmitAtom(ctx context.Context, raw []byte, sourceURL, sinkDir string) (in
 			}
 		}
 		feedContent := strings.TrimSpace(e.Content)
-		content, contentStatus := fetchArticleContent(ctx, link, sourceURL, feedContent)
+		content, contentStatus := fetchArticleContentWithOptions(ctx, link, sourceURL, feedContent, options)
 		data := map[string]interface{}{
 			"title":          strings.TrimSpace(e.Title),
 			"link":           link,
@@ -478,17 +524,20 @@ func tryEmitAtom(ctx context.Context, raw []byte, sourceURL, sinkDir string) (in
 	return count, nil
 }
 
-func tryEmitRDF(ctx context.Context, raw []byte, sourceURL, sinkDir string) (int, error) {
+func tryEmitRDF(ctx context.Context, raw []byte, sourceURL, sinkDir string, options sourceFetchOptions) (int, error) {
 	var f rdfFeed
 	if err := xml.Unmarshal(raw, &f); err != nil || len(f.Items) == 0 {
 		return 0, fmt.Errorf("not rdf")
 	}
 	count := 0
-	for _, it := range f.Items {
+	for index, it := range f.Items {
+		if options.MaxItems > 0 && index >= options.MaxItems {
+			break
+		}
 		link := bestRSSItemLink(it.Links)
 		publishedAt := strings.TrimSpace(it.PubDate)
 		summary := strings.TrimSpace(it.Description)
-		content, contentStatus := fetchArticleContent(ctx, link, sourceURL, summary)
+		content, contentStatus := fetchArticleContentWithOptions(ctx, link, sourceURL, summary, options)
 		data := map[string]interface{}{
 			"title":          strings.TrimSpace(it.Title),
 			"link":           link,
@@ -508,7 +557,17 @@ func tryEmitRDF(ctx context.Context, raw []byte, sourceURL, sinkDir string) (int
 }
 
 func fetchArticleContent(ctx context.Context, articleURL, referer, fallback string) (string, string) {
+	return fetchArticleContentWithOptions(ctx, articleURL, referer, fallback, defaultSourceFetchOptions())
+}
+
+func fetchArticleContentWithOptions(ctx context.Context, articleURL, referer, fallback string, options sourceFetchOptions) (string, string) {
 	fallback = cleanText(fallback)
+	if !options.FetchArticleBodies {
+		if fallback != "" {
+			return fallback, "feed_content"
+		}
+		return "", "article_body_disabled"
+	}
 	if articleURL == "" {
 		if fallback != "" {
 			return fallback, "feed_content"
