@@ -71,7 +71,13 @@ func (a *App) registerCronSchedule(schedule common.Schedule) error {
 		if schedule.CronExpr == "" {
 			return nil
 		}
-		entryID, err := a.cron.AddFunc(schedule.CronExpr, func() {
+		cronExpr := schedule.CronExpr
+		// The daemon keeps second precision for legacy jobs, while source catalogs
+		// and ordinary users can use the conventional five-field cron form.
+		if len(strings.Fields(cronExpr)) == 5 {
+			cronExpr = "0 " + cronExpr
+		}
+		entryID, err := a.cron.AddFunc(cronExpr, func() {
 			if _, e := a.publishScheduleRun(schedule, "schedule"); e != nil {
 				a.log.Error("scheduled trigger failed", zap.Error(e), zap.String("schedule_id", schedule.ID))
 			}

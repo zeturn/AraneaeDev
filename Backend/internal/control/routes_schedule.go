@@ -56,6 +56,7 @@ func (a *App) createSchedule(c *fiber.Ctx) error {
 		}
 	}
 
+	var boundTask *common.Task
 	if req.TaskID != "" {
 		var task common.Task
 		if err := a.db.Where("id = ?", req.TaskID).First(&task).Error; err != nil {
@@ -79,6 +80,7 @@ func (a *App) createSchedule(c *fiber.Ctx) error {
 		if req.NodeQueue == "" {
 			req.NodeQueue = laxString(task.NodeQueue)
 		}
+		boundTask = &task
 	}
 
 	req.ProjectID = strings.TrimSpace(req.ProjectID)
@@ -96,7 +98,8 @@ func (a *App) createSchedule(c *fiber.Ctx) error {
 	if req.Name == "" {
 		req.Name = "schedule-" + uuid.NewString()[:8]
 	}
-	if req.ProjectID == "" || req.VersionID == "" || req.EntryCommand == "" {
+	sourceTask := boundTask != nil && (boundTask.Type == "rss" || boundTask.Type == "api")
+	if !sourceTask && (req.ProjectID == "" || req.VersionID == "" || req.EntryCommand == "") {
 		return fiber.NewError(fiber.StatusBadRequest, "project_id, version_id and entry_command are required")
 	}
 	// Collect multiple firing times for the datetime trigger.
@@ -136,20 +139,30 @@ func (a *App) createSchedule(c *fiber.Ctx) error {
 	req.TriggerType = triggerType
 	req.CronExpr = cronExpr
 
-	var project common.Project
-	if err := a.db.Where("id = ?", req.ProjectID).First(&project).Error; err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "project not found")
-	}
-	canWrite, accessErr := a.canWriteProject(c, project)
-	if accessErr != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
-	}
-	if !canWrite {
-		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
-	}
-	var version common.ArtifactVersion
-	if err := a.db.Where("id = ? AND project_id = ?", req.VersionID, req.ProjectID).First(&version).Error; err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "version not found")
+	if sourceTask {
+		canWrite, accessErr := a.canWriteTask(c, *boundTask)
+		if accessErr != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+		}
+		if !canWrite {
+			return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
+		}
+	} else {
+		var project common.Project
+		if err := a.db.Where("id = ?", req.ProjectID).First(&project).Error; err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "project not found")
+		}
+		canWrite, accessErr := a.canWriteProject(c, project)
+		if accessErr != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+		}
+		if !canWrite {
+			return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
+		}
+		var version common.ArtifactVersion
+		if err := a.db.Where("id = ? AND project_id = ?", req.VersionID, req.ProjectID).First(&version).Error; err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "version not found")
+		}
 	}
 
 	enabled := true
@@ -452,6 +465,7 @@ func (a *App) updateSchedule(c *fiber.Ctx) error {
 		}
 	}
 
+	var scheduledTask *common.Task
 	if schedule.TaskID != "" {
 		var task common.Task
 		if err := a.db.Where("id = ?", schedule.TaskID).First(&task).Error; err != nil {
@@ -477,6 +491,7 @@ func (a *App) updateSchedule(c *fiber.Ctx) error {
 				schedule.NodeQueue = task.NodeQueue
 			}
 		}
+		scheduledTask = &task
 	}
 
 	if schedule.NodeQueue == "" {
@@ -485,24 +500,35 @@ func (a *App) updateSchedule(c *fiber.Ctx) error {
 	if schedule.Name == "" {
 		schedule.Name = "schedule-" + schedule.ID[:8]
 	}
-	if schedule.ProjectID == "" || schedule.VersionID == "" || schedule.EntryCommand == "" {
+	sourceTask := scheduledTask != nil && (scheduledTask.Type == "rss" || scheduledTask.Type == "api")
+	if !sourceTask && (schedule.ProjectID == "" || schedule.VersionID == "" || schedule.EntryCommand == "") {
 		return fiber.NewError(fiber.StatusBadRequest, "project_id, version_id and entry_command are required")
 	}
 
-	var project common.Project
-	if err := a.db.Where("id = ?", schedule.ProjectID).First(&project).Error; err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "project not found")
-	}
-	canWriteProject, projectAccessErr := a.canWriteProject(c, project)
-	if projectAccessErr != nil {
-		return fiber.NewError(fiber.StatusInternalServerError, projectAccessErr.Error())
-	}
-	if !canWriteProject {
-		return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
-	}
-	var version common.ArtifactVersion
-	if err := a.db.Where("id = ? AND project_id = ?", schedule.VersionID, schedule.ProjectID).First(&version).Error; err != nil {
-		return fiber.NewError(fiber.StatusBadRequest, "version not found")
+	if sourceTask {
+		canWrite, accessErr := a.canWriteTask(c, *scheduledTask)
+		if accessErr != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, accessErr.Error())
+		}
+		if !canWrite {
+			return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
+		}
+	} else {
+		var project common.Project
+		if err := a.db.Where("id = ?", schedule.ProjectID).First(&project).Error; err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "project not found")
+		}
+		canWriteProject, projectAccessErr := a.canWriteProject(c, project)
+		if projectAccessErr != nil {
+			return fiber.NewError(fiber.StatusInternalServerError, projectAccessErr.Error())
+		}
+		if !canWriteProject {
+			return fiber.NewError(fiber.StatusForbidden, "insufficient permissions")
+		}
+		var version common.ArtifactVersion
+		if err := a.db.Where("id = ? AND project_id = ?", schedule.VersionID, schedule.ProjectID).First(&version).Error; err != nil {
+			return fiber.NewError(fiber.StatusBadRequest, "version not found")
+		}
 	}
 
 	schedule.UpdatedAt = time.Now()
