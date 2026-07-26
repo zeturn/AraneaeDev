@@ -10,6 +10,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"araneae-go/internal/executor/store"
+
+	"github.com/glebarez/sqlite"
+	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
 
 func TestFetchAndEmitRSSFetchesArticleContent(t *testing.T) {
@@ -110,6 +116,55 @@ func TestFetchAndEmitRSSFallsBackToSummaryWhenArticleBlocked(t *testing.T) {
 	}
 	if status, _ := payload.Data["content_status"].(string); status != "feed_content" {
 		t.Fatalf("expected feed_content status, got %q", status)
+	}
+}
+
+func TestSourceFetchUsesConditionalRequestAndPersistsValidators(t *testing.T) {
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.Header.Get("If-None-Match") == `"feed-v1"` {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		w.Header().Set("ETag", `"feed-v1"`)
+		w.Header().Set("Last-Modified", "Sun, 26 Jul 2026 00:00:00 GMT")
+		_, _ = w.Write([]byte(`<rss version="2.0"><channel><item><title>Cached item</title><guid>cached-1</guid><description>Summary.</description></item></channel></rss>`))
+	}))
+	defer server.Close()
+
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "executor.db")), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+	if err := db.AutoMigrate(&store.SourceFetchState{}); err != nil {
+		t.Fatal(err)
+	}
+	app := &App{db: db, log: zap.NewNop()}
+	if _, err := app.fetchAndEmitSource(context.Background(), "rss", server.URL, t.TempDir(), "task-cached"); err != nil {
+		t.Fatal(err)
+	}
+	out, err := app.fetchAndEmitSource(context.Background(), "rss", server.URL, t.TempDir(), "task-cached")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "source not modified (conditional request)" {
+		t.Fatalf("unexpected conditional result: %q", out)
+	}
+	if requests != 2 {
+		t.Fatalf("requests=%d, want 2", requests)
+	}
+	var state store.SourceFetchState
+	if err := db.First(&state, "task_id = ?", "task-cached").Error; err != nil {
+		t.Fatal(err)
+	}
+	if state.ETag != `"feed-v1"` || state.ConsecutiveFailures != 0 || state.LastStatus != http.StatusNotModified {
+		t.Fatalf("unexpected source state: %#v", state)
 	}
 }
 

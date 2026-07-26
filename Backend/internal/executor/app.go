@@ -157,7 +157,7 @@ func NewApp(cfg common.ExecutorConfig) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := db.AutoMigrate(&store.ExecutionRecord{}); err != nil {
+	if err := db.AutoMigrate(&store.ExecutionRecord{}, &store.SourceFetchState{}); err != nil {
 		return nil, err
 	}
 

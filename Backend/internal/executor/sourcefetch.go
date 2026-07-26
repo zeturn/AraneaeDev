@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"io"
@@ -16,8 +17,11 @@ import (
 	"time"
 
 	"araneae-go/internal/executor/contracts"
+	"araneae-go/internal/executor/store"
 
+	"go.uber.org/zap"
 	"golang.org/x/net/html"
+	"gorm.io/gorm"
 )
 
 // maxSourceFetchBytes caps the response body we are willing to read for rss/api tasks.
@@ -55,7 +59,7 @@ func (a *App) executeSourceFetch(ctx context.Context, taskType, sourceURL string
 		return "", 1, runDir, err
 	}
 
-	out, err := fetchAndEmit(runCtx, taskType, sourceURL, sinkDir)
+	out, err := a.fetchAndEmitSource(runCtx, taskType, sourceURL, sinkDir, msg.TaskID)
 	if err != nil {
 		return out, 1, runDir, err
 	}
@@ -63,15 +67,59 @@ func (a *App) executeSourceFetch(ctx context.Context, taskType, sourceURL string
 }
 
 func fetchAndEmit(ctx context.Context, taskType, sourceURL, sinkDir string) (string, error) {
-	body, err := httpGetBytes(ctx, sourceURL, httpFetchOptions{
+	result, err := httpGetBytesWithHeaders(ctx, sourceURL, httpFetchOptions{
 		Accept:       "application/json, application/xml, text/xml, */*",
 		MaxBytes:     maxSourceFetchBytes,
 		Timeout:      30 * time.Second,
 		RetryEnabled: true,
-	})
+	}, nil)
 	if err != nil {
 		return "", err
 	}
+	return emitSourceBody(ctx, taskType, sourceURL, sinkDir, result.Body)
+}
+
+func (a *App) fetchAndEmitSource(ctx context.Context, taskType, sourceURL, sinkDir, taskID string) (string, error) {
+	now := time.Now().UTC()
+	state := store.SourceFetchState{TaskID: taskID}
+	if err := a.db.Where("task_id = ?", taskID).First(&state).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", fmt.Errorf("load source fetch state: %w", err)
+	}
+	if !state.NextAttemptAt.IsZero() && now.Before(state.NextAttemptAt) {
+		return fmt.Sprintf("source fetch deferred until %s after %d consecutive failures", state.NextAttemptAt.Format(time.RFC3339), state.ConsecutiveFailures), nil
+	}
+
+	headers := map[string]string{}
+	if state.ETag != "" {
+		headers["If-None-Match"] = state.ETag
+	}
+	if state.LastModified != "" {
+		headers["If-Modified-Since"] = state.LastModified
+	}
+	result, err := httpGetBytesWithHeaders(ctx, sourceURL, httpFetchOptions{
+		Accept:       "application/json, application/xml, text/xml, */*",
+		MaxBytes:     maxSourceFetchBytes,
+		Timeout:      30 * time.Second,
+		RetryEnabled: true,
+	}, headers)
+	if err != nil {
+		a.recordSourceFetchFailure(state, now, err)
+		return "", err
+	}
+	if result.NotModified {
+		a.recordSourceFetchSuccess(state, now, result)
+		return "source not modified (conditional request)", nil
+	}
+	out, err := emitSourceBody(ctx, taskType, sourceURL, sinkDir, result.Body)
+	if err != nil {
+		a.recordSourceFetchFailure(state, now, err)
+		return out, err
+	}
+	a.recordSourceFetchSuccess(state, now, result)
+	return out, nil
+}
+
+func emitSourceBody(ctx context.Context, taskType, sourceURL, sinkDir string, body []byte) (string, error) {
 	switch taskType {
 	case "rss":
 		n, ferr := emitRSS(ctx, body, sourceURL, sinkDir)
@@ -90,6 +138,19 @@ func fetchAndEmit(ctx context.Context, taskType, sourceURL, sinkDir string) (str
 }
 
 func httpGetBytes(ctx context.Context, targetURL string, opts httpFetchOptions) ([]byte, error) {
+	result, err := httpGetBytesWithHeaders(ctx, targetURL, opts, nil)
+	return result.Body, err
+}
+
+type httpFetchResult struct {
+	Body         []byte
+	StatusCode   int
+	ETag         string
+	LastModified string
+	NotModified  bool
+}
+
+func httpGetBytesWithHeaders(ctx context.Context, targetURL string, opts httpFetchOptions, headers map[string]string) (httpFetchResult, error) {
 	if opts.MaxBytes <= 0 {
 		opts.MaxBytes = maxSourceFetchBytes
 	}
@@ -104,19 +165,28 @@ func httpGetBytes(ctx context.Context, targetURL string, opts httpFetchOptions) 
 	for attempt := 0; attempt < attempts; attempt++ {
 		if attempt > 0 {
 			if err := sleepContext(ctx, time.Duration(attempt)*750*time.Millisecond); err != nil {
-				return nil, err
+				return httpFetchResult{}, err
 			}
 		}
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, targetURL, nil)
 		if err != nil {
-			return nil, err
+			return httpFetchResult{}, err
 		}
 		applyCrawlerHeaders(req, opts)
+		for name, value := range headers {
+			if strings.TrimSpace(value) != "" {
+				req.Header.Set(name, value)
+			}
+		}
 		client := &http.Client{Timeout: opts.Timeout}
 		resp, err := client.Do(req)
 		if err != nil {
 			lastErr = err
 			continue
+		}
+		if resp.StatusCode == http.StatusNotModified {
+			resp.Body.Close()
+			return httpFetchResult{StatusCode: resp.StatusCode, ETag: resp.Header.Get("ETag"), LastModified: resp.Header.Get("Last-Modified"), NotModified: true}, nil
 		}
 		body, readErr := io.ReadAll(io.LimitReader(resp.Body, opts.MaxBytes+1))
 		resp.Body.Close()
@@ -125,22 +195,61 @@ func httpGetBytes(ctx context.Context, targetURL string, opts httpFetchOptions) 
 			continue
 		}
 		if int64(len(body)) > opts.MaxBytes {
-			return nil, fmt.Errorf("fetch %s failed: response too large (max %d bytes)", targetURL, opts.MaxBytes)
+			return httpFetchResult{}, fmt.Errorf("fetch %s failed: response too large (max %d bytes)", targetURL, opts.MaxBytes)
 		}
 		if resp.StatusCode < 300 {
-			return body, nil
+			return httpFetchResult{Body: body, StatusCode: resp.StatusCode, ETag: resp.Header.Get("ETag"), LastModified: resp.Header.Get("Last-Modified")}, nil
 		}
 		lastErr = fmt.Errorf("fetch %s failed: status %d", targetURL, resp.StatusCode)
 		if !retryableStatus(resp.StatusCode) || attempt == attempts-1 {
-			return nil, lastErr
+			return httpFetchResult{}, lastErr
 		}
 		if wait := retryAfter(resp.Header.Get("Retry-After")); wait > 0 {
 			if err := sleepContext(ctx, wait); err != nil {
-				return nil, err
+				return httpFetchResult{}, err
 			}
 		}
 	}
-	return nil, lastErr
+	return httpFetchResult{}, lastErr
+}
+
+func (a *App) recordSourceFetchSuccess(state store.SourceFetchState, now time.Time, result httpFetchResult) {
+	if result.ETag != "" {
+		state.ETag = result.ETag
+	}
+	if result.LastModified != "" {
+		state.LastModified = result.LastModified
+	}
+	state.ConsecutiveFailures = 0
+	state.NextAttemptAt = time.Time{}
+	state.LastStatus = result.StatusCode
+	state.LastError = ""
+	state.UpdatedAt = now
+	if err := a.db.Save(&state).Error; err != nil {
+		a.log.Warn("persist source fetch success state failed", zap.Error(err), zap.String("task_id", state.TaskID))
+	}
+}
+
+func (a *App) recordSourceFetchFailure(state store.SourceFetchState, now time.Time, fetchErr error) {
+	state.ConsecutiveFailures++
+	backoff := 15 * time.Minute * time.Duration(1<<min(state.ConsecutiveFailures-1, 5))
+	if backoff > 6*time.Hour {
+		backoff = 6 * time.Hour
+	}
+	state.NextAttemptAt = now.Add(backoff)
+	state.LastStatus = 0
+	state.LastError = truncateRunes(fetchErr.Error(), 2048)
+	state.UpdatedAt = now
+	if err := a.db.Save(&state).Error; err != nil {
+		a.log.Warn("persist source fetch failure state failed", zap.Error(err), zap.String("task_id", state.TaskID))
+	}
+}
+
+func min(left, right int) int {
+	if left < right {
+		return left
+	}
+	return right
 }
 
 func applyCrawlerHeaders(req *http.Request, opts httpFetchOptions) {
