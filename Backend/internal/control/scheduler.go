@@ -78,9 +78,7 @@ func (a *App) registerCronSchedule(schedule common.Schedule) error {
 			cronExpr = "0 " + cronExpr
 		}
 		entryID, err := a.cron.AddFunc(cronExpr, func() {
-			if _, e := a.publishScheduleRun(schedule, "schedule"); e != nil {
-				a.log.Error("scheduled trigger failed", zap.Error(e), zap.String("schedule_id", schedule.ID))
-			}
+			a.runCronSchedule(schedule.ID)
 		})
 		if err != nil {
 			return fmt.Errorf("register cron schedule %s: %w", schedule.ID, err)
@@ -113,6 +111,23 @@ func (a *App) registerCronSchedule(schedule common.Schedule) error {
 		return nil
 	}
 	return nil
+}
+
+// runCronSchedule reloads the schedule because a registered cron callback can
+// outlive an API disable request by a scheduler tick. The persisted enabled
+// flag is therefore the final authority for every firing.
+func (a *App) runCronSchedule(scheduleID string) {
+	var fresh common.Schedule
+	if err := a.db.Where("id = ?", scheduleID).First(&fresh).Error; err != nil {
+		a.log.Warn("scheduled trigger skipped; schedule not found", zap.Error(err), zap.String("schedule_id", scheduleID))
+		return
+	}
+	if !fresh.Enabled {
+		return
+	}
+	if _, err := a.publishScheduleRun(fresh, "schedule"); err != nil {
+		a.log.Error("scheduled trigger failed", zap.Error(err), zap.String("schedule_id", scheduleID))
+	}
 }
 
 func (a *App) unregisterCronSchedule(scheduleID string) {
