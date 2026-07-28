@@ -92,6 +92,12 @@ func TestNormalizePublishedAtCanonicalizesRSSAndRejectsUndatedValues(t *testing.
 	}
 }
 
+func TestNormalizedSourceItemIDVersionsGUIDBackedItems(t *testing.T) {
+	if got := normalizedSourceItemID("guid-1", "https://example.com/article", "title", "Tue, 28 Jul 2026 06:33:26 +1000"); got != "guid-1#published_at_v1" {
+		t.Fatalf("normalized source id=%q", got)
+	}
+}
+
 func TestFetchAndEmitRSSFallsBackToSummaryWhenArticleBlocked(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

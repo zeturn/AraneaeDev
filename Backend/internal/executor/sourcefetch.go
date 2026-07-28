@@ -478,7 +478,7 @@ func tryEmitRSS2(ctx context.Context, raw []byte, sourceURL, sinkDir string, opt
 			"published_at":            publishedAt,
 			"source_published_at_raw": rawPublishedAt,
 			"source_url":              sourceURL,
-			"id":                      sourceItemID(strings.TrimSpace(it.GUID), link, strings.TrimSpace(it.Title), rawPublishedAt+"|published_at_v1"),
+			"id":                      normalizedSourceItemID(strings.TrimSpace(it.GUID), link, strings.TrimSpace(it.Title), rawPublishedAt),
 		}
 		if err := emitStructured(sinkDir, sourceURL, "rss_item", data); err != nil {
 			return count, err
@@ -523,7 +523,7 @@ func tryEmitAtom(ctx context.Context, raw []byte, sourceURL, sinkDir string, opt
 			"published_at":            publishedAt,
 			"source_published_at_raw": rawPublishedAt,
 			"source_url":              sourceURL,
-			"id":                      sourceItemID(strings.TrimSpace(e.ID), link, strings.TrimSpace(e.Title), rawPublishedAt+"|published_at_v1"),
+			"id":                      normalizedSourceItemID(strings.TrimSpace(e.ID), link, strings.TrimSpace(e.Title), rawPublishedAt),
 		}
 		if err := emitStructured(sinkDir, sourceURL, "rss_item", data); err != nil {
 			return count, err
@@ -557,7 +557,7 @@ func tryEmitRDF(ctx context.Context, raw []byte, sourceURL, sinkDir string, opti
 			"published_at":            publishedAt,
 			"source_published_at_raw": rawPublishedAt,
 			"source_url":              sourceURL,
-			"id":                      sourceItemID(strings.TrimSpace(it.GUID), link, strings.TrimSpace(it.Title), rawPublishedAt+"|published_at_v1"),
+			"id":                      normalizedSourceItemID(strings.TrimSpace(it.GUID), link, strings.TrimSpace(it.Title), rawPublishedAt),
 		}
 		if err := emitStructured(sinkDir, sourceURL, "rss_item", data); err != nil {
 			return count, err
@@ -815,6 +815,10 @@ func sourceItemID(preferred, link, title, publishedAt string) string {
 		return link
 	}
 	return title + "\n" + publishedAt
+}
+
+func normalizedSourceItemID(preferred, link, title, rawPublishedAt string) string {
+	return sourceItemID(preferred, link, title, rawPublishedAt) + "#published_at_v1"
 }
 
 // ---- JSON API parsing ----
