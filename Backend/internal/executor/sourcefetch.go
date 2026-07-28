@@ -427,12 +427,13 @@ type atomFeed struct {
 }
 
 type atomEntry struct {
-	Title   string     `xml:"title"`
-	Links   []atomLink `xml:"link"`
-	Summary string     `xml:"summary"`
-	Content string     `xml:"content"`
-	ID      string     `xml:"id"`
-	Updated string     `xml:"updated"`
+	Title     string     `xml:"title"`
+	Links     []atomLink `xml:"link"`
+	Summary   string     `xml:"summary"`
+	Content   string     `xml:"content"`
+	ID        string     `xml:"id"`
+	Published string     `xml:"published"`
+	Updated   string     `xml:"updated"`
 }
 
 type atomLink struct {
@@ -504,6 +505,10 @@ func tryEmitAtom(ctx context.Context, raw []byte, sourceURL, sinkDir string, opt
 				}
 			}
 		}
+		publishedAt := strings.TrimSpace(e.Published)
+		if publishedAt == "" {
+			publishedAt = strings.TrimSpace(e.Updated)
+		}
 		feedContent := strings.TrimSpace(e.Content)
 		content, contentStatus := fetchArticleContentWithOptions(ctx, link, sourceURL, feedContent, options)
 		data := map[string]interface{}{
@@ -512,9 +517,9 @@ func tryEmitAtom(ctx context.Context, raw []byte, sourceURL, sinkDir string, opt
 			"summary":        strings.TrimSpace(e.Summary),
 			"content":        content,
 			"content_status": contentStatus,
-			"published_at":   strings.TrimSpace(e.Updated),
+			"published_at":   publishedAt,
 			"source_url":     sourceURL,
-			"id":             sourceItemID(strings.TrimSpace(e.ID), link, strings.TrimSpace(e.Title), strings.TrimSpace(e.Updated)),
+			"id":             sourceItemID(strings.TrimSpace(e.ID), link, strings.TrimSpace(e.Title), publishedAt),
 		}
 		if err := emitStructured(sinkDir, sourceURL, "rss_item", data); err != nil {
 			return count, err

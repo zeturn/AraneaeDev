@@ -149,6 +149,31 @@ func TestEmitRSSHonorsTaskFetchBudget(t *testing.T) {
 	}
 }
 
+func TestEmitAtomPrefersPublishedTimeOverUpdatedTime(t *testing.T) {
+	raw := []byte(`<feed xmlns="http://www.w3.org/2005/Atom"><entry>
+		<title>Atom article</title><id>atom-1</id><link href="https://example.com/atom"/>
+		<published>2026-07-28T01:02:03Z</published><updated>2026-07-28T05:06:07Z</updated>
+		<summary>Summary.</summary></entry></feed>`)
+	sinkDir := t.TempDir()
+	count, err := emitRSS(context.Background(), raw, "https://example.com/feed", sinkDir, sourceFetchOptions{FetchArticleBodies: false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("count=%d, want 1", count)
+	}
+	event := readFirstSinkEvent(t, filepath.Join(sinkDir, "events.jsonl"))
+	var payload struct {
+		Data map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(event.Data, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if got := payload.Data["published_at"]; got != "2026-07-28T01:02:03Z" {
+		t.Fatalf("published_at=%v, want Atom published time", got)
+	}
+}
+
 func TestSourceFetchUsesConditionalRequestAndPersistsValidators(t *testing.T) {
 	var requests int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
