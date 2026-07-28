@@ -465,18 +465,20 @@ func tryEmitRSS2(ctx context.Context, raw []byte, sourceURL, sinkDir string, opt
 			break
 		}
 		link := bestRSSItemLink(it.Links)
-		publishedAt := strings.TrimSpace(it.PubDate)
+		rawPublishedAt := strings.TrimSpace(it.PubDate)
+		publishedAt := normalizePublishedAt(rawPublishedAt)
 		summary := strings.TrimSpace(it.Description)
 		content, contentStatus := fetchArticleContentWithOptions(ctx, link, sourceURL, summary, options)
 		data := map[string]interface{}{
-			"title":          strings.TrimSpace(it.Title),
-			"link":           link,
-			"summary":        summary,
-			"content":        content,
-			"content_status": contentStatus,
-			"published_at":   publishedAt,
-			"source_url":     sourceURL,
-			"id":             sourceItemID(strings.TrimSpace(it.GUID), link, strings.TrimSpace(it.Title), publishedAt),
+			"title":                   strings.TrimSpace(it.Title),
+			"link":                    link,
+			"summary":                 summary,
+			"content":                 content,
+			"content_status":          contentStatus,
+			"published_at":            publishedAt,
+			"source_published_at_raw": rawPublishedAt,
+			"source_url":              sourceURL,
+			"id":                      sourceItemID(strings.TrimSpace(it.GUID), link, strings.TrimSpace(it.Title), rawPublishedAt+"|published_at_v1"),
 		}
 		if err := emitStructured(sinkDir, sourceURL, "rss_item", data); err != nil {
 			return count, err
@@ -505,21 +507,23 @@ func tryEmitAtom(ctx context.Context, raw []byte, sourceURL, sinkDir string, opt
 				}
 			}
 		}
-		publishedAt := strings.TrimSpace(e.Published)
-		if publishedAt == "" {
-			publishedAt = strings.TrimSpace(e.Updated)
+		rawPublishedAt := strings.TrimSpace(e.Published)
+		if rawPublishedAt == "" {
+			rawPublishedAt = strings.TrimSpace(e.Updated)
 		}
+		publishedAt := normalizePublishedAt(rawPublishedAt)
 		feedContent := strings.TrimSpace(e.Content)
 		content, contentStatus := fetchArticleContentWithOptions(ctx, link, sourceURL, feedContent, options)
 		data := map[string]interface{}{
-			"title":          strings.TrimSpace(e.Title),
-			"link":           link,
-			"summary":        strings.TrimSpace(e.Summary),
-			"content":        content,
-			"content_status": contentStatus,
-			"published_at":   publishedAt,
-			"source_url":     sourceURL,
-			"id":             sourceItemID(strings.TrimSpace(e.ID), link, strings.TrimSpace(e.Title), publishedAt),
+			"title":                   strings.TrimSpace(e.Title),
+			"link":                    link,
+			"summary":                 strings.TrimSpace(e.Summary),
+			"content":                 content,
+			"content_status":          contentStatus,
+			"published_at":            publishedAt,
+			"source_published_at_raw": rawPublishedAt,
+			"source_url":              sourceURL,
+			"id":                      sourceItemID(strings.TrimSpace(e.ID), link, strings.TrimSpace(e.Title), rawPublishedAt+"|published_at_v1"),
 		}
 		if err := emitStructured(sinkDir, sourceURL, "rss_item", data); err != nil {
 			return count, err
@@ -540,18 +544,20 @@ func tryEmitRDF(ctx context.Context, raw []byte, sourceURL, sinkDir string, opti
 			break
 		}
 		link := bestRSSItemLink(it.Links)
-		publishedAt := strings.TrimSpace(it.PubDate)
+		rawPublishedAt := strings.TrimSpace(it.PubDate)
+		publishedAt := normalizePublishedAt(rawPublishedAt)
 		summary := strings.TrimSpace(it.Description)
 		content, contentStatus := fetchArticleContentWithOptions(ctx, link, sourceURL, summary, options)
 		data := map[string]interface{}{
-			"title":          strings.TrimSpace(it.Title),
-			"link":           link,
-			"summary":        summary,
-			"content":        content,
-			"content_status": contentStatus,
-			"published_at":   publishedAt,
-			"source_url":     sourceURL,
-			"id":             sourceItemID(strings.TrimSpace(it.GUID), link, strings.TrimSpace(it.Title), publishedAt),
+			"title":                   strings.TrimSpace(it.Title),
+			"link":                    link,
+			"summary":                 summary,
+			"content":                 content,
+			"content_status":          contentStatus,
+			"published_at":            publishedAt,
+			"source_published_at_raw": rawPublishedAt,
+			"source_url":              sourceURL,
+			"id":                      sourceItemID(strings.TrimSpace(it.GUID), link, strings.TrimSpace(it.Title), rawPublishedAt+"|published_at_v1"),
 		}
 		if err := emitStructured(sinkDir, sourceURL, "rss_item", data); err != nil {
 			return count, err
@@ -559,6 +565,34 @@ func tryEmitRDF(ctx context.Context, raw []byte, sourceURL, sinkDir string, opti
 		count++
 	}
 	return count, nil
+}
+
+// normalizePublishedAt gives downstream rolling windows one canonical time
+// representation while retaining the source string separately for audit.  RSS
+// feeds commonly use RFC 822/1123 variants, whereas Atom normally uses
+// RFC3339.  An unparseable timestamp is intentionally returned as empty: a
+// time-bounded Brief must not silently treat an undated item as current.
+func normalizePublishedAt(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	for _, layout := range []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		time.RFC1123Z,
+		time.RFC1123,
+		time.RFC822Z,
+		time.RFC822,
+		time.RFC850,
+		"2006-01-02 15:04:05 -0700 MST",
+		"2006-01-02 15:04:05 -0700",
+	} {
+		if parsed, err := time.Parse(layout, raw); err == nil {
+			return parsed.UTC().Format(time.RFC3339)
+		}
+	}
+	return ""
 }
 
 func fetchArticleContent(ctx context.Context, articleURL, referer, fallback string) (string, string) {

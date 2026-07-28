@@ -80,6 +80,18 @@ func TestFetchAndEmitRSSFetchesArticleContent(t *testing.T) {
 	}
 }
 
+func TestNormalizePublishedAtCanonicalizesRSSAndRejectsUndatedValues(t *testing.T) {
+	if got := normalizePublishedAt("Tue, 28 Jul 2026 06:33:26 +1000"); got != "2026-07-27T20:33:26Z" {
+		t.Fatalf("RSS date normalized to %q", got)
+	}
+	if got := normalizePublishedAt("2026-07-28T06:33:26Z"); got != "2026-07-28T06:33:26Z" {
+		t.Fatalf("Atom date normalized to %q", got)
+	}
+	if got := normalizePublishedAt("not a date"); got != "" {
+		t.Fatalf("invalid date normalized to %q", got)
+	}
+}
+
 func TestFetchAndEmitRSSFallsBackToSummaryWhenArticleBlocked(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
