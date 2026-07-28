@@ -3,6 +3,7 @@ package executor
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -12,6 +13,36 @@ import (
 )
 
 func (a *App) reportCallback(runID, runToken, correlationID string, payload contracts.CallbackPayload) error {
+	var lastErr error
+	for attempt := 0; attempt < 4; attempt++ {
+		err := a.reportCallbackOnce(runID, runToken, correlationID, payload)
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		if !retryableCallbackError(err) || attempt == 3 {
+			break
+		}
+		time.Sleep(time.Duration(1<<attempt) * 250 * time.Millisecond)
+	}
+	return lastErr
+}
+
+type callbackStatusError struct{ status int }
+
+func (e callbackStatusError) Error() string {
+	return fmt.Sprintf("callback failed with status %d", e.status)
+}
+
+func retryableCallbackError(err error) bool {
+	var status callbackStatusError
+	if errors.As(err, &status) {
+		return status.status == http.StatusRequestTimeout || status.status == http.StatusTooManyRequests || status.status >= 500
+	}
+	return err != nil // DNS, EOF and transport timeouts are transient here.
+}
+
+func (a *App) reportCallbackOnce(runID, runToken, correlationID string, payload contracts.CallbackPayload) error {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -35,7 +66,7 @@ func (a *App) reportCallback(runID, runToken, correlationID string, payload cont
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("callback failed with status %d", resp.StatusCode)
+		return callbackStatusError{status: resp.StatusCode}
 	}
 	return nil
 }
