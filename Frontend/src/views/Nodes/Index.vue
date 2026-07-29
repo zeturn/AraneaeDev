@@ -19,7 +19,12 @@
 			<!-- 实时资源环形图 -->
 			<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8">
 				<div>
-					<h2 class="text-xl font-semibold mb-2 text-gray-800">{{ $t('CPU 使用率') }}</h2>
+					<div class="mb-2 flex items-center justify-between gap-3">
+						<h2 class="text-xl font-semibold text-gray-800">{{ $t('CPU 使用率') }}</h2>
+						<button class="btn-muted px-3 py-1.5 text-sm" @click="fetchResourceStatus">
+							{{ $t('刷新状态') }}
+						</button>
+					</div>
 					<div ref="cpuChartRef" style="width:100%;height:250px;"></div>
 				</div>
 				<div>
@@ -125,8 +130,15 @@
 							状态：{{ installJobs[logPanelKey]?.status }}
 						</span>
 						<button
+							v-if="logPanelKey && installJobs[logPanelKey]?.job_id"
+							class="btn-muted ml-auto px-3 py-1 text-xs"
+							@click="refreshInstallJob(logPanelKey)"
+						>
+							{{ $t('刷新状态') }}
+						</button>
+						<button
 							v-if="!isInstalling(logPanelKey)"
-							class="btn-primary ml-auto px-3 py-1 text-xs"
+							class="btn-primary px-3 py-1 text-xs"
 							@click="doInstall(logPanelKey)"
 						>
 							{{ $t('重试安装') }}
@@ -163,10 +175,14 @@ const cpuChartRef = ref<HTMLElement | null>(null)
 const memChartRef = ref<HTMLElement | null>(null)
 let cpuChart: ECharts | null = null
 let memChart: ECharts | null = null
-let poller: number | null = null
 const onWindowResize = () => {
 	cpuChart?.resize()
 	memChart?.resize()
+}
+const refreshResourceStatusWhenVisible = () => {
+	if (!document.hidden) {
+		fetchResourceStatus()
+	}
 }
 
 // 运行时能力
@@ -337,7 +353,6 @@ const doRefreshCapabilities = async () => {
 const installJobs = ref<Record<string, any>>({})
 const logPanelKey = ref<string | null>(null)
 const logPanelRef = ref<HTMLElement | null>(null)
-let installPoller: number | null = null
 
 /** 判断某个运行时是否正在安装中 */
 const isInstalling = (key: string | null) => {
@@ -346,37 +361,23 @@ const isInstalling = (key: string | null) => {
 	return st === 'pending' || st === 'running'
 }
 
-/** 轮询所有活跃安装任务的进度 */
-const pollInstallJobs = async () => {
-	const activeKeys = Object.keys(installJobs.value).filter(k => isInstalling(k))
-	if (activeKeys.length === 0) return
-	for (const key of activeKeys) {
-		const jobId = installJobs.value[key]?.job_id
-		if (!jobId) continue
-		try {
-			const res = await ApiService.getInstallStatus(nodeId, jobId)
-			installJobs.value[key] = {...res.data, job_id: jobId}
-			// 自动滚动日志面板到底部
-			if (logPanelRef.value && logPanelKey.value === key) {
-				await nextTick()
-				logPanelRef.value.scrollTop = logPanelRef.value.scrollHeight
-			}
-			// 安装完成后自动刷新能力列表
-			const finalStatus = res.data.status
-			if (finalStatus === 'success' || finalStatus === 'failed') {
-				if (finalStatus === 'success') {
-					await fetchCapabilities()
-				}
-			}
-		} catch (err) {
-			console.error('Error polling install status:', err)
+/** 用户触发刷新单个安装任务状态。后端支持事件流前，不做固定间隔轮询。 */
+const refreshInstallJob = async (key: string | null) => {
+	if (!key) return
+	const jobId = installJobs.value[key]?.job_id
+	if (!jobId) return
+	try {
+		const res = await ApiService.getInstallStatus(nodeId, jobId)
+		installJobs.value[key] = {...res.data, job_id: jobId}
+		if (logPanelRef.value && logPanelKey.value === key) {
+			await nextTick()
+			logPanelRef.value.scrollTop = logPanelRef.value.scrollHeight
 		}
-	}
-
-	const hasActiveJobs = Object.keys(installJobs.value).some(k => isInstalling(k))
-	if (!hasActiveJobs && installPoller !== null) {
-		clearInterval(installPoller)
-		installPoller = null
+		if (res.data.status === 'success') {
+			await fetchCapabilities()
+		}
+	} catch (err) {
+		console.error('Error refreshing install status:', err)
 	}
 }
 
@@ -393,10 +394,7 @@ const doInstall = async (key: string) => {
 		const res = await ApiService.installRuntime(nodeId, key)
 		const jobId = res.data.job_id
 		installJobs.value[key] = {status: 'pending', log: '', job_id: jobId}
-		// 启动轮询（如果还没启动）
-		if (installPoller === null) {
-			installPoller = window.setInterval(pollInstallJobs, 2000)
-		}
+		await refreshInstallJob(key)
 	} catch (err: any) {
 		console.error('Error starting install:', err)
 		installJobs.value[key] = {
@@ -427,14 +425,15 @@ onMounted(async () => {
 	await fetchResourceStatus()
 	// 加载已存储的运行时列表（不会主动探测节点）
 	await fetchCapabilities()
-	poller = window.setInterval(fetchResourceStatus, 5000)
 	window.addEventListener('resize', onWindowResize)
+	window.addEventListener('focus', fetchResourceStatus)
+	document.addEventListener('visibilitychange', refreshResourceStatusWhenVisible)
 })
 
 onUnmounted(() => {
-	if (poller !== null) clearInterval(poller)
-	if (installPoller !== null) clearInterval(installPoller)
 	window.removeEventListener('resize', onWindowResize)
+	window.removeEventListener('focus', fetchResourceStatus)
+	document.removeEventListener('visibilitychange', refreshResourceStatusWhenVisible)
 	cpuChart?.dispose()
 	memChart?.dispose()
 })

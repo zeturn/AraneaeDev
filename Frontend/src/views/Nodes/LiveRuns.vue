@@ -85,8 +85,6 @@ const loading = ref(false);
 const error = ref('');
 const selectedRunId = ref('');
 const lastUpdatedAt = ref(null);
-const pollIntervalMs = 5000;
-let pollTimer = null;
 
 const selectedRun = computed(() => runs.value.find(item => item.id === selectedRunId.value) || null);
 
@@ -146,13 +144,18 @@ async function fetchRuns() {
 
 onMounted(() => {
 	fetchRuns();
-	pollTimer = window.setInterval(fetchRuns, pollIntervalMs);
+	window.addEventListener('focus', fetchRuns);
+	document.addEventListener('visibilitychange', fetchRunsWhenVisible);
 });
 
 onBeforeUnmount(() => {
-	if (pollTimer) {
-		window.clearInterval(pollTimer);
-		pollTimer = null;
-	}
+	window.removeEventListener('focus', fetchRuns);
+	document.removeEventListener('visibilitychange', fetchRunsWhenVisible);
 });
+
+function fetchRunsWhenVisible() {
+	if (!document.hidden) {
+		fetchRuns();
+	}
+}
 </script>
