@@ -394,10 +394,6 @@ func (a *App) openRabbit() (*amqp.Connection, *amqp.Channel, error) {
 
 func (a *App) rabbitPublisher() (*amqp.Channel, error) {
 	a.rabbitMu.Lock()
-	if a.rabbitCh == nil && a.rabbitConn == nil {
-		a.rabbitMu.Unlock()
-		return nil, errQueueUnavailable
-	}
 	if a.rabbitCh != nil && !a.rabbitCh.IsClosed() && a.rabbitConn != nil && !a.rabbitConn.IsClosed() {
 		ch := a.rabbitCh
 		a.rabbitMu.Unlock()
@@ -413,7 +409,11 @@ func (a *App) rabbitPublisher() (*amqp.Channel, error) {
 	a.rabbitConn = nil
 	a.rabbitMu.Unlock()
 
-	return a.reconnectRabbitPublisher()
+	ch, err := a.reconnectRabbitPublisher()
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", errQueueUnavailable, err)
+	}
+	return ch, nil
 }
 
 func (a *App) reconnectRabbitPublisher() (*amqp.Channel, error) {
