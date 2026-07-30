@@ -548,7 +548,7 @@ func (a *App) processMessage(ctx context.Context, raw []byte) error {
 
 func (a *App) executeTask(ctx context.Context, msg contracts.QueueTaskMessage) (string, int, string, error) {
 	taskType := strings.ToLower(strings.TrimSpace(msg.Type))
-	if taskType == "rss" || taskType == "api" {
+	if taskType == "rss" || taskType == "api" || taskType == "page" {
 		return a.executeSourceFetch(ctx, taskType, msg.SourceURL, msg)
 	}
 	runCtx, cancel := context.WithTimeout(ctx, time.Duration(a.cfg.TaskTimeoutSeconds)*time.Second)

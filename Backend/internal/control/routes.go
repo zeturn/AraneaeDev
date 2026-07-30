@@ -818,8 +818,8 @@ func (a *App) createTask(c *fiber.Ctx) error {
 	if taskType == "" {
 		taskType = "code"
 	}
-	if taskType != "code" && taskType != "rss" && taskType != "api" {
-		return fiber.NewError(fiber.StatusBadRequest, "invalid task type (must be code, rss or api)")
+	if taskType != "code" && taskType != "rss" && taskType != "api" && taskType != "page" {
+		return fiber.NewError(fiber.StatusBadRequest, "invalid task type (must be code, rss, api or page)")
 	}
 
 	uid, _ := c.Locals("uid").(string)
@@ -863,7 +863,7 @@ func (a *App) createTask(c *fiber.Ctx) error {
 	} else {
 		sourceURL := strings.TrimSpace(req.SourceURL)
 		if sourceURL == "" {
-			return fiber.NewError(fiber.StatusBadRequest, "source_url is required for rss/api tasks")
+			return fiber.NewError(fiber.StatusBadRequest, "source_url is required for source tasks")
 		}
 		if !strings.HasPrefix(sourceURL, "http://") && !strings.HasPrefix(sourceURL, "https://") {
 			return fiber.NewError(fiber.StatusBadRequest, "source_url must start with http:// or https://")
@@ -967,8 +967,8 @@ func (a *App) updateTask(c *fiber.Ctx) error {
 	}
 	if req.Type != nil {
 		t := strings.ToLower(strings.TrimSpace(*req.Type))
-		if t != "code" && t != "rss" && t != "api" {
-			return fiber.NewError(fiber.StatusBadRequest, "invalid task type (must be code, rss or api)")
+		if t != "code" && t != "rss" && t != "api" && t != "page" {
+			return fiber.NewError(fiber.StatusBadRequest, "invalid task type (must be code, rss, api or page)")
 		}
 		task.Type = t
 	}
@@ -983,9 +983,9 @@ func (a *App) updateTask(c *fiber.Ctx) error {
 	}
 
 	taskType := strings.ToLower(strings.TrimSpace(task.Type))
-	if taskType == "rss" || taskType == "api" {
+	if isSourceTaskType(taskType) {
 		if task.SourceURL == "" {
-			return fiber.NewError(fiber.StatusBadRequest, "source_url is required for rss/api tasks")
+			return fiber.NewError(fiber.StatusBadRequest, "source_url is required for source tasks")
 		}
 		if !strings.HasPrefix(task.SourceURL, "http://") && !strings.HasPrefix(task.SourceURL, "https://") {
 			return fiber.NewError(fiber.StatusBadRequest, "source_url must start with http:// or https://")

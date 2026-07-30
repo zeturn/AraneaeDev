@@ -66,7 +66,7 @@ func (a *App) resolveScheduleExecutionSteps(schedule common.Schedule) ([]schedul
 		if step.NodeQueue == "" {
 			step.NodeQueue = "default"
 		}
-		if step.Type == "rss" || step.Type == "api" {
+		if isSourceTaskType(step.Type) {
 			if step.SourceURL == "" {
 				continue
 			}

@@ -98,7 +98,7 @@ func (a *App) createSchedule(c *fiber.Ctx) error {
 	if req.Name == "" {
 		req.Name = "schedule-" + uuid.NewString()[:8]
 	}
-	sourceTask := boundTask != nil && (boundTask.Type == "rss" || boundTask.Type == "api")
+	sourceTask := boundTask != nil && isSourceTaskType(boundTask.Type)
 	if !sourceTask && (req.ProjectID == "" || req.VersionID == "" || req.EntryCommand == "") {
 		return fiber.NewError(fiber.StatusBadRequest, "project_id, version_id and entry_command are required")
 	}
@@ -500,7 +500,7 @@ func (a *App) updateSchedule(c *fiber.Ctx) error {
 	if schedule.Name == "" {
 		schedule.Name = "schedule-" + schedule.ID[:8]
 	}
-	sourceTask := scheduledTask != nil && (scheduledTask.Type == "rss" || scheduledTask.Type == "api")
+	sourceTask := scheduledTask != nil && isSourceTaskType(scheduledTask.Type)
 	if !sourceTask && (schedule.ProjectID == "" || schedule.VersionID == "" || schedule.EntryCommand == "") {
 		return fiber.NewError(fiber.StatusBadRequest, "project_id, version_id and entry_command are required")
 	}

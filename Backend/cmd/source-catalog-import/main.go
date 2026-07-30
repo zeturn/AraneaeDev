@@ -18,6 +18,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"golang.org/x/net/html/charset"
 )
 
 type catalog struct {
@@ -34,11 +36,17 @@ type catalogDefaults struct {
 }
 
 type catalogSource struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Category string `json:"category"`
-	URL      string `json:"url"`
-	Enabled  *bool  `json:"enabled,omitempty"`
+	ID                 string `json:"id"`
+	Name               string `json:"name"`
+	Category           string `json:"category"`
+	URL                string `json:"url"`
+	TaskType           string `json:"task_type,omitempty"`
+	Schedule           string `json:"schedule,omitempty"`
+	NodeQueue          string `json:"node_queue,omitempty"`
+	MaxItems           *int   `json:"max_items,omitempty"`
+	FetchArticleBodies *bool  `json:"fetch_article_bodies,omitempty"`
+	JSONRecordPath     string `json:"json_record_path,omitempty"`
+	Enabled            *bool  `json:"enabled,omitempty"`
 }
 
 type task struct {
@@ -123,6 +131,16 @@ func loadCatalog(path string) (catalog, error) {
 			return catalog{}, fmt.Errorf("duplicate source id %q", source.ID)
 		}
 		seen[source.ID] = true
+		source.TaskType = strings.ToLower(strings.TrimSpace(source.TaskType))
+		if source.TaskType == "" {
+			source.TaskType = value.Defaults.TaskType
+		}
+		if source.TaskType != "rss" && source.TaskType != "api" && source.TaskType != "page" {
+			return catalog{}, fmt.Errorf("sources[%d] has invalid task_type %q", index, source.TaskType)
+		}
+		source.Schedule = strings.TrimSpace(source.Schedule)
+		source.NodeQueue = strings.TrimSpace(source.NodeQueue)
+		source.JSONRecordPath = strings.TrimSpace(source.JSONRecordPath)
 		parsed, err := url.Parse(source.URL)
 		if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" {
 			return catalog{}, fmt.Errorf("sources[%d] has invalid URL %q", index, source.URL)
@@ -138,7 +156,7 @@ func verifyCatalog(value catalog, timeout time.Duration) error {
 		if source.Enabled != nil && !*source.Enabled {
 			continue
 		}
-		if err := verifyFeed(client, source.URL); err != nil {
+		if err := verifySource(client, source); err != nil {
 			failures = append(failures, source.ID+": "+err.Error())
 			continue
 		}
@@ -149,6 +167,19 @@ func verifyCatalog(value catalog, timeout time.Duration) error {
 		return fmt.Errorf("catalog verification failed for %d source(s): %s", len(failures), strings.Join(failures, "; "))
 	}
 	return nil
+}
+
+func verifySource(client *http.Client, source catalogSource) error {
+	switch source.TaskType {
+	case "rss":
+		return verifyFeed(client, source.URL)
+	case "api":
+		return verifyJSONAPI(client, source.URL)
+	case "page":
+		return verifyPage(client, source.URL)
+	default:
+		return fmt.Errorf("unsupported task_type %q", source.TaskType)
+	}
 }
 
 func verifyFeed(client *http.Client, sourceURL string) error {
@@ -167,6 +198,7 @@ func verifyFeed(client *http.Client, sourceURL string) error {
 		return fmt.Errorf("HTTP %d", response.StatusCode)
 	}
 	decoder := xml.NewDecoder(io.LimitReader(response.Body, 128*1024))
+	decoder.CharsetReader = charset.NewReaderLabel
 	for {
 		token, err := decoder.Token()
 		if err == io.EOF {
@@ -182,6 +214,61 @@ func verifyFeed(client *http.Client, sourceURL string) error {
 			default:
 				return fmt.Errorf("unexpected root element %q", start.Name.Local)
 			}
+		}
+	}
+}
+
+func verifyJSONAPI(client *http.Client, sourceURL string) error {
+	req, err := http.NewRequest(http.MethodGet, sourceURL, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "application/json, */*")
+	req.Header.Set("User-Agent", "Araneae Source Catalog Verifier/1.0")
+	response, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return fmt.Errorf("HTTP %d", response.StatusCode)
+	}
+	var value any
+	if err := json.NewDecoder(io.LimitReader(response.Body, 8*1024*1024)).Decode(&value); err != nil {
+		return fmt.Errorf("invalid JSON: %w", err)
+	}
+	return nil
+}
+
+func verifyPage(client *http.Client, sourceURL string) error {
+	req, err := http.NewRequest(http.MethodGet, sourceURL, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; Araneae Source Catalog Verifier/1.0)")
+	response, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return fmt.Errorf("HTTP %d", response.StatusCode)
+	}
+	decoder := xml.NewDecoder(io.LimitReader(response.Body, 128*1024))
+	for {
+		token, err := decoder.Token()
+		if err == io.EOF {
+			return errors.New("empty page")
+		}
+		if err != nil {
+			return nil
+		}
+		if start, ok := token.(xml.StartElement); ok {
+			if strings.EqualFold(start.Name.Local, "html") {
+				return nil
+			}
+			return fmt.Errorf("unexpected root element %q", start.Name.Local)
 		}
 	}
 }
@@ -268,6 +355,14 @@ func applyCatalog(client *controlClient, value catalog, datasetID, missionID str
 			return fmt.Errorf("catalog task %s URL drift: existing=%s catalog=%s", source.ID, item.SourceURL, source.URL)
 		}
 		if !exists {
+			taskType := strings.TrimSpace(source.TaskType)
+			if taskType == "" {
+				taskType = value.Defaults.TaskType
+			}
+			nodeQueue := strings.TrimSpace(source.NodeQueue)
+			if nodeQueue == "" {
+				nodeQueue = value.Defaults.NodeQueue
+			}
 			metadata := map[string]any{
 				"source_catalog":  map[string]any{"id": value.ID, "version": value.Version, "source_id": source.ID},
 				"source_category": source.Category,
@@ -275,17 +370,38 @@ func applyCatalog(client *controlClient, value catalog, datasetID, missionID str
 				"schema_id":       "news.article.v1",
 				"artifact_type":   "news_article",
 			}
+			sourceFetch := map[string]any{}
+			if source.MaxItems != nil {
+				sourceFetch["max_items"] = *source.MaxItems
+			}
+			if source.FetchArticleBodies != nil {
+				sourceFetch["fetch_article_bodies"] = *source.FetchArticleBodies
+			}
+			if source.JSONRecordPath != "" {
+				sourceFetch["json_record_path"] = source.JSONRecordPath
+			}
+			if len(sourceFetch) > 0 {
+				metadata["source_fetch"] = sourceFetch
+			}
 			if missionID != "" {
 				metadata["mission_id"] = missionID
 			}
-			body := map[string]any{"name": source.Name, "type": value.Defaults.TaskType, "source_url": source.URL, "metadata": metadata, "node_queue": value.Defaults.NodeQueue}
+			body := map[string]any{"name": source.Name, "type": taskType, "source_url": source.URL, "metadata": metadata, "node_queue": nodeQueue}
 			if err := client.post("/tasks", body, &item); err != nil {
 				return fmt.Errorf("create task %s: %w", source.ID, err)
 			}
 			createdTasks++
 		}
 		if !existingSchedules[item.ID] {
-			body := map[string]any{"name": value.ID + "-" + value.Version + "-" + source.ID, "description": "Catalog-managed source schedule", "task_id": item.ID, "trigger_type": "cron", "cron_expr": value.Defaults.Schedule, "node_queue": value.Defaults.NodeQueue, "enabled": true}
+			schedule := strings.TrimSpace(source.Schedule)
+			if schedule == "" {
+				schedule = value.Defaults.Schedule
+			}
+			nodeQueue := strings.TrimSpace(source.NodeQueue)
+			if nodeQueue == "" {
+				nodeQueue = value.Defaults.NodeQueue
+			}
+			body := map[string]any{"name": value.ID + "-" + value.Version + "-" + source.ID, "description": "Catalog-managed source schedule", "task_id": item.ID, "trigger_type": "crons", "cron_expr": schedule, "node_queue": nodeQueue, "enabled": true}
 			if err := client.post("/schedules", body, nil); err != nil {
 				return fmt.Errorf("create schedule %s: %w", source.ID, err)
 			}

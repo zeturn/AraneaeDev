@@ -21,16 +21,18 @@ import (
 
 	"go.uber.org/zap"
 	"golang.org/x/net/html"
+	"golang.org/x/net/html/charset"
 	"gorm.io/gorm"
 )
 
-// maxSourceFetchBytes caps the response body we are willing to read for rss/api tasks.
+// maxSourceFetchBytes caps the response body we are willing to read for source tasks.
 const maxSourceFetchBytes = 20 * 1024 * 1024
 const maxArticleFetchBytes = 8 * 1024 * 1024
 const articleFetchDelay = 1500 * time.Millisecond
 const articleFetchTimeout = 25 * time.Second
 const articleContentMinChars = 240
 const articleContentMaxChars = 80_000
+const defaultPageMaxItems = 12
 
 var whitespaceRE = regexp.MustCompile(`\s+`)
 
@@ -49,6 +51,7 @@ type httpFetchOptions struct {
 type sourceFetchOptions struct {
 	MaxItems           int
 	FetchArticleBodies bool
+	JSONRecordPath     string
 }
 
 func defaultSourceFetchOptions() sourceFetchOptions {
@@ -66,6 +69,9 @@ func sourceFetchOptionsFromMetadata(metadata map[string]any) sourceFetchOptions 
 	}
 	if value, ok := raw["fetch_article_bodies"].(bool); ok {
 		opts.FetchArticleBodies = value
+	}
+	if value, ok := raw["json_record_path"].(string); ok {
+		opts.JSONRecordPath = strings.TrimSpace(value)
 	}
 	return opts
 }
@@ -107,12 +113,7 @@ func (a *App) executeSourceFetch(ctx context.Context, taskType, sourceURL string
 }
 
 func fetchAndEmit(ctx context.Context, taskType, sourceURL, sinkDir string) (string, error) {
-	result, err := httpGetBytesWithHeaders(ctx, sourceURL, httpFetchOptions{
-		Accept:       "application/json, application/xml, text/xml, */*",
-		MaxBytes:     maxSourceFetchBytes,
-		Timeout:      30 * time.Second,
-		RetryEnabled: true,
-	}, nil)
+	result, err := httpGetBytesWithHeaders(ctx, sourceURL, sourceFetchHTTPOptions(taskType), nil)
 	if err != nil {
 		return "", err
 	}
@@ -136,12 +137,7 @@ func (a *App) fetchAndEmitSource(ctx context.Context, taskType, sourceURL, sinkD
 	if state.LastModified != "" {
 		headers["If-Modified-Since"] = state.LastModified
 	}
-	result, err := httpGetBytesWithHeaders(ctx, sourceURL, httpFetchOptions{
-		Accept:       "application/json, application/xml, text/xml, */*",
-		MaxBytes:     maxSourceFetchBytes,
-		Timeout:      30 * time.Second,
-		RetryEnabled: true,
-	}, headers)
+	result, err := httpGetBytesWithHeaders(ctx, sourceURL, sourceFetchHTTPOptions(taskType), headers)
 	if err != nil {
 		a.recordSourceFetchFailure(state, now, err)
 		return "", err
@@ -168,13 +164,33 @@ func emitSourceBody(ctx context.Context, taskType, sourceURL, sinkDir string, bo
 		}
 		return fmt.Sprintf("fetched %d items from RSS/Atom feed", n), nil
 	case "api":
-		n, ferr := emitJSONAPI(body, sourceURL, sinkDir)
+		n, ferr := emitJSONAPI(body, sourceURL, sinkDir, options)
 		if ferr != nil {
 			return "", ferr
 		}
 		return fmt.Sprintf("fetched JSON API: %d records", n), nil
+	case "page":
+		n, ferr := emitPage(ctx, body, sourceURL, sinkDir, options)
+		if ferr != nil {
+			return "", ferr
+		}
+		return fmt.Sprintf("fetched %d items from page crawler", n), nil
 	}
 	return "", fmt.Errorf("unsupported source type: %s", taskType)
+}
+
+func sourceFetchHTTPOptions(taskType string) httpFetchOptions {
+	opts := httpFetchOptions{
+		Accept:       "application/json, application/xml, text/xml, */*",
+		MaxBytes:     maxSourceFetchBytes,
+		Timeout:      30 * time.Second,
+		RetryEnabled: true,
+	}
+	if strings.EqualFold(strings.TrimSpace(taskType), "page") {
+		opts.Accept = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+		opts.Browserish = true
+	}
+	return opts
 }
 
 func httpGetBytes(ctx context.Context, targetURL string, opts httpFetchOptions) ([]byte, error) {
@@ -456,7 +472,7 @@ func emitRSS(ctx context.Context, raw []byte, sourceURL, sinkDir string, options
 
 func tryEmitRSS2(ctx context.Context, raw []byte, sourceURL, sinkDir string, options sourceFetchOptions) (int, error) {
 	var f rss2Feed
-	if err := xml.Unmarshal(raw, &f); err != nil || len(f.Channel.Items) == 0 {
+	if err := decodeXML(raw, &f); err != nil || len(f.Channel.Items) == 0 {
 		return 0, fmt.Errorf("not rss2")
 	}
 	count := 0
@@ -490,7 +506,7 @@ func tryEmitRSS2(ctx context.Context, raw []byte, sourceURL, sinkDir string, opt
 
 func tryEmitAtom(ctx context.Context, raw []byte, sourceURL, sinkDir string, options sourceFetchOptions) (int, error) {
 	var f atomFeed
-	if err := xml.Unmarshal(raw, &f); err != nil || len(f.Entries) == 0 {
+	if err := decodeXML(raw, &f); err != nil || len(f.Entries) == 0 {
 		return 0, fmt.Errorf("not atom")
 	}
 	count := 0
@@ -535,7 +551,7 @@ func tryEmitAtom(ctx context.Context, raw []byte, sourceURL, sinkDir string, opt
 
 func tryEmitRDF(ctx context.Context, raw []byte, sourceURL, sinkDir string, options sourceFetchOptions) (int, error) {
 	var f rdfFeed
-	if err := xml.Unmarshal(raw, &f); err != nil || len(f.Items) == 0 {
+	if err := decodeXML(raw, &f); err != nil || len(f.Items) == 0 {
 		return 0, fmt.Errorf("not rdf")
 	}
 	count := 0
@@ -593,6 +609,12 @@ func normalizePublishedAt(raw string) string {
 		}
 	}
 	return ""
+}
+
+func decodeXML(raw []byte, out any) error {
+	decoder := xml.NewDecoder(strings.NewReader(string(raw)))
+	decoder.CharsetReader = charset.NewReaderLabel
+	return decoder.Decode(out)
 }
 
 func fetchArticleContent(ctx context.Context, articleURL, referer, fallback string) (string, string) {
@@ -821,12 +843,378 @@ func normalizedSourceItemID(preferred, link, title, rawPublishedAt string) strin
 	return sourceItemID(preferred, link, title, rawPublishedAt) + "#published_at_v1"
 }
 
+// ---- HTML page crawling ----
+
+type pageCandidate struct {
+	URL     string
+	Title   string
+	Summary string
+}
+
+type pageArticle struct {
+	Title         string
+	Link          string
+	Summary       string
+	Content       string
+	ContentStatus string
+	PublishedAt   string
+	ID            string
+}
+
+func emitPage(ctx context.Context, raw []byte, sourceURL, sinkDir string, options sourceFetchOptions) (int, error) {
+	root, err := html.Parse(strings.NewReader(string(raw)))
+	if err != nil {
+		return 0, fmt.Errorf("invalid HTML page: %w", err)
+	}
+	maxItems := options.MaxItems
+	if maxItems <= 0 {
+		maxItems = defaultPageMaxItems
+	}
+	candidates := extractPageCandidates(root, sourceURL, maxItems)
+	count := 0
+	for _, candidate := range candidates {
+		article := fetchPageArticle(ctx, candidate, sourceURL, options)
+		data := map[string]interface{}{
+			"title":          article.Title,
+			"link":           article.Link,
+			"summary":        article.Summary,
+			"content":        article.Content,
+			"content_status": article.ContentStatus,
+			"published_at":   article.PublishedAt,
+			"source_url":     sourceURL,
+			"id":             sourceItemID(article.ID, article.Link, article.Title, article.PublishedAt),
+		}
+		if err := emitStructured(sinkDir, sourceURL, "rss_item", data); err != nil {
+			return count, err
+		}
+		count++
+	}
+	return count, nil
+}
+
+func fetchPageArticle(ctx context.Context, candidate pageCandidate, sourceURL string, options sourceFetchOptions) pageArticle {
+	article := pageArticle{
+		Title:         strings.TrimSpace(candidate.Title),
+		Link:          candidate.URL,
+		Summary:       strings.TrimSpace(candidate.Summary),
+		Content:       cleanText(candidate.Summary),
+		ContentStatus: "listing_content",
+		ID:            candidate.URL,
+	}
+	if !options.FetchArticleBodies {
+		if article.Content == "" {
+			article.ContentStatus = "article_body_disabled"
+		}
+		return article
+	}
+	if err := sleepContext(ctx, articleFetchDelay); err != nil {
+		if article.Content == "" {
+			article.ContentStatus = "article_fetch_cancelled"
+		}
+		return article
+	}
+	raw, err := httpGetBytes(ctx, candidate.URL, httpFetchOptions{
+		Accept:       "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+		Referer:      sourceURL,
+		MaxBytes:     maxArticleFetchBytes,
+		Timeout:      articleFetchTimeout,
+		Browserish:   true,
+		RetryEnabled: true,
+	})
+	if err != nil {
+		if article.Content == "" {
+			article.ContentStatus = "article_fetch_failed: " + err.Error()
+		}
+		return article
+	}
+	root, err := html.Parse(strings.NewReader(string(raw)))
+	if err != nil {
+		if article.Content == "" {
+			article.ContentStatus = "article_parse_failed: " + err.Error()
+		}
+		return article
+	}
+	meta := extractPageMetadata(root)
+	if meta.Title != "" {
+		article.Title = meta.Title
+	}
+	if meta.Description != "" {
+		article.Summary = meta.Description
+	}
+	if meta.PublishedAt != "" {
+		article.PublishedAt = meta.PublishedAt
+	}
+	if content, err := extractArticleText(raw); err == nil && len([]rune(content)) >= articleContentMinChars {
+		article.Content = truncateRunes(content, articleContentMaxChars)
+		article.ContentStatus = "article_fetched"
+	} else if article.Content == "" {
+		if err != nil {
+			article.ContentStatus = "article_extract_failed: " + err.Error()
+		} else {
+			article.ContentStatus = "article_extract_too_short"
+		}
+	}
+	if article.Title == "" {
+		article.Title = candidate.URL
+	}
+	return article
+}
+
+type pageMetadata struct {
+	Title       string
+	Description string
+	PublishedAt string
+}
+
+func extractPageMetadata(root *html.Node) pageMetadata {
+	meta := pageMetadata{}
+	var titleText string
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
+		if n.Type == html.ElementNode {
+			tag := strings.ToLower(n.Data)
+			if tag == "title" && titleText == "" {
+				titleText = cleanText(textFromNode(n))
+			}
+			if tag == "meta" {
+				key := ""
+				content := ""
+				for _, attr := range n.Attr {
+					switch strings.ToLower(attr.Key) {
+					case "property", "name", "itemprop":
+						key = strings.ToLower(strings.TrimSpace(attr.Val))
+					case "content":
+						content = strings.TrimSpace(attr.Val)
+					}
+				}
+				switch key {
+				case "og:title", "twitter:title":
+					if meta.Title == "" {
+						meta.Title = content
+					}
+				case "description", "og:description", "twitter:description":
+					if meta.Description == "" {
+						meta.Description = content
+					}
+				case "article:published_time", "og:published_time", "datepublished", "date", "pubdate", "publishdate", "publish_date", "dc.date", "dc.date.issued", "dcterms.created":
+					if meta.PublishedAt == "" {
+						meta.PublishedAt = content
+					}
+				}
+			}
+			if tag == "time" && meta.PublishedAt == "" {
+				for _, attr := range n.Attr {
+					if strings.EqualFold(attr.Key, "datetime") && strings.TrimSpace(attr.Val) != "" {
+						meta.PublishedAt = strings.TrimSpace(attr.Val)
+						break
+					}
+				}
+			}
+			if tag == "script" && meta.PublishedAt == "" {
+				scriptType := ""
+				for _, attr := range n.Attr {
+					if strings.EqualFold(attr.Key, "type") {
+						scriptType = strings.ToLower(strings.TrimSpace(attr.Val))
+					}
+				}
+				if scriptType == "application/ld+json" {
+					mergeJSONLDMetadata(&meta, strings.TrimSpace(rawTextFromNode(n)))
+				}
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+	}
+	walk(root)
+	if meta.Title == "" {
+		meta.Title = titleText
+	}
+	return meta
+}
+
+func mergeJSONLDMetadata(meta *pageMetadata, raw string) {
+	if raw == "" {
+		return
+	}
+	var decoded any
+	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
+		return
+	}
+	var visit func(any)
+	visit = func(value any) {
+		switch typed := value.(type) {
+		case []any:
+			for _, item := range typed {
+				visit(item)
+			}
+		case map[string]any:
+			if graph, ok := typed["@graph"]; ok {
+				visit(graph)
+			}
+			if meta.Title == "" {
+				meta.Title = firstString(typed["headline"], typed["name"])
+			}
+			if meta.Description == "" {
+				meta.Description = firstString(typed["description"])
+			}
+			if meta.PublishedAt == "" {
+				meta.PublishedAt = firstString(typed["datePublished"], typed["dateCreated"], typed["dateModified"])
+			}
+		}
+	}
+	visit(decoded)
+}
+
+func firstString(values ...any) string {
+	for _, value := range values {
+		switch typed := value.(type) {
+		case string:
+			if strings.TrimSpace(typed) != "" {
+				return strings.TrimSpace(typed)
+			}
+		case []any:
+			if s := firstString(typed...); s != "" {
+				return s
+			}
+		}
+	}
+	return ""
+}
+
+func rawTextFromNode(n *html.Node) string {
+	var b strings.Builder
+	var walk func(*html.Node)
+	walk = func(node *html.Node) {
+		if node.Type == html.TextNode {
+			b.WriteString(node.Data)
+			return
+		}
+		for c := node.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+	}
+	walk(n)
+	return b.String()
+}
+
+func extractPageCandidates(root *html.Node, sourceURL string, maxItems int) []pageCandidate {
+	base, err := url.Parse(sourceURL)
+	if err != nil || base.Host == "" {
+		return nil
+	}
+	seen := map[string]bool{}
+	candidates := make([]pageCandidate, 0, maxItems)
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
+		if len(candidates) >= maxItems {
+			return
+		}
+		if n.Type == html.ElementNode {
+			tag := strings.ToLower(n.Data)
+			if tag == "script" || tag == "style" || tag == "noscript" || tag == "template" || tag == "svg" ||
+				tag == "nav" || tag == "footer" || tag == "header" || tag == "aside" {
+				return
+			}
+			if tag == "a" {
+				href := attrValue(n, "href")
+				link := normalizePageLink(base, href)
+				if link != "" && !seen[link] && isLikelyArticleLink(base, link) {
+					title := cleanText(textFromNode(n))
+					if title != "" && len([]rune(title)) >= 8 {
+						seen[link] = true
+						candidates = append(candidates, pageCandidate{URL: link, Title: title, Summary: title})
+					}
+				}
+			}
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+	}
+	walk(root)
+	return candidates
+}
+
+func attrValue(n *html.Node, key string) string {
+	for _, attr := range n.Attr {
+		if strings.EqualFold(attr.Key, key) {
+			return strings.TrimSpace(attr.Val)
+		}
+	}
+	return ""
+}
+
+func normalizePageLink(base *url.URL, href string) string {
+	href = strings.TrimSpace(href)
+	if href == "" || strings.HasPrefix(href, "#") || strings.HasPrefix(strings.ToLower(href), "javascript:") || strings.HasPrefix(strings.ToLower(href), "mailto:") {
+		return ""
+	}
+	parsed, err := url.Parse(href)
+	if err != nil {
+		return ""
+	}
+	resolved := base.ResolveReference(parsed)
+	if resolved.Scheme != "http" && resolved.Scheme != "https" {
+		return ""
+	}
+	resolved.Fragment = ""
+	resolved.RawQuery = stripTrackingQuery(resolved.Query()).Encode()
+	return resolved.String()
+}
+
+func stripTrackingQuery(values url.Values) url.Values {
+	cleaned := url.Values{}
+	for key, value := range values {
+		lower := strings.ToLower(key)
+		if strings.HasPrefix(lower, "utm_") || lower == "fbclid" || lower == "gclid" || lower == "mc_cid" || lower == "mc_eid" {
+			continue
+		}
+		cleaned[key] = value
+	}
+	return cleaned
+}
+
+func isLikelyArticleLink(base *url.URL, link string) bool {
+	parsed, err := url.Parse(link)
+	if err != nil || !strings.EqualFold(parsed.Host, base.Host) {
+		return false
+	}
+	path := strings.ToLower(strings.Trim(parsed.EscapedPath(), "/"))
+	if path == "" {
+		return false
+	}
+	for _, bad := range []string{"about", "advertis", "author", "careers", "category", "contact", "cookie", "login", "newsletter", "podcast", "privacy", "search", "signin", "signup", "tag", "terms", "video"} {
+		if strings.Contains(path, bad) {
+			return false
+		}
+	}
+	for _, suffix := range []string{".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".pdf", ".zip", ".mp4", ".mp3"} {
+		if strings.HasSuffix(path, suffix) {
+			return false
+		}
+	}
+	if strings.Contains(path, "202") || strings.Contains(path, "/news/") || strings.Contains(path, "/blog/") ||
+		strings.Contains(path, "/engineering/") || strings.Contains(path, "/world/") || strings.Contains(path, "/business/") ||
+		strings.Contains(path, "/technology/") || strings.Contains(path, "/briefing-room/") {
+		return true
+	}
+	return strings.Count(path, "/") >= 1 && len(path) >= 18
+}
+
 // ---- JSON API parsing ----
 
-func emitJSONAPI(raw []byte, sourceURL, sinkDir string) (int, error) {
+func emitJSONAPI(raw []byte, sourceURL, sinkDir string, options sourceFetchOptions) (int, error) {
 	var anyJSON interface{}
 	if err := json.Unmarshal(raw, &anyJSON); err != nil {
 		return 0, fmt.Errorf("invalid JSON response: %w", err)
+	}
+	if options.JSONRecordPath != "" {
+		var err error
+		anyJSON, err = selectJSONPath(anyJSON, options.JSONRecordPath)
+		if err != nil {
+			return 0, err
+		}
 	}
 	records := []interface{}{}
 	switch v := anyJSON.(type) {
@@ -838,15 +1226,78 @@ func emitJSONAPI(raw []byte, sourceURL, sinkDir string) (int, error) {
 		return 0, fmt.Errorf("unsupported JSON top-level type: %T", anyJSON)
 	}
 	count := 0
-	for _, rec := range records {
+	for index, rec := range records {
+		if options.MaxItems > 0 && index >= options.MaxItems {
+			break
+		}
 		data, ok := rec.(map[string]interface{})
 		if !ok {
 			data = map[string]interface{}{"value": rec}
 		}
+		data = normalizeAPIRecord(data, sourceURL)
 		if err := emitStructured(sinkDir, sourceURL, "json_api_record", data); err != nil {
 			return count, err
 		}
 		count++
 	}
 	return count, nil
+}
+
+func selectJSONPath(value any, path string) (any, error) {
+	current := value
+	for _, part := range strings.Split(path, ".") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		object, ok := current.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("json_record_path %q reached non-object at %q", path, part)
+		}
+		next, ok := object[part]
+		if !ok {
+			return nil, fmt.Errorf("json_record_path %q missing %q", path, part)
+		}
+		current = next
+	}
+	return current, nil
+}
+
+func normalizeAPIRecord(data map[string]interface{}, sourceURL string) map[string]interface{} {
+	if data == nil {
+		data = map[string]interface{}{}
+	}
+	title := firstString(data["title"], data["headline"], data["name"], data["vulnerabilityName"], data["cveID"], data["id"])
+	link := firstString(data["link"], data["url"], data["html_url"], data["permalink"])
+	summary := firstString(data["summary"], data["description"], data["shortDescription"], data["body"])
+	publishedAt := firstString(data["published_at"], data["publishedAt"], data["published"], data["datePublished"], data["dateAdded"], data["updated"], data["modified"])
+	id := firstString(data["id"], data["guid"], data["cveID"], data["url"], data["link"])
+	if link == "" {
+		link = sourceURL
+	}
+	if _, ok := data["title"]; !ok && title != "" {
+		data["title"] = title
+	}
+	if _, ok := data["link"]; !ok && link != "" {
+		data["link"] = link
+	}
+	if _, ok := data["summary"]; !ok && summary != "" {
+		data["summary"] = summary
+	}
+	if _, ok := data["content"]; !ok && summary != "" {
+		data["content"] = summary
+	}
+	if _, ok := data["content_status"]; !ok {
+		data["content_status"] = "api_content"
+	}
+	if _, ok := data["published_at"]; !ok && publishedAt != "" {
+		data["published_at"] = publishedAt
+	}
+	if _, ok := data["source_url"]; !ok {
+		data["source_url"] = sourceURL
+	}
+	if _, ok := data["id"]; !ok && id != "" {
+		data["id"] = id
+	}
+	return data
 }

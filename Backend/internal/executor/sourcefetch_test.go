@@ -192,6 +192,107 @@ func TestEmitAtomPrefersPublishedTimeOverUpdatedTime(t *testing.T) {
 	}
 }
 
+func TestFetchAndEmitPageCrawlsArticleLinks(t *testing.T) {
+	var sawReferer bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/news":
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write([]byte(`<!doctype html><html><body>
+				<nav><a href="/about">About us</a></nav>
+				<main>
+					<a href="/news/2026/07/product-launch">Important product launch</a>
+				</main>
+			</body></html>`))
+		case "/news/2026/07/product-launch":
+			sawReferer = strings.Contains(r.Referer(), "/news")
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write([]byte(`<!doctype html><html><head>
+				<meta property="og:title" content="Official product launch">
+				<meta name="description" content="A concise launch summary.">
+				<meta property="article:published_time" content="2026-07-30T08:00:00Z">
+			</head><body><article>
+				<p>This official announcement includes enough detail about the product launch for the page crawler to keep it as evidence text.</p>
+				<p>The second paragraph adds rollout timing, platform context, customer impact, and other useful content that should survive extraction.</p>
+				<p>The third paragraph gives more specific detail so the extracted article body passes the minimum useful length threshold.</p>
+			</article></body></html>`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	sinkDir := t.TempDir()
+	out, err := fetchAndEmit(context.Background(), "page", server.URL+"/news", sinkDir)
+	if err != nil {
+		t.Fatalf("fetchAndEmit page failed: %v", err)
+	}
+	if !strings.Contains(out, "fetched 1 items") {
+		t.Fatalf("unexpected output: %s", out)
+	}
+	if !sawReferer {
+		t.Fatal("article request did not send page referer")
+	}
+
+	event := readFirstSinkEvent(t, filepath.Join(sinkDir, "events.jsonl"))
+	var payload struct {
+		Data map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(event.Data, &payload); err != nil {
+		t.Fatalf("decode structured payload: %v", err)
+	}
+	if title, _ := payload.Data["title"].(string); title != "Official product launch" {
+		t.Fatalf("unexpected title %q", title)
+	}
+	if publishedAt, _ := payload.Data["published_at"].(string); publishedAt != "2026-07-30T08:00:00Z" {
+		t.Fatalf("unexpected published_at %q", publishedAt)
+	}
+	if status, _ := payload.Data["content_status"].(string); status != "article_fetched" {
+		t.Fatalf("expected article_fetched status, got %q", status)
+	}
+	content, _ := payload.Data["content"].(string)
+	if !strings.Contains(content, "third paragraph") {
+		t.Fatalf("expected article body, got %q", content)
+	}
+}
+
+func TestEmitJSONAPIUsesRecordPathAndNormalizesEvidenceFields(t *testing.T) {
+	raw := []byte(`{
+		"vulnerabilities": [
+			{
+				"cveID": "CVE-2026-0001",
+				"vulnerabilityName": "Example product vulnerability",
+				"shortDescription": "A vendor product has a known exploited vulnerability.",
+				"dateAdded": "2026-07-30"
+			}
+		]
+	}`)
+	sinkDir := t.TempDir()
+	count, err := emitJSONAPI(raw, "https://example.com/kev.json", sinkDir, sourceFetchOptions{JSONRecordPath: "vulnerabilities"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("count=%d, want 1", count)
+	}
+	event := readFirstSinkEvent(t, filepath.Join(sinkDir, "events.jsonl"))
+	var payload struct {
+		Data map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(event.Data, &payload); err != nil {
+		t.Fatalf("decode structured payload: %v", err)
+	}
+	if title, _ := payload.Data["title"].(string); title != "Example product vulnerability" {
+		t.Fatalf("unexpected title %q", title)
+	}
+	if publishedAt, _ := payload.Data["published_at"].(string); publishedAt != "2026-07-30" {
+		t.Fatalf("unexpected published_at %q", publishedAt)
+	}
+	if id, _ := payload.Data["id"].(string); id != "CVE-2026-0001" {
+		t.Fatalf("unexpected id %q", id)
+	}
+}
+
 func TestSourceFetchUsesConditionalRequestAndPersistsValidators(t *testing.T) {
 	var requests int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
