@@ -484,7 +484,7 @@ func (a *App) listProjects(c *fiber.Ctx) error {
 	if workplaceID != nil {
 		query = query.Where("workplace_id = ?", *workplaceID)
 	}
-	if !isPrivilegedRole(role) && !isBasaltServicePrincipal(c) {
+	if !isPrivilegedRole(role) {
 		if workplaceID != nil {
 			allowed, accessErr := a.userCanAccessWorkplace(uid, *workplaceID)
 			if accessErr != nil {
@@ -1079,7 +1079,7 @@ func (a *App) listTasks(c *fiber.Ctx) error {
 		projectByWorkplace := a.db.Model(&common.Project{}).Select("id").Where("workplace_id = ?", *workplaceID)
 		query = query.Where("project_id IN (?)", projectByWorkplace)
 	}
-	if !isPrivilegedRole(role) {
+	if !isPrivilegedRole(role) && !isBasaltServicePrincipal(c) {
 		if workplaceID != nil {
 			allowed, accessErr := a.userCanAccessWorkplace(uid, *workplaceID)
 			if accessErr != nil {
