@@ -138,12 +138,14 @@ func (a *App) runCallback(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"ok": true, "ignored": true})
 	}
 
-	if status == "success" {
+	if isTerminalRunStatus(status) {
 		var run common.TaskRun
 		if err := a.db.Where("id = ?", runID).First(&run).Error; err == nil {
-			a.publishCrawlSucceededEventAsync(run)
-			if err := a.triggerNextScheduleChainRun(run); err != nil {
-				a.log.Error("chain next step trigger failed", zap.Error(err), zap.String("run_id", runID), zap.String("schedule_id", run.ScheduleID))
+			a.publishCrawlTerminalEventAsync(run)
+			if status == "success" {
+				if err := a.triggerNextScheduleChainRun(run); err != nil {
+					a.log.Error("chain next step trigger failed", zap.Error(err), zap.String("run_id", runID), zap.String("schedule_id", run.ScheduleID))
+				}
 			}
 		}
 	}

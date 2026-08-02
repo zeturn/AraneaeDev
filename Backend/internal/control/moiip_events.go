@@ -35,10 +35,14 @@ type moiipEnvelope struct {
 }
 
 func (a *App) publishCrawlSucceededEvent(ctx context.Context, run common.TaskRun) error {
+	return a.publishCrawlTerminalEvent(ctx, run)
+}
+
+func (a *App) publishCrawlTerminalEvent(ctx context.Context, run common.TaskRun) error {
 	if !a.cfg.MOIIPEventsEnabled {
 		return nil
 	}
-	envelope, ok, err := a.buildCrawlSucceededEnvelope(ctx, run)
+	envelope, ok, err := a.buildCrawlTerminalEnvelope(ctx, run, run.Status)
 	if err != nil || !ok {
 		return err
 	}
@@ -46,6 +50,10 @@ func (a *App) publishCrawlSucceededEvent(ctx context.Context, run common.TaskRun
 }
 
 func (a *App) buildCrawlSucceededEnvelope(ctx context.Context, run common.TaskRun) (moiipEnvelope, bool, error) {
+	return a.buildCrawlTerminalEnvelope(ctx, run, "success")
+}
+
+func (a *App) buildCrawlTerminalEnvelope(ctx context.Context, run common.TaskRun, status string) (moiipEnvelope, bool, error) {
 	var task common.Task
 	if err := a.db.WithContext(ctx).Where("id = ?", run.TaskID).First(&task).Error; err != nil {
 		return moiipEnvelope{}, false, err
@@ -53,50 +61,106 @@ func (a *App) buildCrawlSucceededEnvelope(ctx context.Context, run common.TaskRu
 	taskType := strings.ToLower(strings.TrimSpace(task.Type))
 	metadata := parseMetadataJSON(task.MetadataJSON)
 	hashslipSlot := metadataMap(metadata, "hashslip_slot")
-	if taskType != "rss" && taskType != "api" && len(hashslipSlot) == 0 {
+	if taskType != "rss" && taskType != "api" && taskType != "page" && len(hashslipSlot) == 0 {
 		return moiipEnvelope{}, false, nil
 	}
+	status = normalizeCrawlStatus(status)
+	messageStatus := map[string]string{"success": "succeeded", "canceled": "canceled", "failed": "failed"}[status]
+	if messageStatus == "" {
+		messageStatus = status
+	}
+	messageType := "araneae.crawl." + messageStatus
 	collection := firstNonEmpty(metadataString(metadata, "hashslip_collection"), metadataString(metadata, "collection"), defaultCollectionForTask(task))
 	outputCollection := firstNonEmpty(metadataString(metadata, "analysis_collection"), "analysis."+collection)
 	missionID := firstNonEmpty(metadataString(metadata, "mission_id"), "mission_"+stableShortHex(collection))
 	traceID := firstNonEmpty(metadataString(metadata, "trace_id"), run.CorrelationID, "trace_"+stableShortHex(run.ID))
+	datasetID := firstNonEmpty(metadataString(hashslipSlot, "dataset_id"), metadataString(hashslipSlot, "hashslip_dataset_id"), metadataString(metadata, "hashslip_dataset_id"))
+	chunkID := firstNonEmpty(metadataString(hashslipSlot, "chunk_id"), metadataString(hashslipSlot, "hashslip_chunk_id"))
+	dataType := firstNonEmpty(metadataString(hashslipSlot, "data_type"), metadataString(metadata, "data_type"))
+	var project common.Project
+	projectPayload := map[string]any{}
+	if task.ProjectID != "" && a.db.WithContext(ctx).Where("id = ?", task.ProjectID).First(&project).Error == nil {
+		projectPayload = map[string]any{
+			"id": project.ID, "name": project.Name, "description": project.Description,
+			"language": project.Language, "workplace_id": project.WorkplaceID,
+		}
+	}
+	var schedule common.Schedule
+	schedulePayload := map[string]any{}
+	if run.ScheduleID != "" && a.db.WithContext(ctx).Where("id = ?", run.ScheduleID).First(&schedule).Error == nil {
+		schedulePayload = map[string]any{
+			"id": schedule.ID, "name": schedule.Name, "description": schedule.Description,
+			"task_id": schedule.TaskID, "project_id": schedule.ProjectID, "version_id": schedule.VersionID,
+			"entry_command": schedule.EntryCommand, "cron_expr": schedule.CronExpr,
+			"trigger_type": schedule.TriggerType, "run_at": schedule.RunAt, "node_queue": schedule.NodeQueue,
+			"enabled": schedule.Enabled, "created_at": schedule.CreatedAt, "updated_at": schedule.UpdatedAt,
+		}
+	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	eventID := "evt_" + uuid.NewString()
 	envelope := moiipEnvelope{
-		MessageType:    "araneae.crawl.succeeded",
+		MessageType:    messageType,
 		SchemaVersion:  "1.0",
 		EventID:        eventID,
 		TraceID:        traceID,
 		CausationID:    run.ID,
-		IdempotencyKey: "araneae.crawl.succeeded:" + run.ID,
+		IdempotencyKey: messageType + ":" + run.ID,
 		Producer:       "araneae",
 		RetryCount:     0,
 		OccurredAt:     now,
 		CreatedAt:      now,
 		Correlation: map[string]any{
-			"mission_id":  missionID,
-			"task_id":     task.ID,
-			"run_id":      run.ID,
-			"schedule_id": run.ScheduleID,
-			"trace_id":    traceID,
-			"collection":  collection,
+			"mission_id":   missionID,
+			"task_id":      task.ID,
+			"run_id":       run.ID,
+			"schedule_id":  run.ScheduleID,
+			"project_id":   task.ProjectID,
+			"version_id":   task.VersionID,
+			"objective_id": metadataString(metadata, "cis_objective_id"),
+			"trace_id":     traceID,
+			"collection":   collection,
 		},
 		Payload: map[string]any{
 			"task_id":             task.ID,
 			"task_name":           task.Name,
 			"task_type":           taskType,
+			"status":              status,
 			"run_id":              run.ID,
 			"schedule_id":         run.ScheduleID,
+			"project_id":          task.ProjectID,
+			"version_id":          task.VersionID,
+			"entry_command":       task.EntryCommand,
+			"node_queue":          run.NodeQueue,
+			"trigger_source":      run.TriggerSource,
+			"chain_id":            run.ChainID,
+			"chain_index":         run.ChainIndex,
+			"chain_total":         run.ChainTotal,
+			"correlation_id":      run.CorrelationID,
 			"source_url":          task.SourceURL,
 			"hashslip_collection": collection,
+			"hashslip_dataset_id": datasetID,
+			"dataset": map[string]any{
+				"dataset_id": datasetID,
+				"chunk_id":   chunkID,
+				"data_type":  dataType,
+				"collection": collection,
+			},
 			"hashslip_slot":       hashslipSlot,
 			"schema_id":           firstNonEmpty(metadataString(metadata, "schema_id"), collection),
 			"analysis_collection": outputCollection,
 			"artifact_type":       firstNonEmpty(metadataString(metadata, "artifact_type"), "analysis_result"),
 			"vesper_job":          metadata["vesper_job"],
+			"cis_objective_id":    metadataString(metadata, "cis_objective_id"),
+			"cis_artifact_id":     metadataString(metadata, "cis_artifact_id"),
+			"cis_plan_id":         metadataString(metadata, "cis_plan_id"),
+			"project":             projectPayload,
+			"schedule":            schedulePayload,
+			"started_at":          timePtrString(run.StartedAt),
 			"sink_summary":        run.Output,
+			"output":              run.Output,
 			"exit_code":           run.ExitCode,
 			"finished_at":         timePtrString(run.FinishedAt),
+			"created_at":          run.CreatedAt.UTC().Format(time.RFC3339Nano),
 			"metadata":            metadata,
 		},
 	}
@@ -137,13 +201,30 @@ func (a *App) publishMOIIPEnvelope(ctx context.Context, envelope moiipEnvelope) 
 }
 
 func (a *App) publishCrawlSucceededEventAsync(run common.TaskRun) {
+	a.publishCrawlTerminalEventAsync(run)
+}
+
+func (a *App) publishCrawlTerminalEventAsync(run common.TaskRun) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		if err := a.publishCrawlSucceededEvent(ctx, run); err != nil {
-			a.log.Warn("publish MOIIP crawl succeeded event failed", zap.Error(err), zap.String("run_id", run.ID))
+		if err := a.publishCrawlTerminalEvent(ctx, run); err != nil {
+			a.log.Warn("publish MOIIP crawl terminal event failed", zap.Error(err), zap.String("run_id", run.ID), zap.String("status", run.Status))
 		}
 	}()
+}
+
+func normalizeCrawlStatus(status string) string {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "succeeded", "completed":
+		return "success"
+	case "cancelled":
+		return "canceled"
+	case "":
+		return "unknown"
+	default:
+		return strings.ToLower(strings.TrimSpace(status))
+	}
 }
 
 func defaultCollectionForTask(task common.Task) string {
