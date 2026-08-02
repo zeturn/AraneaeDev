@@ -20,7 +20,7 @@ func (a *App) listRecentRuns(c *fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, err.Error())
 	}
 	var runs []common.TaskRun
-	if isPrivilegedRole(role) {
+	if isPrivilegedRole(role) || isBasaltServicePrincipal(c) {
 		query := a.db.Order("created_at desc").Limit(200)
 		if workplaceID != nil {
 			projectByWorkplace := a.db.Model(&common.Project{}).Select("id").Where("workplace_id = ?", *workplaceID)

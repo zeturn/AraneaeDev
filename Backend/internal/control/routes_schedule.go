@@ -274,7 +274,7 @@ func (a *App) listSchedules(c *fiber.Ctx) error {
 		query = query.Where("project_id IN (?)", projectByWorkplace)
 	}
 
-	if !isPrivilegedRole(role) {
+	if !isPrivilegedRole(role) && !isBasaltServicePrincipal(c) {
 		if workplaceID != nil {
 			allowed, accessErr := a.userCanAccessWorkplace(uid, *workplaceID)
 			if accessErr != nil {

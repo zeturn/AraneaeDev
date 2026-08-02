@@ -161,6 +161,20 @@ func isPrivilegedRole(role string) bool {
 	return role == "admin" || role == "operator"
 }
 
+// isBasaltServicePrincipal identifies a token exchanged from another trusted
+// BasaltPass application.  Cross-application read scopes are authorized by
+// BasaltPass, but they do not map to a local user's workspace memberships.  A
+// service principal therefore needs the same global read visibility as an
+// operator, without changing its local user role or granting write scope.
+func isBasaltServicePrincipal(c *fiber.Ctx) bool {
+	return hasBasaltServiceActor(c.Locals("act"))
+}
+
+func hasBasaltServiceActor(value any) bool {
+	actor, ok := value.(map[string]any)
+	return ok && len(actor) > 0
+}
+
 func isAdminRole(role string) bool {
 	return role == "admin"
 }
@@ -346,7 +360,7 @@ func (a *App) canManageWorkplace(c *fiber.Ctx, workplace common.Workplace) (bool
 func (a *App) canAccessTask(c *fiber.Ctx, task common.Task) (bool, error) {
 	uid, _ := c.Locals("uid").(string)
 	role, _ := c.Locals("role").(string)
-	if isPrivilegedRole(role) {
+	if isPrivilegedRole(role) || isBasaltServicePrincipal(c) {
 		return true, nil
 	}
 	if uid == "" {
@@ -386,7 +400,7 @@ func (a *App) canWriteTask(c *fiber.Ctx, task common.Task) (bool, error) {
 func (a *App) canAccessSchedule(c *fiber.Ctx, schedule common.Schedule) (bool, error) {
 	uid, _ := c.Locals("uid").(string)
 	role, _ := c.Locals("role").(string)
-	if isPrivilegedRole(role) {
+	if isPrivilegedRole(role) || isBasaltServicePrincipal(c) {
 		return true, nil
 	}
 	if uid == "" {
