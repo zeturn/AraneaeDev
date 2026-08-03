@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -178,12 +180,12 @@ func (a *App) forwardSinkEvent(ctx context.Context, msg contracts.QueueTaskMessa
 }
 
 func slotDatasetID(metadata map[string]any) string {
-	slot, ok := metadata["hashslip_slot"].(map[string]any)
-	if !ok {
-		return ""
+	for _, slot := range sinkSlots(metadata) {
+		if value, ok := slot["dataset_id"].(string); ok && strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
 	}
-	value, _ := slot["dataset_id"].(string)
-	return strings.TrimSpace(value)
+	return ""
 }
 
 func (a *App) forwardToHashSlip(ctx context.Context, msg contracts.QueueTaskMessage, endpoint string, payload []byte) error {
@@ -196,6 +198,30 @@ func (a *App) forwardToHashSlip(ctx context.Context, msg contracts.QueueTaskMess
 	req.Header.Set("X-Araneae-Run-Id", msg.RunID)
 	req.Header.Set("X-Araneae-Task-Id", msg.TaskID)
 	req.Header.Set("X-Araneae-Correlation-Id", msg.CorrelationID)
+	if value := metadataString(msg.Metadata, "hashslip_schedule_id", "schedule_id"); value != "" {
+		req.Header.Set("X-Araneae-Schedule-Id", value)
+	}
+	if value := metadataString(msg.Metadata, "cis_objective_id", "objective_id"); value != "" {
+		req.Header.Set("X-Araneae-Objective-Id", value)
+	}
+	if value := metadataString(msg.Metadata, "cis_artifact_id", "artifact_id"); value != "" {
+		req.Header.Set("X-Araneae-Artifact-Id", value)
+	}
+	if value := strings.TrimSpace(msg.ProjectID); value != "" {
+		req.Header.Set("X-Araneae-Project-Id", value)
+	}
+	if value := strings.TrimSpace(msg.VersionID); value != "" {
+		req.Header.Set("X-Araneae-Version-Id", value)
+	}
+	if slots := sinkSlots(msg.Metadata); len(slots) > 0 {
+		if raw, marshalErr := json.Marshal(slots); marshalErr == nil {
+			req.Header.Set("X-Araneae-Slots", string(raw))
+		}
+	}
+	// HashSlip uses this value to make a retried HTTP transfer resolve to the
+	// same durable event. The payload hash is stable for a given sink result.
+	idempotency := sha256.Sum256(append([]byte(msg.RunID+"\n"+msg.TaskID+"\n"+endpoint+"\n"), payload...))
+	req.Header.Set("X-Araneae-Idempotency-Key", "araneae:"+hex.EncodeToString(idempotency[:]))
 
 	token, err := a.getHashSlipBearerToken(ctx)
 	if err != nil {
@@ -219,6 +245,36 @@ func (a *App) forwardToHashSlip(ctx context.Context, msg contracts.QueueTaskMess
 		return fmt.Errorf("hashslip status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	return nil
+}
+
+func sinkSlots(metadata map[string]any) []map[string]any {
+	if metadata == nil {
+		return nil
+	}
+	if raw, ok := metadata["hashslip_slots"].([]any); ok {
+		slots := make([]map[string]any, 0, len(raw))
+		for _, item := range raw {
+			if slot, ok := item.(map[string]any); ok && len(slot) > 0 {
+				slots = append(slots, slot)
+			}
+		}
+		if len(slots) > 0 {
+			return slots
+		}
+	}
+	if slot, ok := metadata["hashslip_slot"].(map[string]any); ok && len(slot) > 0 {
+		return []map[string]any{slot}
+	}
+	return nil
+}
+
+func metadataString(metadata map[string]any, keys ...string) string {
+	for _, key := range keys {
+		if value, ok := metadata[key].(string); ok && strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 func (a *App) getHashSlipBearerToken(ctx context.Context) (string, error) {
