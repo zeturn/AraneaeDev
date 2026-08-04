@@ -16,7 +16,10 @@ type ExecutionRecord struct {
 // acknowledge RabbitMQ after task execution and retry the HTTP callback
 // independently, so a temporary control-plane outage never re-runs a crawler.
 type CallbackOutbox struct {
-	ID            string    `gorm:"primaryKey;size:36"`
+	// The durable key is prefixed with "callback_" and therefore is longer
+	// than a UUID-only run id. Keep enough room for that stable identifier in
+	// both SQLite and PostgreSQL migrations.
+	ID            string    `gorm:"primaryKey;size:64"`
 	RunID         string    `gorm:"uniqueIndex;size:36;not null"`
 	Payload       string    `gorm:"type:text;not null"`
 	Status        string    `gorm:"index;size:24;not null"`
