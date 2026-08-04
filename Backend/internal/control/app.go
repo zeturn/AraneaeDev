@@ -25,7 +25,6 @@ import (
 	"araneae-go/internal/control/infra/netx"
 	"araneae-go/internal/control/security/password"
 
-	"github.com/glebarez/sqlite"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/google/uuid"
@@ -55,6 +54,10 @@ type App struct {
 	rabbitMu        sync.Mutex
 	rabbitConn      *amqp.Connection
 	rabbitCh        *amqp.Channel
+	rabbitConfirms  chan amqp.Confirmation
+	taskOutboxMu    sync.Mutex
+	outboxStop      chan struct{}
+	outboxDone      chan struct{}
 	grpcSrv         *grpc.Server
 }
 
@@ -233,7 +236,16 @@ func NewApp(cfg common.ControlConfig) (*App, error) {
 		return nil, err
 	}
 
-	if err := os.MkdirAll(filepath.Dir(cfg.DBPath), 0o755); err != nil {
+	if strings.EqualFold(cfg.DBBackend, "postgres") && strings.TrimSpace(cfg.DatabaseDSN) == "" {
+		return nil, errors.New("CONTROL_DATABASE_DSN is required when CONTROL_DB_BACKEND=postgres")
+	}
+	if cfg.DBBackend == "" {
+		cfg.DBBackend = "sqlite"
+	}
+	if strings.EqualFold(cfg.Environment, "production") && !strings.EqualFold(cfg.DBBackend, "postgres") {
+		return nil, errors.New("CONTROL_DB_BACKEND must be postgres in production")
+	}
+	if err := os.MkdirAll(filepath.Dir(cfg.DBPath), 0o755); err != nil && strings.EqualFold(cfg.DBBackend, "sqlite") {
 		return nil, err
 	}
 	if err := os.MkdirAll(cfg.ArtifactRoot, 0o755); err != nil {
@@ -243,7 +255,7 @@ func NewApp(cfg common.ControlConfig) (*App, error) {
 		return nil, err
 	}
 
-	db, err := gorm.Open(sqlite.Open(cfg.DBPath), &gorm.Config{})
+	db, err := common.OpenDatabase(cfg.DBBackend, cfg.DBPath, cfg.DatabaseDSN)
 	if err != nil {
 		return nil, err
 	}
@@ -264,6 +276,8 @@ func NewApp(cfg common.ControlConfig) (*App, error) {
 		scheduleEntries: make(map[string]cron.EntryID),
 		scheduleTimers:  make(map[string]*time.Timer),
 		oauthCodes:      make(map[string]oauthExchangeState),
+		outboxStop:      make(chan struct{}),
+		outboxDone:      make(chan struct{}),
 	}
 	app.runPublisher = app.publishScheduleRun
 
@@ -286,6 +300,7 @@ func NewApp(cfg common.ControlConfig) (*App, error) {
 	if err := app.loadCronSchedules(); err != nil {
 		return nil, err
 	}
+	go app.taskOutboxLoop()
 	return app, nil
 }
 
@@ -325,6 +340,16 @@ func (a *App) Run(ctx context.Context) error {
 
 func (a *App) Shutdown(ctx context.Context) error {
 	a.cron.Stop()
+	if a.outboxStop != nil {
+		select {
+		case <-a.outboxStop:
+		default:
+			close(a.outboxStop)
+		}
+		if a.outboxDone != nil {
+			<-a.outboxDone
+		}
+	}
 	if a.grpcSrv != nil {
 		a.grpcSrv.GracefulStop()
 	}
@@ -371,6 +396,7 @@ func (a *App) initRabbit() error {
 	defer a.rabbitMu.Unlock()
 	a.rabbitConn = conn
 	a.rabbitCh = ch
+	a.rabbitConfirms = ch.NotifyPublish(make(chan amqp.Confirmation, 128))
 	return nil
 }
 
@@ -388,6 +414,11 @@ func (a *App) openRabbit() (*amqp.Connection, *amqp.Channel, error) {
 		_ = ch.Close()
 		_ = conn.Close()
 		return nil, nil, err
+	}
+	if err := ch.Confirm(false); err != nil {
+		_ = ch.Close()
+		_ = conn.Close()
+		return nil, nil, fmt.Errorf("enable rabbit publisher confirms: %w", err)
 	}
 	return conn, ch, nil
 }
@@ -407,6 +438,7 @@ func (a *App) rabbitPublisher() (*amqp.Channel, error) {
 	}
 	a.rabbitCh = nil
 	a.rabbitConn = nil
+	a.rabbitConfirms = nil
 	a.rabbitMu.Unlock()
 
 	ch, err := a.reconnectRabbitPublisher()
@@ -425,6 +457,7 @@ func (a *App) reconnectRabbitPublisher() (*amqp.Channel, error) {
 	defer a.rabbitMu.Unlock()
 	a.rabbitConn = conn
 	a.rabbitCh = ch
+	a.rabbitConfirms = ch.NotifyPublish(make(chan amqp.Confirmation, 128))
 	return ch, nil
 }
 
@@ -507,16 +540,6 @@ func (a *App) publishRun(taskID, scheduleID, source, projectID, versionID, entry
 		return nil, err
 	}
 
-	ch, err := a.rabbitPublisher()
-	if err != nil {
-		_ = a.db.Model(&common.TaskRun{}).Where("id = ?", run.ID).Updates(map[string]interface{}{
-			"status":      "failed",
-			"output":      err.Error(),
-			"finished_at": time.Now(),
-		}).Error
-		return nil, err
-	}
-
 	payload := contracts.QueueTaskMessage{
 		RunID:         run.ID,
 		TaskID:        taskID,
@@ -536,28 +559,114 @@ func (a *App) publishRun(taskID, scheduleID, source, projectID, versionID, entry
 	}
 
 	routingKey := "tasks." + nodeQueue
-	publishing := amqp.Publishing{
-		ContentType:  "application/json",
-		DeliveryMode: amqp.Persistent,
-		Body:         body,
-		MessageId:    run.CorrelationID,
-		Timestamp:    time.Now(),
+	if err := a.db.Create(&common.TaskOutbox{
+		ID:            uuid.NewString(),
+		RunID:         run.ID,
+		RoutingKey:    routingKey,
+		Payload:       string(body),
+		Status:        "pending",
+		NextAttemptAt: time.Now(),
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+	}).Error; err != nil {
+		return nil, fmt.Errorf("persist task outbox: %w", err)
 	}
-	err = ch.PublishWithContext(context.Background(), a.cfg.RabbitExchange, routingKey, false, false, publishing)
-	if err != nil {
-		if retryCh, retryErr := a.reconnectRabbitPublisher(); retryErr == nil {
-			err = retryCh.PublishWithContext(context.Background(), a.cfg.RabbitExchange, routingKey, false, false, publishing)
-		}
-	}
-	if err != nil {
-		_ = a.db.Model(&common.TaskRun{}).Where("id = ?", run.ID).Updates(map[string]interface{}{
-			"status":      "failed",
-			"output":      err.Error(),
-			"finished_at": time.Now(),
-		}).Error
+	// Preserve the current synchronous API signal for callers while the run
+	// itself remains queued and the durable dispatcher continues retrying.
+	if err := a.drainTaskOutbox(); err != nil {
 		return nil, err
 	}
 	return run, nil
+}
+
+func (a *App) taskOutboxLoop() {
+	defer close(a.outboxDone)
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			if err := a.drainTaskOutbox(); err != nil {
+				a.log.Warn("task outbox drain failed", zap.Error(err))
+			}
+		case <-a.outboxStop:
+			return
+		}
+	}
+}
+
+func (a *App) drainTaskOutbox() error {
+	a.taskOutboxMu.Lock()
+	defer a.taskOutboxMu.Unlock()
+	var entries []common.TaskOutbox
+	if err := a.db.Where("status IN ? AND next_attempt_at <= ?", []string{"pending", "retrying"}, time.Now()).Order("created_at ASC").Limit(25).Find(&entries).Error; err != nil {
+		return err
+	}
+	var firstErr error
+	for _, entry := range entries {
+		attempts := entry.Attempts + 1
+		err := a.publishConfirmed(entry.RoutingKey, []byte(entry.Payload), entry.RunID)
+		if err == nil {
+			now := time.Now()
+			if updateErr := a.db.Model(&common.TaskOutbox{}).Where("id = ?", entry.ID).Updates(map[string]interface{}{
+				"status": "published", "published_at": now, "attempts": attempts, "last_error": "", "updated_at": now,
+			}).Error; updateErr != nil && firstErr == nil {
+				firstErr = updateErr
+			}
+			continue
+		}
+		wait := time.Duration(1<<minOutboxInt(attempts, 6)) * time.Second
+		next := time.Now().Add(wait)
+		if updateErr := a.db.Model(&common.TaskOutbox{}).Where("id = ?", entry.ID).Updates(map[string]interface{}{
+			"status": "retrying", "attempts": attempts, "next_attempt_at": next, "last_error": err.Error(), "updated_at": time.Now(),
+		}).Error; updateErr != nil && firstErr == nil {
+			firstErr = updateErr
+		}
+		if firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+func (a *App) publishConfirmed(routingKey string, body []byte, messageID string) error {
+	ch, err := a.rabbitPublisher()
+	if err != nil {
+		return err
+	}
+	a.rabbitMu.Lock()
+	defer a.rabbitMu.Unlock()
+	confirms := a.rabbitConfirms
+	if confirms == nil {
+		return errQueueUnavailable
+	}
+	if err := ch.PublishWithContext(context.Background(), a.cfg.RabbitExchange, routingKey, false, false, amqp.Publishing{
+		ContentType:  "application/json",
+		DeliveryMode: amqp.Persistent,
+		Body:         body,
+		MessageId:    messageID,
+		Timestamp:    time.Now(),
+	}); err != nil {
+		return fmt.Errorf("publish task: %w", err)
+	}
+	timer := time.NewTimer(10 * time.Second)
+	defer timer.Stop()
+	select {
+	case confirmation := <-confirms:
+		if !confirmation.Ack {
+			return errors.New("rabbitmq negatively acknowledged task message")
+		}
+		return nil
+	case <-timer.C:
+		return errors.New("timed out waiting for rabbitmq publisher confirm")
+	}
+}
+
+func minOutboxInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func computeSHA256(data []byte) string {

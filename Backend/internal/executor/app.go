@@ -25,7 +25,6 @@ import (
 	"araneae-go/internal/executor/runtimeexec"
 	"araneae-go/internal/executor/store"
 
-	"github.com/glebarez/sqlite"
 	"github.com/gofiber/fiber/v2"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go.uber.org/zap"
@@ -36,19 +35,21 @@ import (
 )
 
 type App struct {
-	cfg        common.ExecutorConfig
-	log        *zap.Logger
-	db         *gorm.DB
-	http       *fiber.App
-	rabbitMu   sync.Mutex
-	rabbitConn *amqp.Connection
-	rabbitCh   *amqp.Channel
-	grpcConn   *grpc.ClientConn
-	grpcClient pb.ArtifactServiceClient
-	httpClient *http.Client
-	tokenMu    sync.Mutex
-	tokenValue string
-	tokenUntil time.Time
+	cfg           common.ExecutorConfig
+	log           *zap.Logger
+	db            *gorm.DB
+	http          *fiber.App
+	rabbitMu      sync.Mutex
+	rabbitConn    *amqp.Connection
+	rabbitCh      *amqp.Channel
+	grpcConn      *grpc.ClientConn
+	grpcClient    pb.ArtifactServiceClient
+	httpClient    *http.Client
+	tokenMu       sync.Mutex
+	tokenValue    string
+	tokenUntil    time.Time
+	callbackMu    sync.Mutex
+	callbackOwner string
 }
 
 type runtimeCapability struct {
@@ -147,17 +148,28 @@ func NewApp(cfg common.ExecutorConfig) (*App, error) {
 	if err := ensureNodeAuthKey(&cfg); err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(filepath.Dir(cfg.DBPath), 0o755); err != nil {
+	if strings.EqualFold(cfg.DBBackend, "sqlite") && cfg.DBPath != "" {
+		if err := os.MkdirAll(filepath.Dir(cfg.DBPath), 0o755); err != nil {
+			return nil, err
+		}
+	}
+	if strings.EqualFold(cfg.Environment, "production") && !strings.EqualFold(cfg.DBBackend, "postgres") {
+		return nil, errors.New("EXECUTOR_DB_BACKEND must be postgres in production")
+	}
+	if strings.EqualFold(cfg.DBBackend, "postgres") && strings.TrimSpace(cfg.DatabaseDSN) == "" {
+		return nil, errors.New("EXECUTOR_DATABASE_DSN is required when EXECUTOR_DB_BACKEND=postgres")
+	}
+	if err := os.MkdirAll(filepath.Dir(cfg.DBPath), 0o755); err != nil && strings.EqualFold(cfg.DBBackend, "sqlite") {
 		return nil, err
 	}
 	if err := os.MkdirAll(cfg.WorkDir, 0o755); err != nil {
 		return nil, err
 	}
-	db, err := gorm.Open(sqlite.Open(cfg.DBPath), &gorm.Config{})
+	db, err := common.OpenDatabase(cfg.DBBackend, cfg.DBPath, cfg.DatabaseDSN)
 	if err != nil {
 		return nil, err
 	}
-	if err := db.AutoMigrate(&store.ExecutionRecord{}, &store.SourceFetchState{}); err != nil {
+	if err := db.AutoMigrate(&store.ExecutionRecord{}, &store.SourceFetchState{}, &store.CallbackOutbox{}); err != nil {
 		return nil, err
 	}
 
@@ -181,15 +193,16 @@ func NewApp(cfg common.ExecutorConfig) (*App, error) {
 	}
 
 	a := &App{
-		cfg:        cfg,
-		log:        log,
-		db:         db,
-		http:       fiber.New(),
-		rabbitConn: rabbitConn,
-		rabbitCh:   rabbitCh,
-		grpcConn:   grpcConn,
-		grpcClient: pb.NewArtifactServiceClient(grpcConn),
-		httpClient: &http.Client{Timeout: 20 * time.Second},
+		cfg:           cfg,
+		log:           log,
+		db:            db,
+		http:          fiber.New(),
+		rabbitConn:    rabbitConn,
+		rabbitCh:      rabbitCh,
+		grpcConn:      grpcConn,
+		grpcClient:    pb.NewArtifactServiceClient(grpcConn),
+		httpClient:    &http.Client{Timeout: 20 * time.Second},
+		callbackOwner: fmt.Sprintf("executor-%d", time.Now().UnixNano()),
 	}
 	a.log.Info("executor node auth key ready",
 		zap.String("node_key_file", cfg.NodeAuthKeyFile),
@@ -213,14 +226,38 @@ func initRabbit(cfg common.ExecutorConfig) (*amqp.Connection, *amqp.Channel, err
 		_ = conn.Close()
 		return nil, nil, err
 	}
+	dlxName := cfg.RabbitExchange + ".dlx"
+	if err := ch.ExchangeDeclare(dlxName, "direct", true, false, false, false, nil); err != nil {
+		_ = ch.Close()
+		_ = conn.Close()
+		return nil, nil, err
+	}
 	qName := "executor." + cfg.RabbitQueue
-	q, err := ch.QueueDeclare(qName, true, false, false, false, nil)
+	routingKey := cfg.RabbitRoutingKey
+	if strings.TrimSpace(routingKey) == "" {
+		routingKey = "tasks." + cfg.RabbitQueue
+	}
+	q, err := ch.QueueDeclare(qName, true, false, false, false, amqp.Table{
+		"x-dead-letter-exchange":    dlxName,
+		"x-dead-letter-routing-key": "tasks.failed",
+	})
 	if err != nil {
 		_ = ch.Close()
 		_ = conn.Close()
 		return nil, nil, err
 	}
-	if err := ch.QueueBind(q.Name, "tasks."+cfg.RabbitQueue, cfg.RabbitExchange, false, nil); err != nil {
+	if err := ch.QueueBind(q.Name, routingKey, cfg.RabbitExchange, false, nil); err != nil {
+		_ = ch.Close()
+		_ = conn.Close()
+		return nil, nil, err
+	}
+	dlq, err := ch.QueueDeclare(qName+".dlq", true, false, false, false, nil)
+	if err != nil {
+		_ = ch.Close()
+		_ = conn.Close()
+		return nil, nil, err
+	}
+	if err := ch.QueueBind(dlq.Name, "tasks.failed", dlxName, false, nil); err != nil {
 		_ = ch.Close()
 		_ = conn.Close()
 		return nil, nil, err
@@ -374,6 +411,7 @@ func (a *App) startConsumer(ctx context.Context) error {
 		return err
 	}
 	go a.consumeLoop(ctx, msgs)
+	go a.callbackOutboxLoop(ctx)
 	return nil
 }
 
@@ -419,7 +457,10 @@ func (a *App) consumeLoop(ctx context.Context, msgs <-chan amqp.Delivery) {
 			}
 			if err := a.processMessage(ctx, msg.Body); err != nil {
 				a.log.Error("process message failed", zap.Error(err))
-				_ = msg.Nack(false, false)
+				// Malformed JSON cannot succeed on retry and is retained in the
+				// DLQ. A valid task that failed before its durable execution and
+				// callback records were committed must be retried.
+				_ = msg.Nack(false, json.Valid(msg.Body))
 				continue
 			}
 			_ = msg.Ack(false)
@@ -478,6 +519,12 @@ func (a *App) processMessage(ctx context.Context, raw []byte) error {
 	if err := json.Unmarshal(raw, &m); err != nil {
 		return err
 	}
+	var existing store.ExecutionRecord
+	if err := a.db.Where("run_id = ?", m.RunID).First(&existing).Error; err == nil {
+		if existing.Status == "success" || existing.Status == "failed" {
+			return a.ensureCallbackOutbox(m, existing.Status, existing.Output, existing.ExitCode, existing.CreatedAt, existing.FinishedAt)
+		}
+	}
 	startedAt := time.Now()
 	rec := store.ExecutionRecord{
 		RunID:     m.RunID,
@@ -513,37 +560,122 @@ func (a *App) processMessage(ctx context.Context, raw []byte) error {
 		output = truncateOutput(output, maxExecutorOutputBytes)
 	}
 
-	if err := a.db.Model(&store.ExecutionRecord{}).Where("run_id = ?", m.RunID).Updates(map[string]interface{}{
-		"status":      status,
-		"output":      output,
-		"exit_code":   exitCode,
-		"finished_at": finishedAt,
-	}).Error; err != nil {
+	callbackBody, err := json.Marshal(callbackEnvelope{
+		RunID: m.RunID, RunToken: m.RunToken, CorrelationID: m.CorrelationID,
+		Payload: contracts.CallbackPayload{Status: status, Output: output, ExitCode: exitCode, StartedAt: &startedAt, FinishedAt: &finishedAt},
+	})
+	if err != nil {
 		return err
 	}
-
-	if err := a.reportCallback(m.RunID, m.RunToken, m.CorrelationID, contracts.CallbackPayload{
-		Status:     status,
-		Output:     output,
-		ExitCode:   exitCode,
-		StartedAt:  &startedAt,
-		FinishedAt: &finishedAt,
-	}); err != nil {
-		a.log.Warn("report callback failed after task completion",
-			zap.String("run_id", m.RunID),
-			zap.String("task_id", m.TaskID),
-			zap.String("status", status),
-			zap.Error(err),
-		)
-		// The task already ran and any sink output has already been processed.
-		// Do not Nack the RabbitMQ message, otherwise non-idempotent crawlers or
-		// partially successful sink transfers may execute repeatedly.
-		_ = a.db.Model(&store.ExecutionRecord{}).Where("run_id = ?", m.RunID).Updates(map[string]interface{}{
-			"status": "callback_failed",
-			"output": truncateOutput(output+"\ncallback error: "+err.Error(), maxExecutorOutputBytes),
+	if err := a.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&store.ExecutionRecord{}).Where("run_id = ?", m.RunID).Updates(map[string]interface{}{
+			"status": status, "output": output, "exit_code": exitCode, "finished_at": finishedAt,
+		}).Error; err != nil {
+			return err
+		}
+		return tx.Where("run_id = ?", m.RunID).FirstOrCreate(&store.CallbackOutbox{
+			ID: "callback_" + m.RunID, RunID: m.RunID, Payload: string(callbackBody), Status: "pending",
+			NextAttemptAt: time.Now(), CreatedAt: time.Now(), UpdatedAt: time.Now(),
 		}).Error
+	}); err != nil {
+		return err
 	}
 	return nil
+}
+
+type callbackEnvelope struct {
+	RunID         string                    `json:"run_id"`
+	RunToken      string                    `json:"run_token"`
+	CorrelationID string                    `json:"correlation_id"`
+	Payload       contracts.CallbackPayload `json:"payload"`
+}
+
+func (a *App) ensureCallbackOutbox(m contracts.QueueTaskMessage, status, output string, exitCode int, startedAt time.Time, finishedAt *time.Time) error {
+	if finishedAt == nil {
+		now := time.Now()
+		finishedAt = &now
+	}
+	payload, err := json.Marshal(callbackEnvelope{
+		RunID: m.RunID, RunToken: m.RunToken, CorrelationID: m.CorrelationID,
+		Payload: contracts.CallbackPayload{Status: status, Output: output, ExitCode: exitCode, StartedAt: &startedAt, FinishedAt: finishedAt},
+	})
+	if err != nil {
+		return err
+	}
+	return a.db.Where("run_id = ?", m.RunID).FirstOrCreate(&store.CallbackOutbox{
+		ID: "callback_" + m.RunID, RunID: m.RunID, Payload: string(payload), Status: "pending",
+		NextAttemptAt: time.Now(), CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}).Error
+}
+
+func (a *App) callbackOutboxLoop(ctx context.Context) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			a.drainCallbackOutbox(ctx)
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (a *App) drainCallbackOutbox(ctx context.Context) {
+	a.callbackMu.Lock()
+	defer a.callbackMu.Unlock()
+	var entries []store.CallbackOutbox
+	now := time.Now()
+	if err := a.db.Where("status IN ? AND next_attempt_at <= ? AND (lease_until IS NULL OR lease_until <= ?)", []string{"pending", "retrying"}, now, now).Order("created_at ASC").Limit(25).Find(&entries).Error; err != nil {
+		a.log.Warn("callback outbox query failed", zap.Error(err))
+		return
+	}
+	for _, entry := range entries {
+		leaseUntil := time.Now().Add(60 * time.Second)
+		claim := a.db.Model(&store.CallbackOutbox{}).Where(
+			"id = ? AND status IN ? AND next_attempt_at <= ? AND (lease_until IS NULL OR lease_until <= ?)",
+			entry.ID, []string{"pending", "retrying"}, now, now,
+		).Updates(map[string]interface{}{"lease_until": leaseUntil, "lease_id": a.callbackOwner, "updated_at": time.Now()})
+		if claim.Error != nil {
+			a.log.Warn("callback outbox claim failed", zap.String("id", entry.ID), zap.Error(claim.Error))
+			continue
+		}
+		if claim.RowsAffected != 1 {
+			continue
+		}
+		var envelope callbackEnvelope
+		if err := json.Unmarshal([]byte(entry.Payload), &envelope); err != nil {
+			_ = a.db.Model(&store.CallbackOutbox{}).Where("id = ? AND lease_id = ?", entry.ID, a.callbackOwner).Updates(map[string]interface{}{
+				"status": "dead", "last_error": err.Error(), "lease_until": nil, "lease_id": "", "updated_at": time.Now(),
+			})
+			continue
+		}
+		err := a.reportCallback(envelope.RunID, envelope.RunToken, envelope.CorrelationID, envelope.Payload)
+		if err == nil {
+			deliveredAt := time.Now()
+			_ = a.db.Model(&store.CallbackOutbox{}).Where("id = ? AND lease_id = ?", entry.ID, a.callbackOwner).Updates(map[string]interface{}{
+				"status": "delivered", "delivered_at": deliveredAt, "attempts": entry.Attempts + 1, "last_error": "", "lease_until": nil, "lease_id": "", "updated_at": deliveredAt,
+			}).Error
+			continue
+		}
+		a.log.Warn("callback delivery failed; will retry", zap.String("run_id", envelope.RunID), zap.Error(err))
+		a.markCallbackFailed(entry, err)
+	}
+}
+
+func (a *App) markCallbackFailed(entry store.CallbackOutbox, err error) {
+	attempts := entry.Attempts + 1
+	next := time.Now().Add(time.Duration(1<<minInt(attempts, 6)) * time.Second)
+	_ = a.db.Model(&store.CallbackOutbox{}).Where("id = ? AND lease_id = ?", entry.ID, a.callbackOwner).Updates(map[string]interface{}{
+		"status": "retrying", "attempts": attempts, "next_attempt_at": next, "last_error": err.Error(), "lease_until": nil, "lease_id": "", "updated_at": time.Now(),
+	}).Error
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func (a *App) executeTask(ctx context.Context, msg contracts.QueueTaskMessage) (string, int, string, error) {

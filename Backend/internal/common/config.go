@@ -15,7 +15,9 @@ type ControlConfig struct {
 	GRPCTLSKeyFile        string
 	GRPCTLSClientCAFile   string
 	NodeVerifyScheme      string
+	DBBackend             string
 	DBPath                string
+	DatabaseDSN           string
 	RabbitURL             string
 	RabbitExchange        string
 	MOIIPEventsEnabled    bool
@@ -55,10 +57,13 @@ type ControlConfig struct {
 type ExecutorConfig struct {
 	Environment              string
 	HTTPAddr                 string
+	DBBackend                string
 	DBPath                   string
+	DatabaseDSN              string
 	RabbitURL                string
 	RabbitExchange           string
 	RabbitQueue              string
+	RabbitRoutingKey         string
 	NodeAuthKey              string
 	NodeAuthKeyFile          string
 	ControlGRPCAddr          string
@@ -132,7 +137,9 @@ func LoadControlConfig() ControlConfig {
 		GRPCTLSKeyFile:        GetEnv("CONTROL_GRPC_TLS_KEY_FILE", ""),
 		GRPCTLSClientCAFile:   GetEnv("CONTROL_GRPC_TLS_CLIENT_CA_FILE", ""),
 		NodeVerifyScheme:      GetEnv("CONTROL_NODE_VERIFY_SCHEME", "http"),
+		DBBackend:             strings.ToLower(GetEnv("CONTROL_DB_BACKEND", "sqlite")),
 		DBPath:                GetEnv("CONTROL_DB_PATH", "./data/control.db"),
+		DatabaseDSN:           GetEnv("CONTROL_DATABASE_DSN", ""),
 		RabbitURL:             GetEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
 		RabbitExchange:        GetEnv("RABBITMQ_EXCHANGE", "tasks.direct"),
 		MOIIPEventsEnabled:    GetEnvBool("ORION_EVENTS_ENABLED", GetEnvBool("MOIIP_EVENTS_ENABLED", false)),
@@ -173,10 +180,13 @@ func LoadExecutorConfig() ExecutorConfig {
 	return ExecutorConfig{
 		Environment:              GetEnv("ARANEAE_ENV", "development"),
 		HTTPAddr:                 GetEnv("EXECUTOR_HTTP_ADDR", ":4280"),
+		DBBackend:                strings.ToLower(GetEnv("EXECUTOR_DB_BACKEND", "sqlite")),
 		DBPath:                   GetEnv("EXECUTOR_DB_PATH", "./data/executor.db"),
+		DatabaseDSN:              GetEnv("EXECUTOR_DATABASE_DSN", ""),
 		RabbitURL:                GetEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
 		RabbitExchange:           GetEnv("RABBITMQ_EXCHANGE", "tasks.direct"),
 		RabbitQueue:              GetEnv("EXECUTOR_QUEUE", "default"),
+		RabbitRoutingKey:         GetEnv("EXECUTOR_ROUTING_KEY", ""),
 		NodeAuthKey:              GetEnv("EXECUTOR_NODE_KEY", ""),
 		NodeAuthKeyFile:          GetEnv("EXECUTOR_NODE_KEY_FILE", "./data/executor.node.key"),
 		ControlGRPCAddr:          GetEnv("CONTROL_GRPC_TARGET", "localhost:9190"),
