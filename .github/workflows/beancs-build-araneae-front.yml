@@ -5,7 +5,8 @@ on:
     inputs:
       image:
         description: Target BeanCS registry image reference
-        required: true
+        required: false
+        default: ""
       dockerfile_path:
         description: Dockerfile path
         required: false
@@ -16,6 +17,10 @@ on:
         default: .
       build_args:
         description: Docker build arguments as KEY=VALUE lines
+        required: false
+        default: ""
+      beancs_build_run_id:
+        description: V2 BeanCS BuildRun id supplied by the controller
         required: false
         default: ""
   push:
@@ -43,14 +48,18 @@ jobs:
     env:
       BEANCS_PROJECT: araneae-front
       BEANCS_IMAGE_BASE: registry.beancs.com/hollowdata/araneae-front
+      BEANCS_BUILD_RUN_ID: ${{ inputs.beancs_build_run_id }}
+      BEANCS_V2_MODE: ${{ inputs.beancs_build_run_id != '' && 'v2' || 'legacy' }}
     steps:
       - uses: actions/checkout@v4
       - name: Resolve image
         id: meta
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.image }}" ]; then
             IMAGE="${{ inputs.image }}"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            IMAGE="${BEANCS_IMAGE_BASE}:beancs-${GITHUB_SHA::12}"
           elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
             VERSION_TAG="$TAG"
@@ -65,7 +74,7 @@ jobs:
         id: build_args
         shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "$BEANCS_V2_MODE" != "v2" ]; then
             {
               echo "value<<EOF"
               printf '%s\n' "${{ inputs.build_args }}"
@@ -90,16 +99,46 @@ jobs:
           username: ${{ secrets.BEANCS_REGISTRY_USERNAME }}
           password: ${{ secrets.BEANCS_REGISTRY_TOKEN }}
       - uses: docker/build-push-action@v6
+        id: image
         with:
-          context: ${{ github.event_name == 'workflow_dispatch' && inputs.context || 'Frontend' }}
-          file: ${{ github.event_name == 'workflow_dispatch' && inputs.dockerfile_path || 'Frontend/Dockerfile' }}
+          context: ${{ inputs.beancs_build_run_id != '' && 'Frontend' || (github.event_name == 'workflow_dispatch' && inputs.context || 'Frontend') }}
+          file: ${{ inputs.beancs_build_run_id != '' && 'Frontend/Dockerfile' || (github.event_name == 'workflow_dispatch' && inputs.dockerfile_path || 'Frontend/Dockerfile') }}
           build-args: ${{ steps.build_args.outputs.value }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
             ${{ steps.meta.outputs.image }}
-      - name: Notify BeanCS
-        if: always()
+      - name: Notify BeanCS V2 callback
+        if: always() && env.BEANCS_V2_MODE == 'v2'
+        env:
+          BEANCS_STATUS: ${{ job.status }}
+          BEANCS_IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+          BEANCS_WEBHOOK_SECRET: ${{ secrets.BEANCS_WEBHOOK_SECRET }}
+        run: |
+          STATUS="failure"
+          if [ "$BEANCS_STATUS" = "success" ]; then STATUS="success"; fi
+          ERROR=""
+          if [ "$STATUS" = "success" ] && [ -z "$BEANCS_IMAGE_DIGEST" ]; then
+            STATUS="failure"
+            ERROR="image build completed without an immutable digest"
+          fi
+          BODY=$(jq -nc \
+            --arg run "$GITHUB_RUN_ID" \
+            --arg url "https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --arg status "$STATUS" \
+            --arg conclusion "$BEANCS_STATUS" \
+            --arg error "$ERROR" \
+            --arg repository "$BEANCS_IMAGE_BASE" \
+            --arg digest "$BEANCS_IMAGE_DIGEST" \
+            '{external_run_id:$run, external_run_url:$url, status:$status, conclusion:$conclusion, error:$error} + (if $status == "success" then {artifacts:[{artifact_repository:$repository, artifact_digest:$digest, artifact_media_type:"application/vnd.oci.image.index.v1+json"}]} else {} end)')
+          SIG="sha256=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$BEANCS_WEBHOOK_SECRET" -binary | xxd -p -c 256)"
+          curl -fsS -X POST "https://beancs.com/v2/build-callback/${BEANCS_BUILD_RUN_ID}" \
+            -H "Content-Type: application/json" \
+            -H "X-Hub-Signature-256: $SIG" \
+            --data "$BODY"
+
+      - name: Notify BeanCS Legacy webhook
+        if: always() && env.BEANCS_V2_MODE != 'v2'
         env:
           BEANCS_PROJECT: araneae-front
           BEANCS_WEBHOOK_URL: https://beancs.com/api/v1/webhooks/github
