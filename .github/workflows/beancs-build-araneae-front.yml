@@ -102,7 +102,7 @@ jobs:
         if: always()
         env:
           BEANCS_PROJECT: araneae-front
-          BEANCS_WEBHOOK_URL: ${{ secrets.BEANCS_WEBHOOK_URL }}
+          BEANCS_WEBHOOK_URL: https://beancs.com/api/v1/webhooks/github
           BEANCS_WEBHOOK_SECRET: ${{ secrets.BEANCS_WEBHOOK_SECRET }}
           BEANCS_STATUS: ${{ job.status }}
           BEANCS_IMAGE: ${{ steps.meta.outputs.image }}
