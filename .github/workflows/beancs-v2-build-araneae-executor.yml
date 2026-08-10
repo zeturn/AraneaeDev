@@ -1,0 +1,68 @@
+name: BeanCS V2 Build araneae-executor
+
+on:
+  workflow_dispatch:
+    inputs:
+      beancs_build_run_id:
+        description: BeanCS V2 BuildRun id supplied by the controller
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BEANCS_BUILD_RUN_ID: ${{ inputs.beancs_build_run_id }}
+      BEANCS_IMAGE_BASE: registry.beancs.com/hollowdata/araneae-executor
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.BEANCS_REGISTRY_HOST }}
+          username: ${{ secrets.BEANCS_REGISTRY_USERNAME }}
+          password: ${{ secrets.BEANCS_REGISTRY_TOKEN }}
+      - name: Build and push immutable V2 artifact
+        id: image
+        uses: docker/build-push-action@v6
+        with:
+          context: Backend
+          file: Backend/Dockerfile
+          build-args: |
+            TARGET=executor
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.BEANCS_IMAGE_BASE }}:beancs-${{ github.sha }}
+      - name: Notify BeanCS V2 callback
+        if: always()
+        env:
+          BEANCS_STATUS: ${{ job.status }}
+          BEANCS_IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+          BEANCS_WEBHOOK_SECRET: ${{ secrets.BEANCS_WEBHOOK_SECRET }}
+        run: |
+          STATUS="failure"
+          if [ "$BEANCS_STATUS" = "success" ]; then STATUS="success"; fi
+          ERROR=""
+          if [ "$STATUS" = "success" ] && [ -z "$BEANCS_IMAGE_DIGEST" ]; then
+            STATUS="failure"
+            ERROR="image build completed without an immutable digest"
+          fi
+          BODY=$(jq -nc \
+            --arg run "$GITHUB_RUN_ID" \
+            --arg url "https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --arg status "$STATUS" \
+            --arg conclusion "$BEANCS_STATUS" \
+            --arg error "$ERROR" \
+            --arg repository "$BEANCS_IMAGE_BASE" \
+            --arg digest "$BEANCS_IMAGE_DIGEST" \
+            '{external_run_id:$run, external_run_url:$url, status:$status, conclusion:$conclusion, error:$error} + (if $status == "success" then {artifacts:[{artifact_repository:$repository, artifact_digest:$digest, artifact_media_type:"application/vnd.oci.image.index.v1+json"}]} else {} end)')
+          SIG="sha256=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$BEANCS_WEBHOOK_SECRET" -binary | xxd -p -c 256)"
+          curl -fsS -X POST "https://beancs.com/v2/build-callback/${BEANCS_BUILD_RUN_ID}" \
+            -H "Content-Type: application/json" \
+            -H "X-Hub-Signature-256: $SIG" \
+            --data "$BODY"
