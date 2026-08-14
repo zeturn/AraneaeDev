@@ -1,13 +1,13 @@
 const config = {
   title: 'Araneae Docs',
   tagline: 'Araneae documentation site',
-  url: 'https://example.com',
-  baseUrl: '/Araneae/',
+  url: 'https://zeturn.github.io',
+  baseUrl: '/AraneaeDev/',
   onBrokenLinks: 'warn',
   onBrokenMarkdownLinks: 'warn',
   favicon: 'data:;base64,iVBORw0KGgo=',
-  organizationName: 'example',
-  projectName: 'Araneae',
+  organizationName: 'zeturn',
+  projectName: 'AraneaeDev',
   i18n: {
     defaultLocale: 'zh-Hans',
     locales: ['zh-Hans', 'en']
