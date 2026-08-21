@@ -5,8 +5,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -155,10 +155,11 @@ func (a *App) forwardSinkEvent(ctx context.Context, msg contracts.QueueTaskMessa
 			if envelope.Data == nil {
 				return errors.New("structured sink event has no data")
 			}
-			// The default MissionSpec slot schema is a lossless envelope. Keep an
-			// optional source id available for storage-level deduplication.
-			identity, _ := envelope.Data["id"].(string)
-			payload, _ = json.Marshal(map[string]any{"data": map[string]any{"id": identity, "payload": envelope.Data}})
+			// emitStructured stores the source record below an event envelope
+			// (instance_id/schema_id/data). HashSlip slots are schema-bearing, so
+			// forward the source record itself; wrapping the envelope would make
+			// schema fields and dedupe keys appear null to downstream readers.
+			payload, _ = json.Marshal(map[string]any{"data": envelope.Data})
 			return a.forwardToHashSlip(ctx, msg, "/api/v1/datasets/"+url.PathEscape(datasetID)+"/records", payload)
 		}
 	}

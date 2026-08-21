@@ -115,9 +115,8 @@ func TestProcessSinkArtifacts_ForwardsStructuredEventToTaskHashSlipSlot(t *testi
 		if payload.Data["id"] != "article-1" {
 			t.Fatalf("expected stable id to be preserved, got %#v", payload.Data["id"])
 		}
-		nested, ok := payload.Data["payload"].(map[string]any)
-		if !ok || nested["title"] != "Example article" {
-			t.Fatalf("expected original structured payload to be nested, got %#v", payload.Data)
+		if payload.Data["title"] != "Example article" {
+			t.Fatalf("expected source record fields to be forwarded, got %#v", payload.Data)
 		}
 		w.WriteHeader(http.StatusCreated)
 	}))
