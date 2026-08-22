@@ -208,7 +208,6 @@ spec:
         dockerfile: Frontend/Dockerfile
         args:
           VITE_API_FLAVOR: go
-          VITE_BACKEND_BASE_URL: https://araneae.beancs.com
 
       image:
         repository: araneae-front
