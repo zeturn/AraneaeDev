@@ -14,7 +14,6 @@
         <div class="min-w-0">
           <div class="flex items-baseline gap-2">
             <h1 class="text-lg font-semibold text-blue-600">Araneae</h1>
-            <p class="text-sm font-semibold text-green-400">demo V0.0.1</p>
           </div>
 
           <nav aria-label="Breadcrumb" class="mt-1" v-if="breadcrumbItems.length">

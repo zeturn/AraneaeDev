@@ -19,10 +19,11 @@
 </template>
 
 <script lang="ts" setup>
+import { useI18n } from '@/i18n';
 
 const { locale, setLocale, availableLocales } = useI18n();
 
-function onChange(value) {
+function onChange(value: string) {
   setLocale(value);
 }
 </script>
