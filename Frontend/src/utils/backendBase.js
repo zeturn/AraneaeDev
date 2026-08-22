@@ -12,6 +12,18 @@ export function resolveBackendBase() {
 
     const apiFlavor = getApiFlavor();
     if (apiFlavor !== 'go') {
+        // A production SPA is served from the same public origin as the API.
+        // Keep localhost as the development fallback, but never send a
+        // browser request for a deployed app to the user's own machine.
+        if (typeof window !== 'undefined') {
+            const { protocol, hostname, origin } = window.location;
+            if (/^https?:$/i.test(protocol)
+                && hostname !== 'localhost'
+                && hostname !== '127.0.0.1'
+                && origin) {
+                return origin;
+            }
+        }
         return 'http://localhost:8107';
     }
 
