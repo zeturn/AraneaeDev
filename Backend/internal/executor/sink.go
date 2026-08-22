@@ -222,7 +222,17 @@ func (a *App) forwardToHashSlip(ctx context.Context, msg contracts.QueueTaskMess
 	// HashSlip uses this value to make a retried HTTP transfer resolve to the
 	// same durable event. The payload hash is stable for a given sink result.
 	idempotency := sha256.Sum256(append([]byte(msg.RunID+"\n"+msg.TaskID+"\n"+endpoint+"\n"), payload...))
-	req.Header.Set("X-Araneae-Idempotency-Key", "araneae:"+hex.EncodeToString(idempotency[:]))
+	idempotencyKey := "araneae:" + hex.EncodeToString(idempotency[:])
+	req.Header.Set("X-Araneae-Idempotency-Key", idempotencyKey)
+	// These headers are the HTTP data-plane projection of the canonical
+	// pipeline envelope. The older X-Araneae-* provenance headers remain during
+	// migration so existing HashSlip consumers continue to work.
+	req.Header.Set("X-Pipeline-Schema-Version", "1.0")
+	req.Header.Set("X-Pipeline-Message-Type", "hashslip.record.ingest")
+	req.Header.Set("X-Pipeline-Event-Id", "evt_"+hex.EncodeToString(idempotency[:16]))
+	req.Header.Set("X-Pipeline-Trace-Id", strings.TrimSpace(msg.CorrelationID))
+	req.Header.Set("X-Pipeline-Idempotency-Key", idempotencyKey)
+	req.Header.Set("X-Pipeline-Producer", "araneae")
 
 	token, err := a.getHashSlipBearerToken(ctx)
 	if err != nil {

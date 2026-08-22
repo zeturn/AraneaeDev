@@ -19,6 +19,8 @@ import (
 
 var collectionTokenRE = regexp.MustCompile(`[^a-zA-Z0-9_.-]+`)
 
+const pipelineEnvelopeSchemaVersion = "1.0"
+
 type moiipEnvelope struct {
 	MessageType    string         `json:"message_type"`
 	SchemaVersion  string         `json:"schema_version"`
@@ -100,7 +102,7 @@ func (a *App) buildCrawlTerminalEnvelope(ctx context.Context, run common.TaskRun
 	eventID := "evt_" + uuid.NewString()
 	envelope := moiipEnvelope{
 		MessageType:    messageType,
-		SchemaVersion:  "1.0",
+		SchemaVersion:  pipelineEnvelopeSchemaVersion,
 		EventID:        eventID,
 		TraceID:        traceID,
 		CausationID:    run.ID,

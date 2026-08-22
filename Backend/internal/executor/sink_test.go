@@ -105,6 +105,12 @@ func TestProcessSinkArtifacts_ForwardsStructuredEventToTaskHashSlipSlot(t *testi
 		if r.URL.Path != "/api/v1/datasets/ds_target/records" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
+		if r.Header.Get("X-Pipeline-Schema-Version") != "1.0" || r.Header.Get("X-Pipeline-Message-Type") != "hashslip.record.ingest" {
+			t.Fatalf("missing canonical pipeline headers: %v", r.Header)
+		}
+		if r.Header.Get("X-Pipeline-Event-Id") == "" || r.Header.Get("X-Pipeline-Idempotency-Key") == "" || r.Header.Get("X-Pipeline-Producer") != "araneae" {
+			t.Fatalf("incomplete canonical pipeline headers: %v", r.Header)
+		}
 		datasetCalls++
 		var payload struct {
 			Data map[string]any `json:"data"`
