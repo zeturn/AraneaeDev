@@ -160,18 +160,23 @@ const asNodeQueue = value => {
 
 const normalizeOrderForGo = order => {
     const parsed = parseOrderPayload(order);
-    if (!parsed || !Array.isArray(parsed?.schedule)) {
-        return parsed;
+    if (!parsed || parsed.version !== '1.0' || !Array.isArray(parsed?.steps)) {
+        return null;
     }
 
     return {
-        ...parsed,
-        schedule: parsed.schedule.map(step => {
-            const rawNodes = Array.isArray(step?.node) ? step.node : [step?.node];
-            const nodes = rawNodes.map(asNodeQueue).filter(Boolean);
+        version: '1.0',
+        name: parsed.name || '',
+        steps: parsed.steps.map(step => {
             return {
-                ...step,
-                node: nodes,
+                task_id: step?.task_id || '',
+                name: step?.name || '',
+                project_id: step?.project_id || '',
+                node_queue: asNodeQueue(step?.node_queue),
+                trigger: step?.trigger || '',
+                cron_expr: step?.cron_expr || '',
+                run_at: step?.run_at || '',
+                previous: step?.previous || '',
             };
         }),
     };
@@ -194,16 +199,17 @@ const normalizeGoVersionList = payload => {
 };
 
 const normalizeGoSchedule = (schedule, workplaceId = 'go-workspace') => {
-    const parsedOrder = parseOrderPayload(schedule?.order);
+    const parsedOrder = normalizeOrderForGo(schedule?.order);
     const fallbackOrder = {
+        version: '1.0',
         name: schedule?.name || '',
-        schedule: [
+        steps: [
             {
                 task_id: schedule?.task_id || '',
                 name: schedule?.name || '',
                 project_id: schedule?.project_id || '',
-                node: [schedule?.node_queue || 'default'],
-                crons: schedule?.cron_expr || '',
+                node_queue: schedule?.node_queue || 'default',
+                cron_expr: schedule?.cron_expr || '',
                 run_at: schedule?.run_at || '',
                 trigger: schedule?.trigger_type || (schedule?.run_at ? 'datetime' : (schedule?.cron_expr ? 'crons' : 'api')),
             },
@@ -220,14 +226,14 @@ const normalizeGoSchedule = (schedule, workplaceId = 'go-workspace') => {
 
 const buildGoSchedulePayload = schedule => {
     const parsedOrder = normalizeOrderForGo(schedule?.order);
-    const firstStep = parsedOrder?.schedule?.[0] || {};
-    const nodeQueue = asNodeQueue(schedule?.node_queue) || asNodeQueue(firstStep?.node?.[0]) || 'default';
+    const firstStep = parsedOrder?.steps?.[0] || {};
+    const nodeQueue = asNodeQueue(schedule?.node_queue) || asNodeQueue(firstStep?.node_queue) || 'default';
     const firstTrigger = String(firstStep?.trigger || '').trim().toLowerCase();
-    const triggerType = String(schedule?.trigger_type || firstTrigger || (schedule?.run_at ? 'datetime' : (schedule?.cron_expr || firstStep?.crons ? 'crons' : 'api')))
+    const triggerType = String(schedule?.trigger_type || firstTrigger || (schedule?.run_at ? 'datetime' : (schedule?.cron_expr || firstStep?.cron_expr ? 'crons' : 'api')))
         .trim()
         .toLowerCase();
     const runAt = schedule?.run_at || firstStep?.run_at || undefined;
-    const cronExpr = triggerType === 'crons' ? (schedule?.cron_expr || firstStep?.crons || undefined) : undefined;
+    const cronExpr = triggerType === 'crons' ? (schedule?.cron_expr || firstStep?.cron_expr || undefined) : undefined;
     const rawRunTimes = Array.isArray(schedule?.run_times) ? schedule.run_times : [];
     const runTimes = triggerType === 'datetime' ? rawRunTimes : [];
 
@@ -244,7 +250,19 @@ const buildGoSchedulePayload = schedule => {
         run_at: triggerType === 'datetime' ? runAt : undefined,
         run_times: runTimes.length > 0 ? runTimes : undefined,
         node_queue: nodeQueue,
-        order: parsedOrder || schedule?.order || undefined,
+        order: parsedOrder || {
+            version: '1.0',
+            name: schedule?.name || firstStep?.name || 'schedule',
+            steps: [{
+                task_id: schedule?.task_id || '',
+                name: schedule?.name || 'schedule',
+                project_id: schedule?.project_id || '',
+                node_queue: nodeQueue,
+                trigger: triggerType,
+                cron_expr: cronExpr || '',
+                run_at: runAt || '',
+            }],
+        },
     };
 };
 

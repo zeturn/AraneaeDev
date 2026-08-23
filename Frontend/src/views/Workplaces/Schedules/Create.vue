@@ -245,9 +245,9 @@ const buildOrderSteps = () => {
 			task_id: s.task_id || undefined,
 			name: taskName,
 			project_id: task?.project_id || undefined,
-			node: Array.isArray(s.node) ? s.node : [],
+			node_queue: Array.isArray(s.node) ? (s.node[0] || undefined) : undefined,
 			trigger: index === 0 ? s.trigger : 'previous',
-			crons: index === 0 && s.trigger === 'crons' ? s.crons : undefined,
+			cron_expr: index === 0 && s.trigger === 'crons' ? s.crons : undefined,
 		run_at: index === 0 && s.trigger === 'datetime'
 			? (Array.isArray(s.run_times)
 				? s.run_times.map(rt => toRunAtRFC3339(rt?.local, s.run_at_tz)).filter(Boolean)[0]
@@ -260,8 +260,9 @@ const buildOrderSteps = () => {
 
 const generatedOrderJson = computed(() => JSON.stringify(
 	{
+		version: '1.0',
 		name: newSchedule.name,
-		schedule: buildOrderSteps(),
+		steps: buildOrderSteps(),
 	}, null, 2
 ));
 
@@ -352,8 +353,9 @@ const handleCreateSchedule = async () => {
 	const orderSteps = buildOrderSteps();
 
 	const orderPayload = {
+		version: '1.0',
 		name: newSchedule.name,
-		schedule: orderSteps,
+		steps: orderSteps,
 	};
 
 	const schedulePayload = {

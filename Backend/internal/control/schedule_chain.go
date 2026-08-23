@@ -29,13 +29,13 @@ func (a *App) resolveScheduleExecutionSteps(schedule common.Schedule) ([]schedul
 		defaultStep.NodeQueue = "default"
 	}
 
-	parsed, ok := parseLegacyOrder(schedule.OrderJSON)
-	if !ok || len(parsed.Schedule) == 0 {
+	parsed, ok, _ := parseScheduleOrder(schedule.OrderJSON)
+	if !ok || len(parsed.Steps) == 0 {
 		return []scheduleExecutionStep{defaultStep}, nil
 	}
 
-	steps := make([]scheduleExecutionStep, 0, len(parsed.Schedule))
-	for _, item := range parsed.Schedule {
+	steps := make([]scheduleExecutionStep, 0, len(parsed.Steps))
+	for _, item := range parsed.Steps {
 		step := defaultStep
 		if taskID := strings.TrimSpace(item.TaskID); taskID != "" {
 			step.TaskID = taskID
@@ -52,10 +52,8 @@ func (a *App) resolveScheduleExecutionSteps(schedule common.Schedule) ([]schedul
 		if projectID := strings.TrimSpace(item.ProjectID); projectID != "" {
 			step.ProjectID = projectID
 		}
-		if len(item.Node) > 0 {
-			if queue := strings.TrimSpace(item.Node[0]); queue != "" {
-				step.NodeQueue = queue
-			}
+		if queue := strings.TrimSpace(item.NodeQueue); queue != "" {
+			step.NodeQueue = queue
 		}
 		if step.TaskID == "" {
 			step.TaskID = schedule.ID

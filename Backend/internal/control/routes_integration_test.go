@@ -1277,13 +1277,14 @@ func TestControlRoutes_CreateScheduleWithDatetimeTrigger(t *testing.T) {
 		"run_at":       runAt,
 		"enabled":      true,
 		"order": map[string]any{
-			"name": "datetime-schedule",
-			"schedule": []map[string]any{
+			"version": "1.0",
+			"name":    "datetime-schedule",
+			"steps": []map[string]any{
 				{
-					"task_id": task.ID,
-					"trigger": "datetime",
-					"run_at":  runAt,
-					"node":    []string{"default"},
+					"task_id":    task.ID,
+					"trigger":    "datetime",
+					"run_at":     runAt,
+					"node_queue": "default",
 				},
 			},
 		},
@@ -1577,10 +1578,11 @@ func TestScheduleChainResolveSteps(t *testing.T) {
 		"cron_expr": "*/30 * * * * *",
 		"enabled":   false,
 		"order": map[string]any{
-			"name": "chain",
-			"schedule": []map[string]any{
-				{"task_id": task.ID, "project_id": task.ProjectID, "node": []string{"default"}},
-				{"task_id": task.ID, "project_id": task.ProjectID, "node": []string{"default"}},
+			"version": "1.0",
+			"name":    "chain",
+			"steps": []map[string]any{
+				{"task_id": task.ID, "project_id": task.ProjectID, "node_queue": "default", "trigger": "crons", "cron_expr": "*/30 * * * * *"},
+				{"task_id": task.ID, "project_id": task.ProjectID, "node_queue": "default", "trigger": "previous"},
 			},
 		},
 	})
@@ -1616,10 +1618,11 @@ func TestScheduleChainTriggerNextStepWithoutQueue(t *testing.T) {
 		"cron_expr": "*/30 * * * * *",
 		"enabled":   false,
 		"order": map[string]any{
-			"name": "chain",
-			"schedule": []map[string]any{
-				{"task_id": task.ID, "project_id": task.ProjectID, "node": []string{"default"}},
-				{"task_id": task.ID, "project_id": task.ProjectID, "node": []string{"default"}},
+			"version": "1.0",
+			"name":    "chain",
+			"steps": []map[string]any{
+				{"task_id": task.ID, "project_id": task.ProjectID, "node_queue": "default", "trigger": "crons", "cron_expr": "*/30 * * * * *"},
+				{"task_id": task.ID, "project_id": task.ProjectID, "node_queue": "default", "trigger": "previous"},
 			},
 		},
 	})
@@ -1653,10 +1656,11 @@ func TestControlRoutes_CreateScheduleWithAPIFirstTrigger(t *testing.T) {
 		"name":    "api-first-schedule",
 		"enabled": true,
 		"order": map[string]any{
-			"name": "api-chain",
-			"schedule": []map[string]any{
-				{"task_id": task.ID, "trigger": "api", "node": []string{"default"}},
-				{"task_id": task.ID, "trigger": "previous", "node": []string{"default"}},
+			"version": "1.0",
+			"name":    "api-chain",
+			"steps": []map[string]any{
+				{"task_id": task.ID, "trigger": "api", "node_queue": "default"},
+				{"task_id": task.ID, "trigger": "previous", "node_queue": "default"},
 			},
 		},
 	})
@@ -1693,10 +1697,11 @@ func TestControlRoutes_RejectScheduleWhenNonFirstStepUsesCronOrAPI(t *testing.T)
 		"name":    "invalid-chain-trigger",
 		"enabled": false,
 		"order": map[string]any{
-			"name": "invalid-chain",
-			"schedule": []map[string]any{
-				{"task_id": task.ID, "trigger": "crons", "crons": "*/30 * * * * *", "node": []string{"default"}},
-				{"task_id": task.ID, "trigger": "crons", "crons": "*/45 * * * * *", "node": []string{"default"}},
+			"version": "1.0",
+			"name":    "invalid-chain",
+			"steps": []map[string]any{
+				{"task_id": task.ID, "trigger": "crons", "cron_expr": "*/30 * * * * *", "node_queue": "default"},
+				{"task_id": task.ID, "trigger": "crons", "cron_expr": "*/45 * * * * *", "node_queue": "default"},
 			},
 		},
 	})

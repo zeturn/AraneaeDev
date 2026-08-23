@@ -20,9 +20,9 @@ type ControlConfig struct {
 	DatabaseDSN           string
 	RabbitURL             string
 	RabbitExchange        string
-	MOIIPEventsEnabled    bool
-	MOIIPRabbitURL        string
-	MOIIPEventExchange    string
+	PipelineEventsEnabled bool
+	PipelineRabbitURL     string
+	PipelineEventExchange string
 	InitAdminPassword     string
 	JWTSecret             string
 	ArtifactRoot          string
@@ -81,9 +81,6 @@ type ExecutorConfig struct {
 	SinkDirName              string
 	HashSlipBaseURL          string
 	HashSlipTimeoutSeconds   int
-	HashSlipTimeseriesPath   string
-	HashSlipTextPath         string
-	HashSlipStructuredPath   string
 	BasaltTokenURL           string
 	BasaltClientID           string
 	BasaltClientSecret       string
@@ -142,9 +139,9 @@ func LoadControlConfig() ControlConfig {
 		DatabaseDSN:           GetEnv("CONTROL_DATABASE_DSN", ""),
 		RabbitURL:             GetEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"),
 		RabbitExchange:        GetEnv("RABBITMQ_EXCHANGE", "tasks.direct"),
-		MOIIPEventsEnabled:    GetEnvBool("ORION_EVENTS_ENABLED", GetEnvBool("MOIIP_EVENTS_ENABLED", false)),
-		MOIIPRabbitURL:        GetEnv("ORION_RABBITMQ_URL", GetEnv("MOIIP_RABBITMQ_URL", GetEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/"))),
-		MOIIPEventExchange:    GetEnv("ORION_RABBITMQ_EXCHANGE", GetEnv("MOIIP_EVENT_EXCHANGE", "moiip.events")),
+		PipelineEventsEnabled: GetEnvBool("PIPELINE_EVENTS_ENABLED", false),
+		PipelineRabbitURL:     GetEnv("PIPELINE_RABBITMQ_URL", ""),
+		PipelineEventExchange: GetEnv("PIPELINE_EVENT_EXCHANGE", "pipeline.events"),
 		InitAdminPassword:     GetEnv("INIT_ADMIN_PASSWORD", ""),
 		JWTSecret:             GetEnv("CONTROL_JWT_SECRET", ""),
 		ArtifactRoot:          GetEnv("ARTIFACT_ROOT", "./data/artifacts"),
@@ -204,9 +201,6 @@ func LoadExecutorConfig() ExecutorConfig {
 		SinkDirName:              GetEnv("EXECUTOR_SINK_DIRNAME", ".araneae/sink"),
 		HashSlipBaseURL:          strings.TrimRight(GetEnv("HASHSLIP_BASE_URL", "http://localhost:8106"), "/"),
 		HashSlipTimeoutSeconds:   GetEnvInt("HASHSLIP_TIMEOUT_SECONDS", 15),
-		HashSlipTimeseriesPath:   GetEnv("HASHSLIP_TIMESERIES_PATH", "/api/v1/timeseries/records"),
-		HashSlipTextPath:         GetEnv("HASHSLIP_TEXT_PATH", "/api/v1/text/records"),
-		HashSlipStructuredPath:   GetEnv("HASHSLIP_STRUCTURED_PATH", "/api/v1/data"),
 		BasaltTokenURL:           GetEnv("BASALTPASS_TOKEN_URL", ""),
 		BasaltClientID:           GetEnv("BASALTPASS_OAUTH_CLIENT_ID", ""),
 		BasaltClientSecret:       GetEnv("BASALTPASS_OAUTH_CLIENT_SECRET", ""),

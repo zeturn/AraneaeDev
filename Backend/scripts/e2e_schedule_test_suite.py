@@ -493,12 +493,13 @@ def run_suite() -> Dict[str, Any]:
                 "description": "single schedule create/update/delete test",
                 "enabled": False,
                 "order": {
+	                    "version": "1.0",
                     "name": "suite-single-schedule",
-                    "schedule": [
+	                    "steps": [
                         {
                             "task_id": task_single["id"],
                             "trigger": "api",
-                            "node": [node_queue],
+                            "node_queue": node_queue,
                         }
                     ],
                 },
@@ -537,17 +538,18 @@ def run_suite() -> Dict[str, Any]:
                 "description": "chain schedule test",
                 "enabled": False,
                 "order": {
+	                    "version": "1.0",
                     "name": "suite-chain-schedule",
-                    "schedule": [
+	                    "steps": [
                         {
                             "task_id": task_chain_1["id"],
                             "trigger": "api",
-                            "node": [node_queue],
+                            "node_queue": node_queue,
                         },
                         {
                             "task_id": task_chain_2["id"],
                             "trigger": "previous",
-                            "node": [node_queue],
+                            "node_queue": node_queue,
                         },
                     ],
                 },
@@ -580,13 +582,14 @@ def run_suite() -> Dict[str, Any]:
                 "description": "cron timed start/end test",
                 "enabled": True,
                 "order": {
+	                    "version": "1.0",
                     "name": "suite-cron-schedule",
-                    "schedule": [
+	                    "steps": [
                         {
                             "task_id": task_cron["id"],
                             "trigger": "crons",
-                            "crons": "*/8 * * * * *",
-                            "node": [node_queue],
+                            "cron_expr": "*/8 * * * * *",
+                            "node_queue": node_queue,
                         }
                     ],
                 },

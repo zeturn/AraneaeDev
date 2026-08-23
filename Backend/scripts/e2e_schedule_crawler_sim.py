@@ -380,13 +380,14 @@ def run_test() -> Dict[str, Any]:
             "description": "cron schedule validation",
             "enabled": True,
             "order": {
+				"version": "1.0",
                 "name": "sim-cron-schedule",
-                "schedule": [
+				"steps": [
                     {
                         "task_id": task_chain_1["id"],
                         "trigger": "crons",
-                        "crons": "*/6 * * * * *",
-                        "node": [queue_name],
+                        "cron_expr": "*/6 * * * * *",
+                        "node_queue": queue_name,
                     }
                 ],
             },
@@ -407,10 +408,11 @@ def run_test() -> Dict[str, Any]:
             "description": "chain schedule validation",
             "enabled": False,
             "order": {
+				"version": "1.0",
                 "name": "sim-chain-schedule",
-                "schedule": [
-                    {"task_id": task_chain_1["id"], "trigger": "api", "node": [queue_name]},
-                    {"task_id": task_chain_2["id"], "trigger": "previous", "node": [queue_name]},
+				"steps": [
+					{"task_id": task_chain_1["id"], "trigger": "api", "node_queue": queue_name},
+					{"task_id": task_chain_2["id"], "trigger": "previous", "node_queue": queue_name},
                 ],
             },
         })

@@ -39,26 +39,27 @@ import (
 type App struct {
 	pb.UnimplementedArtifactServiceServer
 
-	cfg             common.ControlConfig
-	log             *zap.Logger
-	db              *gorm.DB
-	http            *fiber.App
-	cron            *cron.Cron
-	cronEntries     map[string]cron.EntryID
-	scheduleEntries map[string]cron.EntryID
-	scheduleTimers  map[string]*time.Timer
-	runPublisher    func(schedule common.Schedule, source string) (*common.TaskRun, error)
-	oauthCodes      map[string]oauthExchangeState
-	cronMu          sync.Mutex
-	oauthMu         sync.Mutex
-	rabbitMu        sync.Mutex
-	rabbitConn      *amqp.Connection
-	rabbitCh        *amqp.Channel
-	rabbitConfirms  chan amqp.Confirmation
-	taskOutboxMu    sync.Mutex
-	outboxStop      chan struct{}
-	outboxDone      chan struct{}
-	grpcSrv         *grpc.Server
+	cfg              common.ControlConfig
+	log              *zap.Logger
+	db               *gorm.DB
+	http             *fiber.App
+	cron             *cron.Cron
+	cronEntries      map[string]cron.EntryID
+	scheduleEntries  map[string]cron.EntryID
+	scheduleTimers   map[string]*time.Timer
+	runPublisher     func(schedule common.Schedule, source string) (*common.TaskRun, error)
+	oauthCodes       map[string]oauthExchangeState
+	cronMu           sync.Mutex
+	oauthMu          sync.Mutex
+	rabbitMu         sync.Mutex
+	rabbitConn       *amqp.Connection
+	rabbitCh         *amqp.Channel
+	rabbitConfirms   chan amqp.Confirmation
+	taskOutboxMu     sync.Mutex
+	pipelineOutboxMu sync.Mutex
+	outboxStop       chan struct{}
+	outboxDone       chan struct{}
+	grpcSrv          *grpc.Server
 }
 
 type chainRunMeta struct {
@@ -608,6 +609,9 @@ func (a *App) taskOutboxLoop() {
 		case <-ticker.C:
 			if err := a.drainTaskOutbox(); err != nil {
 				a.log.Warn("task outbox drain failed", zap.Error(err))
+			}
+			if err := a.drainPipelineEventOutbox(); err != nil {
+				a.log.Warn("pipeline event outbox drain failed", zap.Error(err))
 			}
 		case <-a.outboxStop:
 			return
