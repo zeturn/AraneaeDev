@@ -127,3 +127,38 @@ func writeJSON(t *testing.T, w http.ResponseWriter, value any) {
 		t.Fatal(err)
 	}
 }
+
+func TestNormalizeTagsTrimsLowercasesSortsAndDeduplicates(t *testing.T) {
+	got := normalizeTags([]string{" AI ", "cloud", "ai", "", "Security"})
+	want := []string{"ai", "cloud", "security"}
+	if len(got) != len(want) {
+		t.Fatalf("tags=%#v, want %#v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("tags=%#v, want %#v", got, want)
+		}
+	}
+}
+
+func TestMergeCatalogMetadataPreservesExistingFetchPolicy(t *testing.T) {
+	existingRaw, _ := json.Marshal(map[string]any{
+		"source_fetch": map[string]any{"max_items": 12},
+		"source_id":    "old",
+	})
+	merged, changed := mergeCatalogMetadata(string(existingRaw), map[string]any{
+		"source_id":       "openai-news",
+		"source_name":     "OpenAI News",
+		"source_category": "official-technology",
+		"source_tags":     []string{"ai", "company-update"},
+	})
+	if !changed {
+		t.Fatal("expected metadata drift to be detected")
+	}
+	if merged["source_id"] != "openai-news" || merged["source_category"] != "official-technology" {
+		t.Fatalf("catalog fields not updated: %#v", merged)
+	}
+	if _, ok := merged["source_fetch"].(map[string]any); !ok {
+		t.Fatalf("source_fetch policy was not preserved: %#v", merged)
+	}
+}

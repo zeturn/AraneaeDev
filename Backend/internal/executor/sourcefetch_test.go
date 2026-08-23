@@ -167,6 +167,42 @@ func TestEmitRSSHonorsTaskFetchBudget(t *testing.T) {
 	}
 }
 
+func TestEmitRSSCarriesCatalogSourceMetadata(t *testing.T) {
+	raw := []byte(`<rss version="2.0"><channel><item>
+		<title>Tech item</title><link>https://example.com/tech</link><guid>tech-1</guid><description>Summary.</description>
+	</item></channel></rss>`)
+	sinkDir := t.TempDir()
+	count, err := emitRSS(context.Background(), raw, "https://example.com/feed.xml", sinkDir, sourceFetchOptions{
+		FetchArticleBodies: false,
+		SourceMetadata: map[string]any{
+			"source_id":       "vendor-blog",
+			"source_name":     "Vendor Blog",
+			"source_category": "technology",
+			"source_tags":     []any{"ai", "company-update"},
+			"source_catalog":  map[string]any{"id": "news-brief-global", "version": "v2", "source_id": "vendor-blog"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("count=%d, want 1", count)
+	}
+	event := readFirstSinkEvent(t, filepath.Join(sinkDir, "events.jsonl"))
+	var payload struct {
+		Data map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(event.Data, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Data["source_id"] != "vendor-blog" || payload.Data["source_category"] != "technology" {
+		t.Fatalf("source metadata not carried into item: %#v", payload.Data)
+	}
+	if _, ok := payload.Data["source_catalog"].(map[string]any); !ok {
+		t.Fatalf("source_catalog missing from item: %#v", payload.Data["source_catalog"])
+	}
+}
+
 func TestEmitAtomPrefersPublishedTimeOverUpdatedTime(t *testing.T) {
 	raw := []byte(`<feed xmlns="http://www.w3.org/2005/Atom"><entry>
 		<title>Atom article</title><id>atom-1</id><link href="https://example.com/atom"/>

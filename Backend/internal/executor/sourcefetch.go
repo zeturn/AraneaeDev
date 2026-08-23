@@ -52,6 +52,7 @@ type sourceFetchOptions struct {
 	MaxItems           int
 	FetchArticleBodies bool
 	JSONRecordPath     string
+	SourceMetadata     map[string]any
 }
 
 func defaultSourceFetchOptions() sourceFetchOptions {
@@ -60,6 +61,7 @@ func defaultSourceFetchOptions() sourceFetchOptions {
 
 func sourceFetchOptionsFromMetadata(metadata map[string]any) sourceFetchOptions {
 	opts := defaultSourceFetchOptions()
+	opts.SourceMetadata = sourceMetadataFromTaskMetadata(metadata)
 	raw, ok := metadata["source_fetch"].(map[string]any)
 	if !ok {
 		return opts
@@ -87,6 +89,24 @@ func sourceFetchInt(value any) (int, bool) {
 	default:
 		return 0, false
 	}
+}
+
+func sourceMetadataFromTaskMetadata(metadata map[string]any) map[string]any {
+	out := make(map[string]any)
+	for _, key := range []string{"source_id", "source_name", "source_category", "source_tags", "source_catalog"} {
+		if value, ok := metadata[key]; ok {
+			out[key] = value
+		}
+	}
+	if catalog, ok := metadata["source_catalog"].(map[string]any); ok {
+		if value, exists := catalog["source_id"]; exists {
+			out["source_id"] = value
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // executeSourceFetch handles non-code tasks (rss / json api). It does not download
@@ -544,6 +564,7 @@ func tryEmitRSS2(ctx context.Context, raw []byte, sourceURL, sinkDir string, opt
 			"source_url":              sourceURL,
 			"id":                      normalizedSourceItemID(strings.TrimSpace(it.GUID), link, strings.TrimSpace(it.Title), rawPublishedAt),
 		}
+		mergeSourceMetadata(data, options.SourceMetadata)
 		if err := emitStructured(sinkDir, sourceURL, "rss_item", data); err != nil {
 			return count, err
 		}
@@ -589,6 +610,7 @@ func tryEmitAtom(ctx context.Context, raw []byte, sourceURL, sinkDir string, opt
 			"source_url":              sourceURL,
 			"id":                      normalizedSourceItemID(strings.TrimSpace(e.ID), link, strings.TrimSpace(e.Title), rawPublishedAt),
 		}
+		mergeSourceMetadata(data, options.SourceMetadata)
 		if err := emitStructured(sinkDir, sourceURL, "rss_item", data); err != nil {
 			return count, err
 		}
@@ -623,6 +645,7 @@ func tryEmitRDF(ctx context.Context, raw []byte, sourceURL, sinkDir string, opti
 			"source_url":              sourceURL,
 			"id":                      normalizedSourceItemID(strings.TrimSpace(it.GUID), link, strings.TrimSpace(it.Title), rawPublishedAt),
 		}
+		mergeSourceMetadata(data, options.SourceMetadata)
 		if err := emitStructured(sinkDir, sourceURL, "rss_item", data); err != nil {
 			return count, err
 		}
@@ -1283,6 +1306,7 @@ func emitJSONAPI(raw []byte, sourceURL, sinkDir string, options sourceFetchOptio
 			data = map[string]interface{}{"value": rec}
 		}
 		data = normalizeAPIRecord(data, sourceURL)
+		mergeSourceMetadata(data, options.SourceMetadata)
 		if err := emitStructured(sinkDir, sourceURL, "json_api_record", data); err != nil {
 			return count, err
 		}
@@ -1348,4 +1372,15 @@ func normalizeAPIRecord(data map[string]interface{}, sourceURL string) map[strin
 		data["id"] = id
 	}
 	return data
+}
+
+func mergeSourceMetadata(data map[string]interface{}, metadata map[string]any) {
+	if len(metadata) == 0 {
+		return
+	}
+	for key, value := range metadata {
+		if _, exists := data[key]; !exists {
+			data[key] = value
+		}
+	}
 }

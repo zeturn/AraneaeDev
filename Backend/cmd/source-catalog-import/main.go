@@ -36,17 +36,18 @@ type catalogDefaults struct {
 }
 
 type catalogSource struct {
-	ID                 string `json:"id"`
-	Name               string `json:"name"`
-	Category           string `json:"category"`
-	URL                string `json:"url"`
-	TaskType           string `json:"task_type,omitempty"`
-	Schedule           string `json:"schedule,omitempty"`
-	NodeQueue          string `json:"node_queue,omitempty"`
-	MaxItems           *int   `json:"max_items,omitempty"`
-	FetchArticleBodies *bool  `json:"fetch_article_bodies,omitempty"`
-	JSONRecordPath     string `json:"json_record_path,omitempty"`
-	Enabled            *bool  `json:"enabled,omitempty"`
+	ID                 string   `json:"id"`
+	Name               string   `json:"name"`
+	Category           string   `json:"category"`
+	Tags               []string `json:"tags,omitempty"`
+	URL                string   `json:"url"`
+	TaskType           string   `json:"task_type,omitempty"`
+	Schedule           string   `json:"schedule,omitempty"`
+	NodeQueue          string   `json:"node_queue,omitempty"`
+	MaxItems           *int     `json:"max_items,omitempty"`
+	FetchArticleBodies *bool    `json:"fetch_article_bodies,omitempty"`
+	JSONRecordPath     string   `json:"json_record_path,omitempty"`
+	Enabled            *bool    `json:"enabled,omitempty"`
 }
 
 type task struct {
@@ -141,6 +142,7 @@ func loadCatalog(path string) (catalog, error) {
 		source.Name = strings.TrimSpace(source.Name)
 		source.Category = strings.TrimSpace(source.Category)
 		source.URL = strings.TrimSpace(source.URL)
+		source.Tags = normalizeTags(source.Tags)
 		if source.ID == "" || source.Name == "" || source.Category == "" || source.URL == "" {
 			return catalog{}, fmt.Errorf("sources[%d] requires id, name, category and url", index)
 		}
@@ -592,9 +594,9 @@ func applyCatalog(client *controlClient, value catalog, resolver datasetResolver
 				return fmt.Errorf("create task %s: %w", source.ID, err)
 			}
 			createdTasks++
-		} else if taskMetadataNeedsUpdate(item.Metadata, metadata) {
-			if err := client.put("/tasks/"+url.PathEscape(item.ID), map[string]any{"metadata": metadata}, &item); err != nil {
-				return fmt.Errorf("update task %s metadata: %w", source.ID, err)
+		} else if merged, changed := mergeCatalogMetadata(item.Metadata, metadata); changed {
+			if err := client.put("/tasks/"+url.PathEscape(item.ID), map[string]any{"metadata": merged}, &item); err != nil {
+				return fmt.Errorf("update task metadata %s: %w", source.ID, err)
 			}
 			updatedTasks++
 		}
@@ -621,10 +623,15 @@ func applyCatalog(client *controlClient, value catalog, resolver datasetResolver
 func sourceTaskMetadata(value catalog, source catalogSource, slot map[string]any, missionID string) map[string]any {
 	metadata := map[string]any{
 		"source_catalog":  map[string]any{"id": value.ID, "version": value.Version, "source_id": source.ID},
+		"source_id":       source.ID,
+		"source_name":     source.Name,
 		"source_category": source.Category,
 		"hashslip_slot":   slot,
 		"schema_id":       "news.article.v1",
 		"artifact_type":   "news_article",
+	}
+	if tags := normalizeTags(source.Tags); len(tags) > 0 {
+		metadata["source_tags"] = tags
 	}
 	sourceFetch := map[string]any{}
 	if source.MaxItems != nil {
@@ -659,6 +666,40 @@ func taskMetadataNeedsUpdate(raw string, desired map[string]any) bool {
 		return true
 	}
 	return !bytes.Equal(currentJSON, desiredJSON)
+}
+
+func mergeCatalogMetadata(existingJSON string, desired map[string]any) (map[string]any, bool) {
+	var existing map[string]any
+	if json.Unmarshal([]byte(existingJSON), &existing) != nil {
+		return desired, true
+	}
+	if existing == nil {
+		existing = make(map[string]any)
+	}
+	before, _ := json.Marshal(existing)
+	for key, value := range desired {
+		existing[key] = value
+	}
+	if _, ok := desired["source_tags"]; !ok {
+		delete(existing, "source_tags")
+	}
+	after, _ := json.Marshal(existing)
+	return existing, string(before) != string(after)
+}
+
+func normalizeTags(tags []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(tags))
+	for _, tag := range tags {
+		tag = strings.ToLower(strings.TrimSpace(tag))
+		if tag == "" || seen[tag] {
+			continue
+		}
+		seen[tag] = true
+		out = append(out, tag)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func fatal(err error) {
