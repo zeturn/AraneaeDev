@@ -515,15 +515,18 @@ func (a *App) closeRabbitLocked() {
 }
 
 func (a *App) processMessage(ctx context.Context, raw []byte) error {
-	var m contracts.QueueTaskMessage
-	if err := json.Unmarshal(raw, &m); err != nil {
+	m, err := contracts.DecodeTaskMessage(raw)
+	if err != nil {
 		return err
 	}
 	var existing store.ExecutionRecord
-	if err := a.db.Where("run_id = ?", m.RunID).First(&existing).Error; err == nil {
+	lookupErr := a.db.Where("run_id = ?", m.RunID).First(&existing).Error
+	if lookupErr == nil {
 		if existing.Status == "success" || existing.Status == "failed" {
 			return a.ensureCallbackOutbox(m, existing.Status, existing.Output, existing.ExitCode, existing.CreatedAt, existing.FinishedAt)
 		}
+	} else if !errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+		return fmt.Errorf("load execution record: %w", lookupErr)
 	}
 	startedAt := time.Now()
 	rec := store.ExecutionRecord{
@@ -721,6 +724,9 @@ func (a *App) executeTask(ctx context.Context, msg contracts.QueueTaskMessage) (
 		"ARANEAE_RUNTIME":   "1",
 		"ARANEAE_SINK_MODE": "araneae",
 		"ARANEAE_SINK_DIR":  sinkDir,
+		"ARANEAE_TRACE_ID":  msg.CorrelationID,
+		"ARANEAE_RUN_ID":    msg.RunID,
+		"ARANEAE_TASK_ID":   msg.TaskID,
 	}
 	out, code, runErr := runtimeexec.RunCommand(runCtx, runDir, msg.EntryCommand, env)
 	return out, code, runDir, runErr

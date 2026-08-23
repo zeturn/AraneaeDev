@@ -19,13 +19,23 @@ import (
 
 	"araneae-go/internal/executor/contracts"
 
-	"go.uber.org/zap"
+	"github.com/google/uuid"
 )
 
 type sinkEnvelope struct {
-	Type      string          `json:"type"`
-	Data      json.RawMessage `json:"data"`
-	EmittedAt string          `json:"emitted_at,omitempty"`
+	MessageType    string          `json:"message_type"`
+	SchemaVersion  string          `json:"schema_version"`
+	EventID        string          `json:"event_id"`
+	TraceID        string          `json:"trace_id"`
+	CausationID    string          `json:"causation_id,omitempty"`
+	IdempotencyKey string          `json:"idempotency_key"`
+	Producer       string          `json:"producer"`
+	RetryCount     int             `json:"retry_count"`
+	OccurredAt     string          `json:"occurred_at"`
+	Correlation    map[string]any  `json:"correlation"`
+	Data           json.RawMessage `json:"data"`
+	Metadata       map[string]any  `json:"metadata"`
+	Source         map[string]any  `json:"source,omitempty"`
 }
 
 type sinkStats struct {
@@ -111,7 +121,12 @@ func (a *App) processSinkFile(ctx context.Context, msg contracts.QueueTaskMessag
 			fileErrs = append(fileErrs, fmt.Sprintf("invalid json line: %v", err))
 			continue
 		}
-		t := strings.ToLower(strings.TrimSpace(env.Type))
+		if err := validateSinkEnvelope(env); err != nil {
+			stats.Failed++
+			fileErrs = append(fileErrs, err.Error())
+			continue
+		}
+		t := strings.ToLower(strings.TrimSpace(sinkStringValue(env.Metadata["record_type"])))
 		switch t {
 		case "timeseries":
 			stats.Timeseries++
@@ -144,40 +159,197 @@ func (a *App) processSinkFile(ctx context.Context, msg contracts.QueueTaskMessag
 }
 
 func (a *App) forwardSinkEvent(ctx context.Context, msg contracts.QueueTaskMessage, eventType string, payload json.RawMessage) error {
+	datasetID := slotDatasetID(msg.Metadata)
+	if datasetID == "" {
+		return errors.New("sink requires hashslip_slot.dataset_id")
+	}
+	var record map[string]any
+	if err := json.Unmarshal(payload, &record); err != nil {
+		return fmt.Errorf("decode %s sink event: %w", eventType, err)
+	}
 	if eventType == "structured" {
-		if datasetID := slotDatasetID(msg.Metadata); datasetID != "" {
-			var envelope struct {
-				Data map[string]any `json:"data"`
-			}
-			if err := json.Unmarshal(payload, &envelope); err != nil {
-				return fmt.Errorf("decode structured sink event: %w", err)
-			}
-			if envelope.Data == nil {
-				return errors.New("structured sink event has no data")
-			}
-			// emitStructured stores the source record below an event envelope
-			// (instance_id/schema_id/data). HashSlip slots are schema-bearing, so
-			// forward the source record itself; wrapping the envelope would make
-			// schema fields and dedupe keys appear null to downstream readers.
-			payload, _ = json.Marshal(map[string]any{"data": envelope.Data})
-			return a.forwardToHashSlip(ctx, msg, "/api/v1/datasets/"+url.PathEscape(datasetID)+"/records", payload)
+		// Structured records store the source record below instance_id/schema_id/
+		// data. HashSlip slots are schema-bearing, so forward the source record
+		// itself; wrapping the envelope would make schema fields and dedupe keys
+		// appear null to downstream readers.
+		record = mapFromAny(record["data"])
+		if len(record) == 0 {
+			return errors.New("structured sink event has no data")
 		}
 	}
-	var endpoint string
-	switch eventType {
-	case "timeseries":
-		endpoint = strings.TrimSpace(a.cfg.HashSlipTimeseriesPath)
-	case "text":
-		endpoint = strings.TrimSpace(a.cfg.HashSlipTextPath)
-	case "structured":
-		endpoint = strings.TrimSpace(a.cfg.HashSlipStructuredPath)
+	envelope := map[string]any{
+		"data":     record,
+		"metadata": canonicalRecordMetadata(msg, eventType, record),
+	}
+	if source := canonicalRecordSource(msg, record); len(source) > 0 {
+		envelope["source"] = source
+	}
+	payload, err := json.Marshal(envelope)
+	if err != nil {
+		return fmt.Errorf("encode %s sink event: %w", eventType, err)
+	}
+	return a.forwardToHashSlip(ctx, msg, "/api/v1/datasets/"+url.PathEscape(datasetID)+"/records", payload)
+}
+
+func validateSinkEnvelope(env sinkEnvelope) error {
+	if env.MessageType != "araneae.record.ready" {
+		return fmt.Errorf("unsupported sink message_type %q", env.MessageType)
+	}
+	if env.SchemaVersion != "1.0" {
+		return fmt.Errorf("unsupported sink schema_version %q", env.SchemaVersion)
+	}
+	for name, value := range map[string]string{
+		"event_id": env.EventID, "trace_id": env.TraceID,
+		"idempotency_key": env.IdempotencyKey, "producer": env.Producer,
+		"occurred_at": env.OccurredAt,
+	} {
+		if strings.TrimSpace(value) == "" {
+			return fmt.Errorf("sink envelope %s is required", name)
+		}
+	}
+	if _, err := time.Parse(time.RFC3339Nano, env.OccurredAt); err != nil {
+		return fmt.Errorf("sink envelope occurred_at is invalid: %w", err)
+	}
+	if env.Correlation == nil || env.Metadata == nil {
+		return errors.New("sink envelope correlation and metadata are required")
+	}
+	if len(env.Data) == 0 || string(env.Data) == "null" {
+		return errors.New("sink envelope data is required")
+	}
+	return nil
+}
+
+func appendSinkEnvelope(sinkDir, recordType string, data json.RawMessage, metadata map[string]any, source string) error {
+	eventID := "evt_" + uuid.NewString()
+	traceID := firstNonEmptySink(os.Getenv("ARANEAE_TRACE_ID"), eventID)
+	runID := strings.TrimSpace(os.Getenv("ARANEAE_RUN_ID"))
+	taskID := strings.TrimSpace(os.Getenv("ARANEAE_TASK_ID"))
+	correlation := map[string]any{"trace_id": traceID, "run_id": runID, "task_id": taskID}
+	if metadata == nil {
+		metadata = map[string]any{}
+	}
+	metadata["record_type"] = strings.ToLower(strings.TrimSpace(recordType))
+	env := sinkEnvelope{
+		MessageType:    "araneae.record.ready",
+		SchemaVersion:  "1.0",
+		EventID:        eventID,
+		TraceID:        traceID,
+		CausationID:    runID,
+		IdempotencyKey: "araneae.record:" + eventID,
+		Producer:       "araneae",
+		RetryCount:     0,
+		OccurredAt:     time.Now().UTC().Format(time.RFC3339Nano),
+		Correlation:    correlation,
+		Data:           data,
+		Metadata:       metadata,
+	}
+	if strings.TrimSpace(source) != "" {
+		env.Source = map[string]any{"name": strings.TrimSpace(source)}
+	}
+	line, err := json.Marshal(env)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(sinkDir, 0o755); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(filepath.Join(sinkDir, "events.jsonl"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.Write(append(line, '\n'))
+	return err
+}
+
+func firstNonEmptySink(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func sinkStringValue(value any) string {
+	if value == nil {
+		return ""
+	}
+	return fmt.Sprint(value)
+}
+
+// canonicalRecordSource projects the stable source identity into HashSlip's
+// data envelope. The source identity deliberately excludes run-specific
+// values so source_count remains a count of sources rather than deliveries.
+func canonicalRecordSource(msg contracts.QueueTaskMessage, record map[string]any) map[string]any {
+	name := firstNonEmptyRecordString(
+		recordString(record, "source"),
+		recordString(record, "source_name"),
+		recordString(record, "source_url"),
+		recordString(record, "url"),
+		recordString(record, "link"),
+		strings.TrimSpace(msg.SourceURL),
+		strings.TrimSpace(msg.ProjectID),
+	)
+	if name == "" {
+		return nil
+	}
+	return map[string]any{"name": name}
+}
+
+func canonicalRecordMetadata(msg contracts.QueueTaskMessage, eventType string, record map[string]any) map[string]any {
+	metadata := map[string]any{"record_type": eventType}
+	set := func(key, value string) {
+		if strings.TrimSpace(value) != "" {
+			metadata[key] = strings.TrimSpace(value)
+		}
+	}
+	set("run_id", msg.RunID)
+	set("task_id", msg.TaskID)
+	set("correlation_id", msg.CorrelationID)
+	set("project_id", msg.ProjectID)
+	set("version_id", msg.VersionID)
+	set("source_url", firstNonEmptyRecordString(
+		recordString(record, "source_url"),
+		recordString(record, "url"),
+		recordString(record, "link"),
+		msg.SourceURL,
+	))
+	return metadata
+}
+
+func firstNonEmptyRecordString(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
+}
+
+func recordString(record map[string]any, key string) string {
+	if record == nil {
+		return ""
+	}
+	value, ok := record[key]
+	if !ok {
+		return ""
+	}
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case fmt.Stringer:
+		return strings.TrimSpace(typed.String())
 	default:
-		return errors.New("unsupported event type")
+		return strings.TrimSpace(fmt.Sprint(typed))
 	}
-	if endpoint == "" {
-		return errors.New("empty hashslip endpoint path")
+}
+
+func mapFromAny(value any) map[string]any {
+	if typed, ok := value.(map[string]any); ok {
+		return typed
 	}
-	return a.forwardToHashSlip(ctx, msg, endpoint, payload)
+	return nil
 }
 
 func slotDatasetID(metadata map[string]any) string {
@@ -196,51 +368,52 @@ func (a *App) forwardToHashSlip(ctx context.Context, msg contracts.QueueTaskMess
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("X-Araneae-Run-Id", msg.RunID)
-	req.Header.Set("X-Araneae-Task-Id", msg.TaskID)
-	req.Header.Set("X-Araneae-Correlation-Id", msg.CorrelationID)
-	if value := metadataString(msg.Metadata, "hashslip_schedule_id", "schedule_id"); value != "" {
-		req.Header.Set("X-Araneae-Schedule-Id", value)
-	}
-	if value := metadataString(msg.Metadata, "cis_objective_id", "objective_id"); value != "" {
-		req.Header.Set("X-Araneae-Objective-Id", value)
-	}
-	if value := metadataString(msg.Metadata, "cis_artifact_id", "artifact_id"); value != "" {
-		req.Header.Set("X-Araneae-Artifact-Id", value)
-	}
-	if value := strings.TrimSpace(msg.ProjectID); value != "" {
-		req.Header.Set("X-Araneae-Project-Id", value)
-	}
-	if value := strings.TrimSpace(msg.VersionID); value != "" {
-		req.Header.Set("X-Araneae-Version-Id", value)
-	}
-	if slots := sinkSlots(msg.Metadata); len(slots) > 0 {
-		if raw, marshalErr := json.Marshal(slots); marshalErr == nil {
-			req.Header.Set("X-Araneae-Slots", string(raw))
-		}
-	}
+	// X-Pipeline-* is the sole HTTP projection of the canonical pipeline
+	// envelope. Product-specific fields remain in the request body or slot
+	// metadata; these headers carry only transport provenance.
 	// HashSlip uses this value to make a retried HTTP transfer resolve to the
 	// same durable event. The payload hash is stable for a given sink result.
 	idempotency := sha256.Sum256(append([]byte(msg.RunID+"\n"+msg.TaskID+"\n"+endpoint+"\n"), payload...))
 	idempotencyKey := "araneae:" + hex.EncodeToString(idempotency[:])
-	req.Header.Set("X-Araneae-Idempotency-Key", idempotencyKey)
-	// These headers are the HTTP data-plane projection of the canonical
-	// pipeline envelope. The older X-Araneae-* provenance headers remain during
-	// migration so existing HashSlip consumers continue to work.
+	eventID := "evt_" + hex.EncodeToString(idempotency[:16])
+	traceID := strings.TrimSpace(msg.CorrelationID)
+	now := time.Now().UTC().Format(time.RFC3339Nano)
 	req.Header.Set("X-Pipeline-Schema-Version", "1.0")
 	req.Header.Set("X-Pipeline-Message-Type", "hashslip.record.ingest")
-	req.Header.Set("X-Pipeline-Event-Id", "evt_"+hex.EncodeToString(idempotency[:16]))
-	req.Header.Set("X-Pipeline-Trace-Id", strings.TrimSpace(msg.CorrelationID))
+	req.Header.Set("X-Pipeline-Event-Id", eventID)
+	req.Header.Set("X-Pipeline-Trace-Id", traceID)
+	req.Header.Set("X-Pipeline-Causation-Id", strings.TrimSpace(msg.RunID))
+	req.Header.Set("X-Pipeline-Correlation-Id", traceID)
 	req.Header.Set("X-Pipeline-Idempotency-Key", idempotencyKey)
 	req.Header.Set("X-Pipeline-Producer", "araneae")
+	req.Header.Set("X-Pipeline-Occurred-At", now)
+	setPipelineHeader := func(name string, value string) {
+		if value != "" {
+			req.Header.Set(name, value)
+		}
+	}
+	setPipelineHeader("X-Pipeline-Run-Id", strings.TrimSpace(msg.RunID))
+	setPipelineHeader("X-Pipeline-Task-Id", strings.TrimSpace(msg.TaskID))
+	setPipelineHeader("X-Pipeline-Schedule-Id", metadataString(msg.Metadata, "hashslip_schedule_id", "schedule_id"))
+	setPipelineHeader("X-Pipeline-Objective-Id", metadataString(msg.Metadata, "cis_objective_id", "objective_id"))
+	setPipelineHeader("X-Pipeline-Artifact-Id", metadataString(msg.Metadata, "cis_artifact_id", "artifact_id"))
+	setPipelineHeader("X-Pipeline-Project-Id", strings.TrimSpace(msg.ProjectID))
+	setPipelineHeader("X-Pipeline-Version-Id", strings.TrimSpace(msg.VersionID))
+	setPipelineHeader("X-Pipeline-Record-Type", strings.TrimSpace(msg.Type))
+	if slots := sinkSlots(msg.Metadata); len(slots) > 0 {
+		if raw, marshalErr := json.Marshal(slots); marshalErr == nil {
+			req.Header.Set("X-Pipeline-Slots", string(raw))
+		}
+	}
 
 	token, err := a.getHashSlipBearerToken(ctx)
 	if err != nil {
-		a.log.Warn("get basalt s2s token failed; continue without bearer", zap.Error(err), zap.String("run_id", msg.RunID))
+		return fmt.Errorf("get basalt s2s token: %w", err)
 	}
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
+	if token == "" {
+		return errors.New("get basalt s2s token: empty token")
 	}
+	req.Header.Set("Authorization", "Bearer "+token)
 
 	client := a.httpClient
 	if timeoutSec := a.cfg.HashSlipTimeoutSeconds; timeoutSec > 0 {
@@ -374,6 +547,7 @@ func ensureSinkSDK(runDir string) error {
 
 const araneaeSinkSDKPython = `import json
 import os
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -396,17 +570,33 @@ def _append_jsonl(path: Path, payload: dict):
 
 
 def emit(event_type: str, data: dict):
+    event_id = "evt_" + uuid.uuid4().hex
+    trace_id = os.getenv("ARANEAE_TRACE_ID", "").strip() or event_id
+    run_id = os.getenv("ARANEAE_RUN_ID", "").strip()
+    task_id = os.getenv("ARANEAE_TASK_ID", "").strip()
+    source_name = str((data or {}).get("source") or "").strip()
     env = {
-        "type": str(event_type).strip().lower(),
+        "message_type": "araneae.record.ready",
+        "schema_version": "1.0",
+        "event_id": event_id,
+        "trace_id": trace_id,
+        "causation_id": run_id,
+        "idempotency_key": "araneae.record:" + event_id,
+        "producer": "araneae",
+        "retry_count": 0,
+        "occurred_at": _now_iso(),
+        "correlation": {"trace_id": trace_id, "run_id": run_id, "task_id": task_id},
         "data": data or {},
-        "emitted_at": _now_iso(),
+        "metadata": {"record_type": str(event_type).strip().lower()},
     }
+    if source_name:
+        env["source"] = {"name": source_name}
     if _MODE == "araneae":
         _append_jsonl(Path(_SINK_DIR) / "events.jsonl", env)
-        print(f"[araneae_sink] queued type={env['type']}")
+        print(f"[araneae_sink] queued type={env['metadata']['record_type']}")
     else:
         _append_jsonl(Path(_LOCAL_FILE), env)
-        print(f"[araneae_sink] local type={env['type']} data={json.dumps(env['data'], ensure_ascii=False)}")
+        print(f"[araneae_sink] local type={env['metadata']['record_type']} data={json.dumps(env['data'], ensure_ascii=False)}")
 
 
 def emit_timeseries(source: str, metric: str, timestamp: str, value, tags=None, payload=None, hash_key: str = "", bucket_date: str = ""):

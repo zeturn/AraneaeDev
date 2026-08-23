@@ -65,15 +65,18 @@ func TestControlIntegration_TriggerQueueCallbackFlow(t *testing.T) {
 
 	select {
 	case delivery := <-msgCh:
-		var queued contracts.QueueTaskMessage
+		var queued contracts.TaskEnvelope
 		if err := json.Unmarshal(delivery.Body, &queued); err != nil {
 			t.Fatalf("decode queued message: %v", err)
 		}
-		if queued.RunID != runID {
-			t.Fatalf("run id mismatch queued=%s trigger=%s", queued.RunID, runID)
+		if queued.MessageType != "araneae.task.requested" || queued.SchemaVersion != "1.0" {
+			t.Fatalf("unexpected task envelope: %+v", queued)
 		}
-		if queued.TaskID != task.ID {
-			t.Fatalf("task id mismatch queued=%s task=%s", queued.TaskID, task.ID)
+		if queued.Payload.RunID != runID {
+			t.Fatalf("run id mismatch queued=%s trigger=%s", queued.Payload.RunID, runID)
+		}
+		if queued.Payload.TaskID != task.ID {
+			t.Fatalf("task id mismatch queued=%s task=%s", queued.Payload.TaskID, task.ID)
 		}
 	case <-time.After(8 * time.Second):
 		t.Fatal("timed out waiting for rabbit queue message")

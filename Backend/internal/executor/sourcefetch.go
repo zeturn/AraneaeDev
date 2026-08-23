@@ -146,13 +146,78 @@ func (a *App) fetchAndEmitSource(ctx context.Context, taskType, sourceURL, sinkD
 		a.recordSourceFetchSuccess(state, now, result)
 		return "source not modified (conditional request)", nil
 	}
-	out, err := emitSourceBody(ctx, taskType, sourceURL, sinkDir, result.Body, options)
+	// A retry reuses the run directory. Stage the newly fetched source in a
+	// sibling directory and publish it only after parsing/emission succeeds;
+	// otherwise O_APPEND would resend records from the previous attempt.
+	out, err := emitSourceBodyFresh(ctx, taskType, sourceURL, sinkDir, result.Body, options)
 	if err != nil {
 		a.recordSourceFetchFailure(state, now, err)
 		return out, err
 	}
 	a.recordSourceFetchSuccess(state, now, result)
 	return out, nil
+}
+
+func emitSourceBodyFresh(ctx context.Context, taskType, sourceURL, sinkDir string, body []byte, options sourceFetchOptions) (string, error) {
+	stagingDir := sinkDir + ".attempt"
+	if err := os.RemoveAll(stagingDir); err != nil {
+		return "", fmt.Errorf("reset source sink staging: %w", err)
+	}
+	if err := os.MkdirAll(stagingDir, 0o755); err != nil {
+		return "", fmt.Errorf("create source sink staging: %w", err)
+	}
+	out, err := emitSourceBody(ctx, taskType, sourceURL, stagingDir, body, options)
+	if err != nil {
+		_ = os.RemoveAll(stagingDir)
+		return out, err
+	}
+	if err := publishFreshSourceSink(stagingDir, sinkDir); err != nil {
+		_ = os.RemoveAll(stagingDir)
+		return out, err
+	}
+	return out, nil
+}
+
+func publishFreshSourceSink(stagingDir, sinkDir string) error {
+	if err := os.MkdirAll(sinkDir, 0o755); err != nil {
+		return err
+	}
+	staged, err := os.ReadDir(stagingDir)
+	if err != nil {
+		return err
+	}
+	kept := make(map[string]struct{}, len(staged))
+	for _, entry := range staged {
+		if entry.IsDir() || !isSourceSinkFile(entry.Name()) {
+			continue
+		}
+		target := filepath.Join(sinkDir, entry.Name())
+		if err := os.Rename(filepath.Join(stagingDir, entry.Name()), target); err != nil {
+			return err
+		}
+		kept[entry.Name()] = struct{}{}
+	}
+	previous, err := os.ReadDir(sinkDir)
+	if err != nil {
+		return err
+	}
+	for _, entry := range previous {
+		if entry.IsDir() || !isSourceSinkFile(entry.Name()) {
+			continue
+		}
+		if _, ok := kept[entry.Name()]; ok {
+			continue
+		}
+		if err := os.Remove(filepath.Join(sinkDir, entry.Name())); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	return os.RemoveAll(stagingDir)
+}
+
+func isSourceSinkFile(name string) bool {
+	lower := strings.ToLower(strings.TrimSpace(name))
+	return strings.HasSuffix(lower, ".jsonl") || strings.HasSuffix(lower, ".json")
 }
 
 func emitSourceBody(ctx context.Context, taskType, sourceURL, sinkDir string, body []byte, options sourceFetchOptions) (string, error) {
@@ -390,24 +455,7 @@ func emitStructured(sinkDir, instanceID, schemaID string, data map[string]interf
 	if err != nil {
 		return err
 	}
-	env := sinkEnvelope{
-		Type:      "structured",
-		Data:      raw,
-		EmittedAt: time.Now().UTC().Format(time.RFC3339),
-	}
-	line, err := json.Marshal(env)
-	if err != nil {
-		return err
-	}
-	f, err := os.OpenFile(filepath.Join(sinkDir, "events.jsonl"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	if _, err := f.Write(append(line, '\n')); err != nil {
-		return err
-	}
-	return nil
+	return appendSinkEnvelope(sinkDir, "structured", raw, map[string]any{"schema_id": schemaID}, instanceID)
 }
 
 // ---- RSS / Atom / RDF parsing ----

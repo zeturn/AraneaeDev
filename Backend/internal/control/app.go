@@ -553,7 +553,27 @@ func (a *App) publishRun(taskID, scheduleID, source, projectID, versionID, entry
 		CorrelationID: run.CorrelationID,
 		RunToken:      runToken,
 	}
-	body, err := json.Marshal(payload)
+	body, err := json.Marshal(contracts.TaskEnvelope{
+		MessageType:    "araneae.task.requested",
+		SchemaVersion:  "1.0",
+		EventID:        "evt_" + run.ID,
+		TraceID:        run.CorrelationID,
+		CausationID:    taskID,
+		IdempotencyKey: "araneae.task.requested:" + run.ID,
+		Producer:       "araneae",
+		RetryCount:     0,
+		OccurredAt:     run.CreatedAt.UTC().Format(time.RFC3339Nano),
+		Correlation: map[string]any{
+			"trace_id":       run.CorrelationID,
+			"run_id":         run.ID,
+			"task_id":        taskID,
+			"schedule_id":    scheduleID,
+			"project_id":     projectID,
+			"version_id":     versionID,
+			"correlation_id": run.CorrelationID,
+		},
+		Payload: payload,
+	})
 	if err != nil {
 		return nil, err
 	}

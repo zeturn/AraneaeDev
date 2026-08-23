@@ -18,16 +18,23 @@ import (
 )
 
 func TestProcessSinkArtifacts_ForwardsToHashSlip(t *testing.T) {
-	var tsCalls, textCalls int
+	var datasetCalls int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/api/v1/timeseries/records":
-			tsCalls++
-		case "/api/v1/text/records":
-			textCalls++
-		default:
+		if r.URL.Path == "/oauth/token" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"access_token":"test-token","expires_in":300}`))
+			return
+		}
+		if r.URL.Path != "/api/v1/datasets/ds_sink/records" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
+		if r.Header.Get("X-Pipeline-Run-Id") != "run-1" || r.Header.Get("X-Pipeline-Task-Id") != "task-1" {
+			t.Fatalf("missing canonical provenance headers: %v", r.Header)
+		}
+		if r.Header.Get("X-Araneae-Run-Id") != "" || r.Header.Get("X-Araneae-Task-Id") != "" {
+			t.Fatalf("deprecated provenance headers must not be sent: %v", r.Header)
+		}
+		datasetCalls++
 		w.WriteHeader(http.StatusCreated)
 	}))
 	defer server.Close()
@@ -39,7 +46,15 @@ func TestProcessSinkArtifacts_ForwardsToHashSlip(t *testing.T) {
 	}
 	records := []map[string]any{
 		{
-			"type": "timeseries",
+			"message_type":    "araneae.record.ready",
+			"schema_version":  "1.0",
+			"event_id":        "evt_timeseries",
+			"trace_id":        "corr-1",
+			"idempotency_key": "araneae.record:evt_timeseries",
+			"producer":        "araneae",
+			"retry_count":     0,
+			"occurred_at":     time.Now().UTC().Format(time.RFC3339Nano),
+			"correlation":     map[string]any{"trace_id": "corr-1"},
 			"data": map[string]any{
 				"source":      "araneae",
 				"metric":      "fed_overnight_rate",
@@ -48,15 +63,25 @@ func TestProcessSinkArtifacts_ForwardsToHashSlip(t *testing.T) {
 				"hash_key":    "fed_overnight_rate",
 				"bucket_date": time.Now().UTC().Format("2006-01-02"),
 			},
+			"metadata": map[string]any{"record_type": "timeseries"},
 		},
 		{
-			"type": "text",
+			"message_type":    "araneae.record.ready",
+			"schema_version":  "1.0",
+			"event_id":        "evt_text",
+			"trace_id":        "corr-1",
+			"idempotency_key": "araneae.record:evt_text",
+			"producer":        "araneae",
+			"retry_count":     0,
+			"occurred_at":     time.Now().UTC().Format(time.RFC3339Nano),
+			"correlation":     map[string]any{"trace_id": "corr-1"},
 			"data": map[string]any{
 				"source":  "araneae",
 				"title":   "Fed statement",
 				"url":     "https://example.com/fed",
 				"content": "sample",
 			},
+			"metadata": map[string]any{"record_type": "text"},
 		},
 	}
 	f, err := os.Create(filepath.Join(sinkDir, "events.jsonl"))
@@ -73,11 +98,12 @@ func TestProcessSinkArtifacts_ForwardsToHashSlip(t *testing.T) {
 
 	app := &App{
 		cfg: common.ExecutorConfig{
-			SinkEnabled:            true,
-			SinkDirName:            ".araneae/sink",
-			HashSlipBaseURL:        server.URL,
-			HashSlipTimeseriesPath: "/api/v1/timeseries/records",
-			HashSlipTextPath:       "/api/v1/text/records",
+			SinkEnabled:        true,
+			SinkDirName:        ".araneae/sink",
+			HashSlipBaseURL:    server.URL,
+			BasaltTokenURL:     server.URL + "/oauth/token",
+			BasaltClientID:     "test-client",
+			BasaltClientSecret: "test-secret",
 		},
 		log:        zap.NewNop(),
 		httpClient: &http.Client{Timeout: 5 * time.Second},
@@ -87,6 +113,7 @@ func TestProcessSinkArtifacts_ForwardsToHashSlip(t *testing.T) {
 		RunID:         "run-1",
 		TaskID:        "task-1",
 		CorrelationID: "corr-1",
+		Metadata:      map[string]any{"hashslip_slot": map[string]any{"dataset_id": "ds_sink"}},
 	}, runDir)
 	if err != nil {
 		t.Fatalf("process sink failed: %v", err)
@@ -94,14 +121,19 @@ func TestProcessSinkArtifacts_ForwardsToHashSlip(t *testing.T) {
 	if !strings.Contains(summary, "total=2") {
 		t.Fatalf("unexpected summary: %s", summary)
 	}
-	if tsCalls != 1 || textCalls != 1 {
-		t.Fatalf("unexpected calls ts=%d text=%d", tsCalls, textCalls)
+	if datasetCalls != 2 {
+		t.Fatalf("unexpected dataset calls=%d", datasetCalls)
 	}
 }
 
 func TestProcessSinkArtifacts_ForwardsStructuredEventToTaskHashSlipSlot(t *testing.T) {
 	var datasetCalls int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/oauth/token" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"access_token":"test-token","expires_in":300}`))
+			return
+		}
 		if r.URL.Path != "/api/v1/datasets/ds_target/records" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
@@ -113,7 +145,9 @@ func TestProcessSinkArtifacts_ForwardsStructuredEventToTaskHashSlipSlot(t *testi
 		}
 		datasetCalls++
 		var payload struct {
-			Data map[string]any `json:"data"`
+			Data     map[string]any `json:"data"`
+			Source   map[string]any `json:"source"`
+			Metadata map[string]any `json:"metadata"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Fatalf("decode payload: %v", err)
@@ -123,6 +157,12 @@ func TestProcessSinkArtifacts_ForwardsStructuredEventToTaskHashSlipSlot(t *testi
 		}
 		if payload.Data["title"] != "Example article" {
 			t.Fatalf("expected source record fields to be forwarded, got %#v", payload.Data)
+		}
+		if payload.Source["name"] != "https://example.com/blog/rss.xml" {
+			t.Fatalf("expected canonical source envelope, got %#v", payload.Source)
+		}
+		if payload.Metadata["record_type"] != "structured" {
+			t.Fatalf("expected canonical record metadata, got %#v", payload.Metadata)
 		}
 		w.WriteHeader(http.StatusCreated)
 	}))
@@ -134,7 +174,15 @@ func TestProcessSinkArtifacts_ForwardsStructuredEventToTaskHashSlipSlot(t *testi
 		t.Fatalf("mkdir sink dir failed: %v", err)
 	}
 	record := map[string]any{
-		"type": "structured",
+		"message_type":    "araneae.record.ready",
+		"schema_version":  "1.0",
+		"event_id":        "evt_structured",
+		"trace_id":        "corr-1",
+		"idempotency_key": "araneae.record:evt_structured",
+		"producer":        "araneae",
+		"retry_count":     0,
+		"occurred_at":     time.Now().UTC().Format(time.RFC3339Nano),
+		"correlation":     map[string]any{"trace_id": "corr-1"},
 		"data": map[string]any{
 			"instance_id": "source-a",
 			"schema_id":   "article",
@@ -143,6 +191,7 @@ func TestProcessSinkArtifacts_ForwardsStructuredEventToTaskHashSlipSlot(t *testi
 				"title": "Example article",
 			},
 		},
+		"metadata": map[string]any{"record_type": "structured"},
 	}
 	raw, _ := json.Marshal(record)
 	if err := os.WriteFile(filepath.Join(sinkDir, "events.jsonl"), append(raw, '\n'), 0o644); err != nil {
@@ -151,9 +200,12 @@ func TestProcessSinkArtifacts_ForwardsStructuredEventToTaskHashSlipSlot(t *testi
 
 	app := &App{
 		cfg: common.ExecutorConfig{
-			SinkEnabled:     true,
-			SinkDirName:     ".araneae/sink",
-			HashSlipBaseURL: server.URL,
+			SinkEnabled:        true,
+			SinkDirName:        ".araneae/sink",
+			HashSlipBaseURL:    server.URL,
+			BasaltTokenURL:     server.URL + "/oauth/token",
+			BasaltClientID:     "test-client",
+			BasaltClientSecret: "test-secret",
 		},
 		log:        zap.NewNop(),
 		httpClient: &http.Client{Timeout: 5 * time.Second},
@@ -163,6 +215,7 @@ func TestProcessSinkArtifacts_ForwardsStructuredEventToTaskHashSlipSlot(t *testi
 		RunID:         "run-1",
 		TaskID:        "task-1",
 		CorrelationID: "corr-1",
+		SourceURL:     "https://example.com/blog/rss.xml",
 		Metadata: map[string]any{
 			"hashslip_slot": map[string]any{
 				"dataset_id": "ds_target",
