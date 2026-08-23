@@ -465,13 +465,14 @@ def run_e2e() -> Dict[str, Any]:
                 "description": "cron auto run verification",
                 "enabled": True,
                 "order": {
+					"version": "1.0",
                     "name": "e2e-cron-schedule",
-                    "schedule": [
+					"steps": [
                         {
                             "task_id": chain_task_1["id"],
                             "trigger": "crons",
-                            "crons": "*/8 * * * * *",
-                            "node": [node_queue],
+                            "cron_expr": "*/8 * * * * *",
+                            "node_queue": node_queue,
                         }
                     ],
                 },
@@ -490,17 +491,18 @@ def run_e2e() -> Dict[str, Any]:
                 "description": "chain trigger verification",
                 "enabled": False,
                 "order": {
+					"version": "1.0",
                     "name": "e2e-chain-schedule",
-                    "schedule": [
+					"steps": [
                         {
                             "task_id": chain_task_1["id"],
                             "trigger": "api",
-                            "node": [node_queue],
+                            "node_queue": node_queue,
                         },
                         {
                             "task_id": chain_task_2["id"],
                             "trigger": "previous",
-                            "node": [node_queue],
+                            "node_queue": node_queue,
                         },
                     ],
                 },

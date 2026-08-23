@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -12,16 +13,16 @@ import (
 
 	"araneae-go/internal/common"
 
-	"github.com/google/uuid"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
 
 var collectionTokenRE = regexp.MustCompile(`[^a-zA-Z0-9_.-]+`)
 
 const pipelineEnvelopeSchemaVersion = "1.0"
 
-type moiipEnvelope struct {
+type pipelineEnvelope struct {
 	MessageType    string         `json:"message_type"`
 	SchemaVersion  string         `json:"schema_version"`
 	EventID        string         `json:"event_id"`
@@ -31,7 +32,6 @@ type moiipEnvelope struct {
 	Producer       string         `json:"producer"`
 	RetryCount     int            `json:"retry_count"`
 	OccurredAt     string         `json:"occurred_at"`
-	CreatedAt      string         `json:"created_at"`
 	Correlation    map[string]any `json:"correlation"`
 	Payload        map[string]any `json:"payload"`
 }
@@ -41,30 +41,30 @@ func (a *App) publishCrawlSucceededEvent(ctx context.Context, run common.TaskRun
 }
 
 func (a *App) publishCrawlTerminalEvent(ctx context.Context, run common.TaskRun) error {
-	if !a.cfg.MOIIPEventsEnabled {
+	if !a.cfg.PipelineEventsEnabled {
 		return nil
 	}
 	envelope, ok, err := a.buildCrawlTerminalEnvelope(ctx, run, run.Status)
 	if err != nil || !ok {
 		return err
 	}
-	return a.publishMOIIPEnvelope(ctx, envelope)
+	return a.enqueuePipelineEnvelope(envelope)
 }
 
-func (a *App) buildCrawlSucceededEnvelope(ctx context.Context, run common.TaskRun) (moiipEnvelope, bool, error) {
+func (a *App) buildCrawlSucceededEnvelope(ctx context.Context, run common.TaskRun) (pipelineEnvelope, bool, error) {
 	return a.buildCrawlTerminalEnvelope(ctx, run, "success")
 }
 
-func (a *App) buildCrawlTerminalEnvelope(ctx context.Context, run common.TaskRun, status string) (moiipEnvelope, bool, error) {
+func (a *App) buildCrawlTerminalEnvelope(ctx context.Context, run common.TaskRun, status string) (pipelineEnvelope, bool, error) {
 	var task common.Task
 	if err := a.db.WithContext(ctx).Where("id = ?", run.TaskID).First(&task).Error; err != nil {
-		return moiipEnvelope{}, false, err
+		return pipelineEnvelope{}, false, err
 	}
 	taskType := strings.ToLower(strings.TrimSpace(task.Type))
 	metadata := parseMetadataJSON(task.MetadataJSON)
 	hashslipSlot := metadataMap(metadata, "hashslip_slot")
 	if taskType != "rss" && taskType != "api" && taskType != "page" && len(hashslipSlot) == 0 {
-		return moiipEnvelope{}, false, nil
+		return pipelineEnvelope{}, false, nil
 	}
 	status = normalizeCrawlStatus(status)
 	messageStatus := map[string]string{"success": "succeeded", "canceled": "canceled", "failed": "failed"}[status]
@@ -99,8 +99,8 @@ func (a *App) buildCrawlTerminalEnvelope(ctx context.Context, run common.TaskRun
 		}
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	eventID := "evt_" + uuid.NewString()
-	envelope := moiipEnvelope{
+	eventID := "evt_" + stableShortHex(messageType+":"+run.ID)
+	envelope := pipelineEnvelope{
 		MessageType:    messageType,
 		SchemaVersion:  pipelineEnvelopeSchemaVersion,
 		EventID:        eventID,
@@ -110,7 +110,6 @@ func (a *App) buildCrawlTerminalEnvelope(ctx context.Context, run common.TaskRun
 		Producer:       "araneae",
 		RetryCount:     0,
 		OccurredAt:     now,
-		CreatedAt:      now,
 		Correlation: map[string]any{
 			"mission_id":   missionID,
 			"task_id":      task.ID,
@@ -169,15 +168,24 @@ func (a *App) buildCrawlTerminalEnvelope(ctx context.Context, run common.TaskRun
 	return envelope, true, nil
 }
 
-func (a *App) publishMOIIPEnvelope(ctx context.Context, envelope moiipEnvelope) error {
-	url := strings.TrimSpace(a.cfg.MOIIPRabbitURL)
-	exchange := strings.TrimSpace(a.cfg.MOIIPEventExchange)
+func (a *App) publishPipelineEnvelope(ctx context.Context, envelope pipelineEnvelope) error {
+	url := strings.TrimSpace(a.cfg.PipelineRabbitURL)
+	exchange := strings.TrimSpace(a.cfg.PipelineEventExchange)
 	if url == "" || exchange == "" {
 		return nil
 	}
 	body, err := json.Marshal(envelope)
 	if err != nil {
 		return err
+	}
+	return a.publishPipelineBody(ctx, envelope.MessageType, envelope.EventID, body)
+}
+
+func (a *App) publishPipelineBody(ctx context.Context, messageType, eventID string, body []byte) error {
+	url := strings.TrimSpace(a.cfg.PipelineRabbitURL)
+	exchange := strings.TrimSpace(a.cfg.PipelineEventExchange)
+	if url == "" || exchange == "" {
+		return nil
 	}
 	conn, err := amqp.Dial(url)
 	if err != nil {
@@ -192,14 +200,101 @@ func (a *App) publishMOIIPEnvelope(ctx context.Context, envelope moiipEnvelope) 
 	if err := ch.ExchangeDeclare(exchange, "topic", true, false, false, false, nil); err != nil {
 		return err
 	}
-	return ch.PublishWithContext(ctx, exchange, envelope.MessageType, false, false, amqp.Publishing{
+	if err := ch.Confirm(false); err != nil {
+		return fmt.Errorf("enable publisher confirms: %w", err)
+	}
+	confirms := ch.NotifyPublish(make(chan amqp.Confirmation, 1))
+	if err := ch.PublishWithContext(ctx, exchange, messageType, false, false, amqp.Publishing{
 		ContentType:  "application/json",
 		DeliveryMode: amqp.Persistent,
-		MessageId:    envelope.EventID,
+		MessageId:    eventID,
 		Timestamp:    time.Now().UTC(),
-		Type:         envelope.MessageType,
+		Type:         messageType,
 		Body:         body,
-	})
+	}); err != nil {
+		return err
+	}
+	timer := time.NewTimer(10 * time.Second)
+	defer timer.Stop()
+	select {
+	case confirmation, ok := <-confirms:
+		if !ok || !confirmation.Ack {
+			return fmt.Errorf("rabbitmq negatively acknowledged message %s", eventID)
+		}
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return fmt.Errorf("timed out waiting for rabbitmq confirm for %s", eventID)
+	}
+}
+
+func (a *App) enqueuePipelineEnvelope(envelope pipelineEnvelope) error {
+	if !a.cfg.PipelineEventsEnabled {
+		return nil
+	}
+	body, err := json.Marshal(envelope)
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	var existing common.PipelineEventOutbox
+	lookupErr := a.db.Where("event_id = ?", envelope.EventID).First(&existing).Error
+	if lookupErr != nil && !errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+		return lookupErr
+	}
+	if errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+		if err := a.db.Create(&common.PipelineEventOutbox{
+			ID: uuidForEvent(envelope.EventID), EventID: envelope.EventID,
+			MessageType: envelope.MessageType, Payload: string(body), Status: "pending",
+			NextAttemptAt: now, CreatedAt: now, UpdatedAt: now,
+		}).Error; err != nil {
+			// A terminal callback can be delivered more than once. A stable event
+			// id turns that race into an idempotent no-op.
+			if lookup := a.db.Where("event_id = ?", envelope.EventID).First(&existing).Error; lookup != nil {
+				return err
+			}
+		}
+	}
+	return a.drainPipelineEventOutbox()
+}
+
+func (a *App) drainPipelineEventOutbox() error {
+	a.pipelineOutboxMu.Lock()
+	defer a.pipelineOutboxMu.Unlock()
+	var entries []common.PipelineEventOutbox
+	if err := a.db.Where("status IN ? AND next_attempt_at <= ?", []string{"pending", "retrying"}, time.Now()).Order("created_at ASC").Limit(25).Find(&entries).Error; err != nil {
+		return err
+	}
+	var firstErr error
+	for _, entry := range entries {
+		attempts := entry.Attempts + 1
+		err := a.publishPipelineBody(context.Background(), entry.MessageType, entry.EventID, []byte(entry.Payload))
+		if err == nil {
+			now := time.Now().UTC()
+			if updateErr := a.db.Model(&common.PipelineEventOutbox{}).Where("id = ?", entry.ID).Updates(map[string]interface{}{
+				"status": "published", "published_at": now, "attempts": attempts, "last_error": "", "updated_at": now,
+			}).Error; updateErr != nil && firstErr == nil {
+				firstErr = updateErr
+			}
+			continue
+		}
+		wait := time.Duration(1<<minOutboxInt(attempts, 6)) * time.Second
+		next := time.Now().Add(wait)
+		if updateErr := a.db.Model(&common.PipelineEventOutbox{}).Where("id = ?", entry.ID).Updates(map[string]interface{}{
+			"status": "retrying", "attempts": attempts, "next_attempt_at": next, "last_error": err.Error(), "updated_at": time.Now(),
+		}).Error; updateErr != nil && firstErr == nil {
+			firstErr = updateErr
+		}
+		if firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+func uuidForEvent(eventID string) string {
+	return "outbox_" + stableShortHex(eventID)
 }
 
 func (a *App) publishCrawlSucceededEventAsync(run common.TaskRun) {
@@ -211,7 +306,7 @@ func (a *App) publishCrawlTerminalEventAsync(run common.TaskRun) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := a.publishCrawlTerminalEvent(ctx, run); err != nil {
-			a.log.Warn("publish MOIIP crawl terminal event failed", zap.Error(err), zap.String("run_id", run.ID), zap.String("status", run.Status))
+			a.log.Warn("publish pipeline crawl terminal event failed", zap.Error(err), zap.String("run_id", run.ID), zap.String("status", run.Status))
 		}
 	}()
 }

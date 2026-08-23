@@ -95,6 +95,23 @@ type TaskOutbox struct {
 	UpdatedAt     time.Time  `gorm:"not null" json:"updated_at"`
 }
 
+// PipelineEventOutbox is the durable source of truth for terminal crawl
+// events. A run may finish while RabbitMQ is unavailable; the event remains
+// retryable until a publisher confirm is received.
+type PipelineEventOutbox struct {
+	ID            string     `gorm:"primaryKey;size:36" json:"id"`
+	EventID       string     `gorm:"uniqueIndex;size:128;not null" json:"event_id"`
+	MessageType   string     `gorm:"size:128;not null" json:"message_type"`
+	Payload       string     `gorm:"type:text;not null" json:"-"`
+	Status        string     `gorm:"index;size:24;not null" json:"status"`
+	Attempts      int        `gorm:"not null;default:0" json:"attempts"`
+	NextAttemptAt time.Time  `gorm:"index;not null" json:"next_attempt_at"`
+	LastError     string     `gorm:"type:text" json:"last_error,omitempty"`
+	PublishedAt   *time.Time `json:"published_at,omitempty"`
+	CreatedAt     time.Time  `gorm:"not null" json:"created_at"`
+	UpdatedAt     time.Time  `gorm:"not null" json:"updated_at"`
+}
+
 type Schedule struct {
 	ID              string            `gorm:"primaryKey;size:36" json:"id"`
 	Name            string            `gorm:"size:128;not null" json:"name"`
@@ -281,6 +298,7 @@ func AutoMigrateModels() []interface{} {
 		&ScheduleRunTime{},
 		&TaskRun{},
 		&TaskOutbox{},
+		&PipelineEventOutbox{},
 		&RSSSubscription{},
 		&RSSItem{},
 		&Node{},

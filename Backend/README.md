@@ -158,9 +158,6 @@ Executor 现在支持在任务运行目录中收集 sink 接收区文件并自�
 - `EXECUTOR_SINK_ENABLED`：是否启用 sink 转存（默认 `true`）
 - `EXECUTOR_SINK_STRICT`：转存失败是否让任务失败（默认 `false`）
 - `HASHSLIP_BASE_URL`：HashSlip 地址（例如 `http://hashslip:8106`）
-- `HASHSLIP_TIMESERIES_PATH`：默认 `/api/v1/timeseries/records`
-- `HASHSLIP_TEXT_PATH`：默认 `/api/v1/text/records`
-- `HASHSLIP_STRUCTURED_PATH`：默认 `/api/v1/data`
 - 可选 BasaltPass S2S：`BASALTPASS_TOKEN_URL` + `BASALTPASS_OAUTH_CLIENT_ID` + `BASALTPASS_OAUTH_CLIENT_SECRET`
 
 ### Python 爬虫使用方式

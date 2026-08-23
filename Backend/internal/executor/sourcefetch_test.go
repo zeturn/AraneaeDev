@@ -378,6 +378,46 @@ func TestSourceFetchUsesConditionalRequestAndPersistsValidators(t *testing.T) {
 	}
 }
 
+func TestSourceFetchReplacesSinkOnSuccessfulRetry(t *testing.T) {
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.Header().Set("Content-Type", "application/rss+xml")
+		_, _ = w.Write([]byte(`<rss version="2.0"><channel><item><title>Refresh ` + string(rune('0'+requests)) + `</title><guid>refresh-` + string(rune('0'+requests)) + `</guid></item></channel></rss>`))
+	}))
+	defer server.Close()
+
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "executor.db")), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+	if err := db.AutoMigrate(&store.SourceFetchState{}); err != nil {
+		t.Fatal(err)
+	}
+	app := &App{db: db, log: zap.NewNop()}
+	sinkDir := t.TempDir()
+	for attempt := 0; attempt < 2; attempt++ {
+		if _, err := app.fetchAndEmitSource(context.Background(), "rss", server.URL, sinkDir, "task-refresh", defaultSourceFetchOptions()); err != nil {
+			t.Fatalf("fetch attempt %d: %v", attempt+1, err)
+		}
+	}
+	raw, err := os.ReadFile(filepath.Join(sinkDir, "events.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lines := strings.Count(strings.TrimSpace(string(raw)), "\n") + 1; lines != 1 {
+		t.Fatalf("sink lines after retry = %d, want 1", lines)
+	}
+	if requests != 2 {
+		t.Fatalf("requests=%d, want 2", requests)
+	}
+}
+
 func readFirstSinkEvent(t *testing.T, path string) sinkEnvelope {
 	t.Helper()
 	f, err := os.Open(path)

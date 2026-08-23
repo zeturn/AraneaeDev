@@ -212,23 +212,6 @@ func (a *App) hasRecentManualRun(taskID, scheduleID string) (bool, error) {
 	return count > 0, nil
 }
 
-type legacyScheduleOrder struct {
-	Name     string               `json:"name"`
-	Schedule []legacyScheduleStep `json:"schedule"`
-}
-
-type legacyScheduleStep struct {
-	TaskID     string   `json:"task_id"`
-	TaskStatus string   `json:"task_status"`
-	Name       string   `json:"name"`
-	ProjectID  string   `json:"project_id"`
-	Node       []string `json:"node"`
-	Trigger    string   `json:"trigger"`
-	Crons      string   `json:"crons"`
-	RunAt      string   `json:"run_at"`
-	Previous   string   `json:"previous"`
-}
-
 func (a *App) setupRoutes() {
 	a.http.Get("/healthz", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"status": "ok"})

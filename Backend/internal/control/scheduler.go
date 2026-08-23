@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"araneae-go/internal/common"
-	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -157,30 +156,14 @@ func (a *App) clearScheduleTimers(scheduleID string) {
 }
 
 // loadPendingRunTimes returns the not-yet-fired firing times for a schedule, ordered
-// ascending. For backwards compatibility, a legacy datetime schedule that only has a
-// single Schedule.RunAt (and no ScheduleRunTime rows yet) is migrated into a row.
+// ascending. Datetime schedules are persisted through schedule_run_times at creation
+// or update time; the scheduler does not perform implicit legacy row migration.
 func (a *App) loadPendingRunTimes(schedule common.Schedule) ([]common.ScheduleRunTime, error) {
 	var runTimes []common.ScheduleRunTime
 	if err := a.db.Where("schedule_id = ? AND triggered_at IS NULL", schedule.ID).Order("run_at asc").Find(&runTimes).Error; err != nil {
 		return nil, err
 	}
-	if len(runTimes) > 0 {
-		return runTimes, nil
-	}
-	if schedule.TriggerType == "datetime" && schedule.RunAt != nil {
-		rt := common.ScheduleRunTime{
-			ID:         uuid.NewString(),
-			ScheduleID: schedule.ID,
-			RunAt:      *schedule.RunAt,
-			CreatedAt:  time.Now(),
-			UpdatedAt:  time.Now(),
-		}
-		if err := a.db.Create(&rt).Error; err != nil {
-			return nil, err
-		}
-		return []common.ScheduleRunTime{rt}, nil
-	}
-	return nil, nil
+	return runTimes, nil
 }
 
 func (a *App) runOneTimeSchedule(schedule common.Schedule, runTimeID string) {

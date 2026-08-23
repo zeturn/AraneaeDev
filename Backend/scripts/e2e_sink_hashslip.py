@@ -6,7 +6,7 @@ Flow:
 2) Start Araneae control/executor (local go run)
 3) Upload a crawler artifact that uses `araneae_sink.emit_timeseries`
 4) Trigger task
-5) Verify HashSlip contains the emitted timeseries point
+5) Verify HashSlip contains the emitted record in the canonical DataSet slot
 """
 
 from __future__ import annotations
@@ -22,12 +22,13 @@ import urllib.parse
 import urllib.request
 import uuid
 import zipfile
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE = ROOT.parent.parent
-HASHSLIP_ROOT = WORKSPACE / "HashSlip"
+HASHSLIP_ROOT = WORKSPACE / "HashSlipDev"
 
 CONTROL_PORT = 18280
 GRPC_PORT = 19190
@@ -38,6 +39,32 @@ HASHSLIP_PORT = 8106
 CONTROL_BASE = f"http://127.0.0.1:{CONTROL_PORT}"
 API_BASE = f"{CONTROL_BASE}/api/v1"
 HASHSLIP_BASE = f"http://127.0.0.1:{HASHSLIP_PORT}"
+
+
+class _E2ETokenHandler(BaseHTTPRequestHandler):
+    """Minimal local token endpoint; it is never used by production config."""
+
+    def do_POST(self):  # noqa: N802 - BaseHTTPRequestHandler API
+        length = int(self.headers.get("Content-Length", "0"))
+        if length:
+            self.rfile.read(length)
+        body = json.dumps({"access_token": "araneae-sink-e2e-token", "expires_in": 300}).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, _format: str, *_args: Any) -> None:
+        return
+
+
+def start_e2e_token_server() -> ThreadingHTTPServer:
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _E2ETokenHandler)
+    import threading
+
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
 
 
 def load_repo_env() -> Dict[str, str]:
@@ -100,9 +127,15 @@ def ensure_rabbitmq() -> None:
 def ensure_hashslip() -> None:
     if is_port_open("127.0.0.1", HASHSLIP_PORT):
         return
+    compose_env = os.environ.copy()
+    # The local fixture deliberately disables external identity introspection;
+    # the Araneae executor still sends a bearer token to exercise the full
+    # authenticated request shape without depending on a local BasaltPass.
+    compose_env["HASHSLIP_BASALT_AUTH_ENABLED"] = "false"
     subprocess.run(
         ["docker", "compose", "up", "-d", "--build", "timescaledb", "textdb", "hashslip"],
         cwd=str(HASHSLIP_ROOT),
+        env=compose_env,
         check=True,
     )
     deadline = time.time() + 180
@@ -205,6 +238,64 @@ def api_upload(path: str, token: str, file_name: str, content: bytes) -> Any:
         raise RuntimeError(f"upload failed: {exc.code} {detail}") from exc
 
 
+def hashslip_json(method: str, path: str, payload: Any = None) -> Any:
+    headers = {"Accept": "application/json", "Authorization": "Bearer araneae-sink-e2e-token"}
+    body = None
+    if payload is not None:
+        body = json.dumps(payload).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+    req = urllib.request.Request(f"{HASHSLIP_BASE}{path}", method=method, headers=headers, data=body)
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            raw = resp.read().decode("utf-8")
+            return json.loads(raw) if raw else {}
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"HashSlip {method} {path} failed: {exc.code} {detail}") from exc
+
+
+def create_hashslip_slot() -> str:
+    chunk = hashslip_json(
+        "POST",
+        "/api/v1/data-chunks/",
+        {
+            "name": f"araneae-sink-e2e-{uuid.uuid4().hex[:8]}",
+            "description": "Canonical Araneae sink integration fixture",
+            "metadata": {"owner": "araneae-e2e", "contract": "pipeline-envelope-1.0"},
+        },
+    )
+    chunk_id = str(chunk.get("id") or "").strip()
+    if not chunk_id:
+        raise RuntimeError(f"HashSlip DataChunk response has no id: {chunk!r}")
+    dataset = hashslip_json(
+        "POST",
+        f"/api/v1/data-chunks/{urllib.parse.quote(chunk_id, safe='')}/datasets",
+        {
+            "name": f"araneae-sink-e2e-{uuid.uuid4().hex[:8]}",
+            "description": "Canonical timeseries slot for Araneae sink E2E",
+            "data_type": "timeseries",
+            "schema": {
+                "time_field": "timestamp",
+                "metric_fields": [{"name": "value", "type": "float"}],
+                "tag_fields": [
+                    {"name": "source", "type": "text"},
+                    {"name": "metric", "type": "text"},
+                    {"name": "hash_key", "type": "text"},
+                ],
+            },
+            "identity": {
+                "series_key_fields": ["source", "metric"],
+                "dedupe_fields": ["source", "metric", "timestamp", "hash_key"],
+                "hash_algorithm": "sha256",
+            },
+        },
+    )
+    dataset_id = str(dataset.get("id") or "").strip()
+    if not dataset_id:
+        raise RuntimeError(f"HashSlip DataSet response has no id: {dataset!r}")
+    return dataset_id
+
+
 def create_sink_artifact() -> Tuple[str, bytes, str]:
     hash_key = "fed_overnight_rate_daily_e2e"
     script = f"""#!/usr/bin/env python3
@@ -231,7 +322,7 @@ print("sink emitted")
         return p.name, p.read_bytes(), hash_key
 
 
-def start_services(workdir: Path, queue: str, node_key: str):
+def start_services(workdir: Path, queue: str, node_key: str, token_url: str):
     logs = workdir / "logs"
     logs.mkdir(parents=True, exist_ok=True)
     control_log = (logs / "control.log").open("w", encoding="utf-8")
@@ -268,6 +359,9 @@ def start_services(workdir: Path, queue: str, node_key: str):
             "HASHSLIP_BASE_URL": HASHSLIP_BASE,
             "EXECUTOR_SINK_ENABLED": "true",
             "EXECUTOR_SINK_STRICT": "true",
+            "BASALTPASS_TOKEN_URL": token_url,
+            "BASALTPASS_OAUTH_CLIENT_ID": "araneae-sink-e2e",
+            "BASALTPASS_OAUTH_CLIENT_SECRET": "araneae-sink-e2e-secret",
         }
     )
 
@@ -309,7 +403,9 @@ def main() -> int:
     runtime_dir = Path(tempfile.mkdtemp(prefix="araneae-sink-e2e-"))
     queue = f"sink-{uuid.uuid4().hex[:8]}"
     node_key = f"sink-node-{uuid.uuid4().hex}"
-    control, executor, control_log, executor_log, admin_password = start_services(runtime_dir, queue, node_key)
+    token_server = start_e2e_token_server()
+    token_url = f"http://127.0.0.1:{token_server.server_address[1]}/oauth/token"
+    control, executor, control_log, executor_log, admin_password = start_services(runtime_dir, queue, node_key, token_url)
     try:
         wait_http_ok(f"{CONTROL_BASE}/healthz", timeout=90)
         wait_http_ok(f"http://127.0.0.1:{EXECUTOR_PORT}/healthz", timeout=90, headers={"X-Node-Key": node_key})
@@ -329,6 +425,7 @@ def main() -> int:
         project = api_json("POST", "/projects", token=token, payload={"name": f"sink-e2e-{uuid.uuid4().hex[:6]}"})
         zip_name, zip_data, hash_key = create_sink_artifact()
         version = api_upload(f"/projects/{project['id']}/upload", token, zip_name, zip_data)
+        dataset_id = create_hashslip_slot()
 
         task = api_json(
             "POST",
@@ -340,6 +437,12 @@ def main() -> int:
                 "version_id": version["id"],
                 "entry_command": "python crawler.py || python3 crawler.py",
                 "node_queue": node_queue,
+                "metadata": {
+                    "hashslip_slot": {
+                        "dataset_id": dataset_id,
+                        "data_type": "timeseries",
+                    }
+                },
             },
         )
         run = api_json("POST", f"/tasks/{task['id']}/trigger", token=token)
@@ -347,18 +450,29 @@ def main() -> int:
         if run_result.get("status") != "success":
             raise RuntimeError(f"task failed: {run_result.get('output')}")
 
-        query = urllib.parse.urlencode({"hash_key": hash_key, "limit": "5"})
-        with urllib.request.urlopen(f"{HASHSLIP_BASE}/api/v1/timeseries/records?{query}", timeout=20) as resp:
-            rows = json.loads(resp.read().decode("utf-8"))
-        items = rows.get("items") or []
-        if not items:
-            raise RuntimeError("hashslip has no sink data")
+        query = urllib.parse.urlencode({"limit": "5", "offset": "0"})
+        rows = hashslip_json(
+            "GET",
+            f"/api/v1/datasets/{urllib.parse.quote(dataset_id, safe='')}/records?{query}",
+        )
+        items = rows.get("data") or []
+        matches = [item for item in items if (item.get("data") or {}).get("hash_key") == hash_key]
+        if not matches:
+            raise RuntimeError(f"HashSlip canonical DataSet has no sink data: {rows!r}")
 
-        print(json.dumps({"ok": True, "hash_key": hash_key, "rows": len(items), "latest": items[0]}, ensure_ascii=False, indent=2))
+        print(
+            json.dumps(
+                {"ok": True, "dataset_id": dataset_id, "hash_key": hash_key, "rows": len(items), "latest": matches[0]},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
         return 0
     finally:
         stop_proc(executor)
         stop_proc(control)
+        token_server.shutdown()
+        token_server.server_close()
         control_log.close()
         executor_log.close()
 

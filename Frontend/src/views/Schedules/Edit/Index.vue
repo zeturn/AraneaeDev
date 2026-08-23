@@ -263,9 +263,9 @@ const buildOrderSteps = () => {
       task_id: s.task_id || undefined,
       name: taskName,
       project_id: task?.project_id || undefined,
-      node: Array.isArray(s.node) ? s.node : [],
+      node_queue: Array.isArray(s.node) ? (s.node[0] || undefined) : undefined,
       trigger: index === 0 ? s.trigger : 'previous',
-      crons: index === 0 && s.trigger === 'crons' ? s.crons : undefined,
+      cron_expr: index === 0 && s.trigger === 'crons' ? s.crons : undefined,
       run_at: index === 0 && s.trigger === 'datetime'
         ? toRunAtRFC3339(s.run_at_local, s.run_at_tz)
         : undefined,
@@ -275,8 +275,9 @@ const buildOrderSteps = () => {
 };
 
 const generatedOrderJson = computed(() => JSON.stringify({
+  version: '1.0',
   name: form.name,
-  schedule: buildOrderSteps(),
+  steps: buildOrderSteps(),
 }, null, 2));
 
 const addScheduleConfig = () => {
@@ -305,8 +306,8 @@ const fillFormFromSchedule = schedule => {
   form.workplace = schedule?.workplace || 'go-workspace';
 
   const parsedOrder = parseMaybeJSON(schedule?.order);
-  const rawSteps = Array.isArray(parsedOrder?.schedule)
-    ? parsedOrder.schedule
+  const rawSteps = Array.isArray(parsedOrder?.steps)
+    ? parsedOrder.steps
     : [{
       task_id: schedule?.task_id || '',
       node: schedule?.node_queue ? [schedule.node_queue] : [],
@@ -324,9 +325,9 @@ const fillFormFromSchedule = schedule => {
 
     return {
       task_id: item?.task_id || (index === 0 ? (schedule?.task_id || '') : ''),
-      node: normalizeNodeList(item?.node, schedule?.node_queue),
+      node: normalizeNodeList(item?.node_queue, schedule?.node_queue),
       trigger: index === 0 ? firstTrigger : 'previous',
-      crons: index === 0 && firstTrigger === 'crons' ? String(item?.crons || schedule?.cron_expr || '') : '',
+      crons: index === 0 && firstTrigger === 'crons' ? String(item?.cron_expr || schedule?.cron_expr || '') : '',
       run_at_local: index === 0 && firstTrigger === 'datetime' ? parsedRunAt.localDateTime : '',
       run_at_tz: index === 0 && firstTrigger === 'datetime' ? parsedRunAt.timezoneOffset : defaultTimezoneOffset,
       previous: '',
@@ -400,8 +401,9 @@ const handleUpdateSchedule = async () => {
   }
 
   const orderPayload = {
+    version: '1.0',
     name: form.name,
-    schedule: buildOrderSteps(),
+    steps: buildOrderSteps(),
   };
 
   saving.value = true;
