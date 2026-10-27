@@ -18,7 +18,7 @@ type scheduleExecutionStep struct {
 
 func (a *App) resolveScheduleExecutionSteps(schedule common.Schedule) ([]scheduleExecutionStep, error) {
 	defaultStep := scheduleExecutionStep{
-		TaskID:       schedule.ID,
+		TaskID:       schedule.TaskID,
 		ProjectID:    strings.TrimSpace(schedule.ProjectID),
 		VersionID:    strings.TrimSpace(schedule.VersionID),
 		EntryCommand: strings.TrimSpace(schedule.EntryCommand),
@@ -56,7 +56,7 @@ func (a *App) resolveScheduleExecutionSteps(schedule common.Schedule) ([]schedul
 			step.NodeQueue = queue
 		}
 		if step.TaskID == "" {
-			step.TaskID = schedule.ID
+			step.TaskID = schedule.TaskID
 		}
 		if step.Type == "" {
 			step.Type = "code"

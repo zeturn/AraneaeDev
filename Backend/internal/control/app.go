@@ -280,6 +280,9 @@ func NewApp(cfg common.ControlConfig) (*App, error) {
 		outboxStop:      make(chan struct{}),
 		outboxDone:      make(chan struct{}),
 	}
+	if err := app.bootstrapExecutorNode(); err != nil {
+		return nil, fmt.Errorf("bootstrap executor node: %w", err)
+	}
 	app.runPublisher = app.publishScheduleRun
 
 	app.http.Use(cors.New(cors.Config{
@@ -473,7 +476,7 @@ func (a *App) publishScheduleRun(schedule common.Schedule, source string) (*comm
 	}
 	if len(steps) == 0 {
 		steps = []scheduleExecutionStep{{
-			TaskID:       schedule.ID,
+			TaskID:       schedule.TaskID,
 			ProjectID:    schedule.ProjectID,
 			VersionID:    schedule.VersionID,
 			EntryCommand: schedule.EntryCommand,

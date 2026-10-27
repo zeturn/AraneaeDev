@@ -52,6 +52,9 @@ func TestRSSSourceTaskCanUseScheduleWithoutCodeArtifact(t *testing.T) {
 	if steps[0].Type != "rss" || steps[0].SourceURL != task.SourceURL {
 		t.Fatalf("source schedule did not preserve RSS task: %#v", steps[0])
 	}
+	if steps[0].TaskID != task.ID {
+		t.Fatalf("source schedule resolved the wrong task id: got=%q want=%q", steps[0].TaskID, task.ID)
+	}
 }
 
 func TestPageSourceTaskCanUseScheduleWithoutCodeArtifact(t *testing.T) {
@@ -97,5 +100,26 @@ func TestPageSourceTaskCanUseScheduleWithoutCodeArtifact(t *testing.T) {
 	}
 	if steps[0].Type != "page" || steps[0].SourceURL != task.SourceURL {
 		t.Fatalf("source schedule did not preserve page task: %#v", steps[0])
+	}
+	if steps[0].TaskID != task.ID {
+		t.Fatalf("page schedule resolved the wrong task id: got=%q want=%q", steps[0].TaskID, task.ID)
+	}
+}
+
+func TestScheduleWithoutOrderUsesBoundTaskID(t *testing.T) {
+	app := newTestControlApp(t)
+	schedule := common.Schedule{
+		ID:          "legacy-schedule",
+		TaskID:      "bound-task",
+		TriggerType: "crons",
+		NodeQueue:   "default",
+	}
+
+	steps, err := app.resolveScheduleExecutionSteps(schedule)
+	if err != nil {
+		t.Fatalf("resolve legacy schedule failed: %v", err)
+	}
+	if len(steps) != 1 || steps[0].TaskID != schedule.TaskID {
+		t.Fatalf("legacy schedule used the wrong task id: %#v", steps)
 	}
 }
