@@ -167,21 +167,30 @@ func (a *App) forwardSinkEvent(ctx context.Context, msg contracts.QueueTaskMessa
 	if err := json.Unmarshal(payload, &record); err != nil {
 		return fmt.Errorf("decode %s sink event: %w", eventType, err)
 	}
+	metadataRecord := record
 	if eventType == "structured" {
-		// Structured records store the source record below instance_id/schema_id/
-		// data. HashSlip slots are schema-bearing, so forward the source record
-		// itself; wrapping the envelope would make schema fields and dedupe keys
-		// appear null to downstream readers.
-		record = mapFromAny(record["data"])
-		if len(record) == 0 {
+		// Structured crawler events store the source record below
+		// instance_id/schema_id/data. The managed source datasets use the
+		// canonical {id, payload} schema: keep the source record intact inside
+		// payload while projecting its stable source id into the required id
+		// field. This also makes the write contract independent of whichever
+		// fields a particular RSS or JSON source provides.
+		sourceRecord := mapFromAny(record["data"])
+		if len(sourceRecord) == 0 {
 			return errors.New("structured sink event has no data")
+		}
+		metadataRecord = sourceRecord
+		var normalizeErr error
+		record, normalizeErr = canonicalStructuredRecord(sourceRecord)
+		if normalizeErr != nil {
+			return normalizeErr
 		}
 	}
 	envelope := map[string]any{
 		"data":     record,
-		"metadata": canonicalRecordMetadata(msg, eventType, record),
+		"metadata": canonicalRecordMetadata(msg, eventType, metadataRecord),
 	}
-	if source := canonicalRecordSource(msg, record); len(source) > 0 {
+	if source := canonicalRecordSource(msg, metadataRecord); len(source) > 0 {
 		envelope["source"] = source
 	}
 	payload, err := json.Marshal(envelope)
@@ -189,6 +198,38 @@ func (a *App) forwardSinkEvent(ctx context.Context, msg contracts.QueueTaskMessa
 		return fmt.Errorf("encode %s sink event: %w", eventType, err)
 	}
 	return a.forwardToHashSlip(ctx, msg, "/api/v1/datasets/"+url.PathEscape(datasetID)+"/records", payload)
+}
+
+func canonicalStructuredRecord(source map[string]any) (map[string]any, error) {
+	if len(source) == 0 {
+		return nil, errors.New("structured sink event has no data")
+	}
+	// A caller that already emits the canonical shape should not receive a
+	// second payload layer.
+	if _, hasPayload := source["payload"]; hasPayload {
+		if id := firstNonEmptyRecordString(
+			recordString(source, "id"),
+			recordString(source, "guid"),
+			recordString(source, "url"),
+			recordString(source, "link"),
+		); id != "" {
+			return source, nil
+		}
+	}
+	stableID := firstNonEmptyRecordString(
+		recordString(source, "id"),
+		recordString(source, "guid"),
+		recordString(source, "url"),
+		recordString(source, "link"),
+	)
+	if stableID == "" {
+		return nil, errors.New("structured sink event requires id, guid, url, or link")
+	}
+	payload := make(map[string]any, len(source))
+	for key, value := range source {
+		payload[key] = value
+	}
+	return map[string]any{"id": stableID, "payload": payload}, nil
 }
 
 func validateSinkEnvelope(env sinkEnvelope) error {
