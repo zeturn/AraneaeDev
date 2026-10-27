@@ -15,6 +15,12 @@ type ControlConfig struct {
 	GRPCTLSKeyFile        string
 	GRPCTLSClientCAFile   string
 	NodeVerifyScheme      string
+	NodeBootstrapKey      string
+	NodeBootstrapName     string
+	NodeBootstrapIP       string
+	NodeBootstrapPort     int
+	NodeBootstrapGRPCPort int
+	NodeBootstrapQueue    string
 	DBBackend             string
 	DBPath                string
 	DatabaseDSN           string
@@ -134,6 +140,12 @@ func LoadControlConfig() ControlConfig {
 		GRPCTLSKeyFile:        GetEnv("CONTROL_GRPC_TLS_KEY_FILE", ""),
 		GRPCTLSClientCAFile:   GetEnv("CONTROL_GRPC_TLS_CLIENT_CA_FILE", ""),
 		NodeVerifyScheme:      GetEnv("CONTROL_NODE_VERIFY_SCHEME", "http"),
+		NodeBootstrapKey:      GetEnv("CONTROL_NODE_BOOTSTRAP_KEY", ""),
+		NodeBootstrapName:     GetEnv("CONTROL_NODE_BOOTSTRAP_NAME", ""),
+		NodeBootstrapIP:       GetEnv("CONTROL_NODE_BOOTSTRAP_IP", ""),
+		NodeBootstrapPort:     GetEnvInt("CONTROL_NODE_BOOTSTRAP_PORT", 4280),
+		NodeBootstrapGRPCPort: GetEnvInt("CONTROL_NODE_BOOTSTRAP_GRPC_PORT", 9190),
+		NodeBootstrapQueue:    GetEnv("CONTROL_NODE_BOOTSTRAP_QUEUE", "default"),
 		DBBackend:             strings.ToLower(GetEnv("CONTROL_DB_BACKEND", "sqlite")),
 		DBPath:                GetEnv("CONTROL_DB_PATH", "./data/control.db"),
 		DatabaseDSN:           GetEnv("CONTROL_DATABASE_DSN", ""),

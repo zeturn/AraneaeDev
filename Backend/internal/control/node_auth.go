@@ -14,6 +14,8 @@ import (
 
 	"araneae-go/internal/common"
 
+	"github.com/google/uuid"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -57,6 +59,96 @@ type nodeAliveResponse struct {
 func hashNodeKey(raw string) string {
 	sum := sha256.Sum256([]byte(strings.TrimSpace(raw)))
 	return hex.EncodeToString(sum[:])
+}
+
+// bootstrapExecutorNode keeps Kubernetes deployments self-contained. The
+// legacy deployment path required a human to call the admin registration API,
+// which left a healthy executor fleet unable to authenticate after a fresh
+// control database was created. The bootstrap is opt-in and stores only the
+// hash of the shared executor key.
+func (a *App) bootstrapExecutorNode() error {
+	key := strings.TrimSpace(a.cfg.NodeBootstrapKey)
+	if key == "" {
+		return nil
+	}
+	ip := strings.TrimSpace(a.cfg.NodeBootstrapIP)
+	if ip == "" {
+		return errors.New("CONTROL_NODE_BOOTSTRAP_IP is required when CONTROL_NODE_BOOTSTRAP_KEY is set")
+	}
+	name := strings.TrimSpace(a.cfg.NodeBootstrapName)
+	if name == "" {
+		name = "executor-" + strings.NewReplacer(".", "-", ":", "-").Replace(ip)
+	}
+	port := a.cfg.NodeBootstrapPort
+	if port <= 0 {
+		port = 4280
+	}
+	grpcPort := a.cfg.NodeBootstrapGRPCPort
+	if grpcPort <= 0 {
+		grpcPort = 9190
+	}
+	queue := strings.TrimSpace(a.cfg.NodeBootstrapQueue)
+	if queue == "" {
+		queue = "default"
+	}
+	now := time.Now()
+	keyHash := hashNodeKey(key)
+	capabilities := toCapabilitiesJSON(defaultCapabilities())
+	updates := map[string]interface{}{
+		"description":       "Kubernetes executor pool",
+		"status":            "active",
+		"ip_address":        ip,
+		"port":              port,
+		"g_rpc_port":        grpcPort,
+		"rpc_url":           fmt.Sprintf("http://%s:%d", ip, port),
+		"celery_queue":      queue,
+		"auth_token_hash":   keyHash,
+		"is_enabled":        true,
+		"last_active_time":  now,
+		"updated_at":        now,
+		"capabilities_json": capabilities,
+	}
+
+	var node common.Node
+	err := a.db.Where("name = ?", name).First(&node).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		node = common.Node{
+			Name:             name,
+			Description:      "Kubernetes executor pool",
+			Status:           "active",
+			IPAddress:        ip,
+			Port:             port,
+			GRPCPort:         grpcPort,
+			RPCURL:           fmt.Sprintf("http://%s:%d", ip, port),
+			CeleryQueue:      queue,
+			AuthTokenHash:    keyHash,
+			IsEnabled:        true,
+			LastActiveTime:   now,
+			HDID:             strings.ToUpper(strings.ReplaceAll(uuid.NewString()[:12], "-", "")),
+			CPUInfo:          defaultCPUInfoJSON(),
+			MemoryInfo:       defaultMemoryInfoJSON(),
+			CapabilitiesJSON: capabilities,
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		}
+		if err := a.db.Create(&node).Error; err != nil {
+			return err
+		}
+		if a.log != nil {
+			a.log.Info("bootstrapped executor node", zap.String("name", name), zap.String("queue", queue))
+		}
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if err := a.db.Model(&node).Updates(updates).Error; err != nil {
+		return err
+	}
+	if a.log != nil {
+		a.log.Info("reconciled executor node", zap.String("name", name), zap.String("queue", queue))
+	}
+	return nil
 }
 
 func (a *App) verifyExecutorNodeKey(ip string, port int, pairKey string) (*nodeVerifyResponse, error) {

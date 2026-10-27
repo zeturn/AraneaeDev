@@ -98,8 +98,12 @@ Typical steps on each host:
 - Control: GET /healthz
 - Executor: GET /healthz
 
-## 9. Current limitation
+## 9. Executor registration
 
-Current implementation routes by queue name and supports multi-executor deployment,
-but does not yet include built-in executor registration, heartbeat, and online node inventory.
-If needed, add a control-side node registry API as the next step.
+Queue routing is shared by all executors that use the same `EXECUTOR_QUEUE`.
+For a Kubernetes executor pool, configure the control service with
+`CONTROL_NODE_BOOTSTRAP_KEY`, `CONTROL_NODE_BOOTSTRAP_NAME`,
+`CONTROL_NODE_BOOTSTRAP_IP`, and the matching port/queue variables. The control
+service reconciles one logical node record at startup and stores only the hash of
+the executor key. This avoids requiring a manual admin registration call after
+the control database is recreated.
