@@ -155,8 +155,9 @@ func TestProcessSinkArtifacts_ForwardsStructuredEventToTaskHashSlipSlot(t *testi
 		if payload.Data["id"] != "article-1" {
 			t.Fatalf("expected stable id to be preserved, got %#v", payload.Data["id"])
 		}
-		if payload.Data["title"] != "Example article" {
-			t.Fatalf("expected source record fields to be forwarded, got %#v", payload.Data)
+		stored, ok := payload.Data["payload"].(map[string]any)
+		if !ok || stored["title"] != "Example article" {
+			t.Fatalf("expected source record to be stored as payload, got %#v", payload.Data)
 		}
 		if payload.Source["name"] != "https://example.com/blog/rss.xml" {
 			t.Fatalf("expected canonical source envelope, got %#v", payload.Source)
