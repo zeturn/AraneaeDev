@@ -403,12 +403,7 @@ func slotDatasetID(metadata map[string]any) string {
 }
 
 func (a *App) forwardToHashSlip(ctx context.Context, msg contracts.QueueTaskMessage, endpoint string, payload []byte) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(a.cfg.HashSlipBaseURL, "/")+ensureLeadingSlash(endpoint), bytes.NewReader(payload))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
+	targetURL := strings.TrimRight(a.cfg.HashSlipBaseURL, "/") + ensureLeadingSlash(endpoint)
 	// X-Pipeline-* is the sole HTTP projection of the canonical pipeline
 	// envelope. Product-specific fields remain in the request body or slot
 	// metadata; these headers carry only transport provenance.
@@ -419,33 +414,6 @@ func (a *App) forwardToHashSlip(ctx context.Context, msg contracts.QueueTaskMess
 	eventID := "evt_" + hex.EncodeToString(idempotency[:16])
 	traceID := strings.TrimSpace(msg.CorrelationID)
 	now := time.Now().UTC().Format(time.RFC3339Nano)
-	req.Header.Set("X-Pipeline-Schema-Version", "1.0")
-	req.Header.Set("X-Pipeline-Message-Type", "hashslip.record.ingest")
-	req.Header.Set("X-Pipeline-Event-Id", eventID)
-	req.Header.Set("X-Pipeline-Trace-Id", traceID)
-	req.Header.Set("X-Pipeline-Causation-Id", strings.TrimSpace(msg.RunID))
-	req.Header.Set("X-Pipeline-Correlation-Id", traceID)
-	req.Header.Set("X-Pipeline-Idempotency-Key", idempotencyKey)
-	req.Header.Set("X-Pipeline-Producer", "araneae")
-	req.Header.Set("X-Pipeline-Occurred-At", now)
-	setPipelineHeader := func(name string, value string) {
-		if value != "" {
-			req.Header.Set(name, value)
-		}
-	}
-	setPipelineHeader("X-Pipeline-Run-Id", strings.TrimSpace(msg.RunID))
-	setPipelineHeader("X-Pipeline-Task-Id", strings.TrimSpace(msg.TaskID))
-	setPipelineHeader("X-Pipeline-Schedule-Id", metadataString(msg.Metadata, "hashslip_schedule_id", "schedule_id"))
-	setPipelineHeader("X-Pipeline-Objective-Id", metadataString(msg.Metadata, "cis_objective_id", "objective_id"))
-	setPipelineHeader("X-Pipeline-Artifact-Id", metadataString(msg.Metadata, "cis_artifact_id", "artifact_id"))
-	setPipelineHeader("X-Pipeline-Project-Id", strings.TrimSpace(msg.ProjectID))
-	setPipelineHeader("X-Pipeline-Version-Id", strings.TrimSpace(msg.VersionID))
-	setPipelineHeader("X-Pipeline-Record-Type", strings.TrimSpace(msg.Type))
-	if slots := sinkSlots(msg.Metadata); len(slots) > 0 {
-		if raw, marshalErr := json.Marshal(slots); marshalErr == nil {
-			req.Header.Set("X-Pipeline-Slots", string(raw))
-		}
-	}
 
 	token, err := a.getHashSlipBearerToken(ctx)
 	if err != nil {
@@ -454,22 +422,108 @@ func (a *App) forwardToHashSlip(ctx context.Context, msg contracts.QueueTaskMess
 	if token == "" {
 		return errors.New("get basalt s2s token: empty token")
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
 
 	client := a.httpClient
 	if timeoutSec := a.cfg.HashSlipTimeoutSeconds; timeoutSec > 0 {
 		client = &http.Client{Timeout: time.Duration(timeoutSec) * time.Second}
 	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
+
+	for attempt := 1; attempt <= hashSlipForwardAttempts; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(payload))
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json")
+		req.Header.Set("X-Pipeline-Schema-Version", "1.0")
+		req.Header.Set("X-Pipeline-Message-Type", "hashslip.record.ingest")
+		req.Header.Set("X-Pipeline-Event-Id", eventID)
+		req.Header.Set("X-Pipeline-Trace-Id", traceID)
+		req.Header.Set("X-Pipeline-Causation-Id", strings.TrimSpace(msg.RunID))
+		req.Header.Set("X-Pipeline-Correlation-Id", traceID)
+		req.Header.Set("X-Pipeline-Idempotency-Key", idempotencyKey)
+		req.Header.Set("X-Pipeline-Producer", "araneae")
+		req.Header.Set("X-Pipeline-Occurred-At", now)
+		setPipelineHeader := func(name string, value string) {
+			if value != "" {
+				req.Header.Set(name, value)
+			}
+		}
+		setPipelineHeader("X-Pipeline-Run-Id", strings.TrimSpace(msg.RunID))
+		setPipelineHeader("X-Pipeline-Task-Id", strings.TrimSpace(msg.TaskID))
+		setPipelineHeader("X-Pipeline-Schedule-Id", metadataString(msg.Metadata, "hashslip_schedule_id", "schedule_id"))
+		setPipelineHeader("X-Pipeline-Objective-Id", metadataString(msg.Metadata, "cis_objective_id", "objective_id"))
+		setPipelineHeader("X-Pipeline-Artifact-Id", metadataString(msg.Metadata, "cis_artifact_id", "artifact_id"))
+		setPipelineHeader("X-Pipeline-Project-Id", strings.TrimSpace(msg.ProjectID))
+		setPipelineHeader("X-Pipeline-Version-Id", strings.TrimSpace(msg.VersionID))
+		setPipelineHeader("X-Pipeline-Record-Type", strings.TrimSpace(msg.Type))
+		if slots := sinkSlots(msg.Metadata); len(slots) > 0 {
+			if raw, marshalErr := json.Marshal(slots); marshalErr == nil {
+				req.Header.Set("X-Pipeline-Slots", string(raw))
+			}
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+
+		resp, err := client.Do(req)
+		if err != nil {
+			if ctx.Err() != nil || attempt == hashSlipForwardAttempts {
+				return err
+			}
+			if err := waitForHashSlipRetry(ctx, attempt); err != nil {
+				return err
+			}
+			continue
+		}
+		if resp.StatusCode < 300 {
+			resp.Body.Close()
+			return nil
+		}
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		resp.Body.Close()
+		if readErr != nil {
+			if ctx.Err() != nil || attempt == hashSlipForwardAttempts {
+				return readErr
+			}
+			if err := waitForHashSlipRetry(ctx, attempt); err != nil {
+				return err
+			}
+			continue
+		}
+		bodyText := strings.TrimSpace(string(body))
+		if attempt < hashSlipForwardAttempts && retryHashSlipResponse(resp.StatusCode, bodyText) {
+			if err := waitForHashSlipRetry(ctx, attempt); err != nil {
+				return err
+			}
+			continue
+		}
+		return fmt.Errorf("hashslip status=%d body=%s", resp.StatusCode, bodyText)
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return fmt.Errorf("hashslip status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+	return errors.New("hashslip forwarding exhausted retries")
+}
+
+const hashSlipForwardAttempts = 3
+
+func waitForHashSlipRetry(ctx context.Context, attempt int) error {
+	delay := time.Duration(attempt) * 200 * time.Millisecond
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
-	return nil
+}
+
+func retryHashSlipResponse(status int, body string) bool {
+	switch status {
+	case http.StatusTooManyRequests, http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	case http.StatusBadRequest:
+		return strings.Contains(strings.ToLower(body), "context canceled")
+	default:
+		return false
+	}
 }
 
 func sinkSlots(metadata map[string]any) []map[string]any {

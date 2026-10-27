@@ -233,3 +233,44 @@ func TestProcessSinkArtifacts_ForwardsStructuredEventToTaskHashSlipSlot(t *testi
 		t.Fatalf("expected dataset call once, got %d", datasetCalls)
 	}
 }
+
+func TestForwardToHashSlipRetriesTransientFailure(t *testing.T) {
+	var recordCalls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/oauth/token" {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"access_token":"test-token","expires_in":300}`))
+			return
+		}
+		recordCalls++
+		if recordCalls == 1 {
+			http.Error(w, "temporary upstream failure", http.StatusBadGateway)
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer server.Close()
+
+	app := &App{
+		cfg: common.ExecutorConfig{
+			HashSlipBaseURL:    server.URL,
+			BasaltTokenURL:     server.URL + "/oauth/token",
+			BasaltClientID:     "test-client",
+			BasaltClientSecret: "test-secret",
+		},
+		log:        zap.NewNop(),
+		httpClient: &http.Client{Timeout: 2 * time.Second},
+	}
+
+	err := app.forwardToHashSlip(context.Background(), contracts.QueueTaskMessage{
+		RunID:         "run-1",
+		TaskID:        "task-1",
+		CorrelationID: "corr-1",
+	}, "/api/v1/datasets/ds_target/records", []byte(`{"data":{}}`))
+	if err != nil {
+		t.Fatalf("forward should recover from transient failure: %v", err)
+	}
+	if recordCalls != 2 {
+		t.Fatalf("expected one retry, got %d record calls", recordCalls)
+	}
+}
